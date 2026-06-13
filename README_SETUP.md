@@ -30,7 +30,8 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 
 1. Ir al SQL Editor del proyecto.
 2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
-3. Verificar que se cree la tabla `public.profiles`, el trigger de alta automatica y las politicas RLS.
+3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products` y `public.inventory_movements`.
+4. Confirmar que se creen triggers, politicas RLS, la funcion `register_inventory_movement` y datos demo de catalogo.
 
 ## Primer usuario administrador
 
@@ -69,6 +70,24 @@ npm run build
 - `/acceso-restringido`: mensaje profesional para usuarios sin permiso o perfil incompleto
 - Header: nombre, rol y logout
 - Sidebar: modulos filtrados por rol
+
+## Catalogo de productos
+
+- `/productos`: productos, categorias y unidades de medida conectados a Supabase
+- `administrador` e `inventario`: pueden crear, editar y desactivar
+- `ventas`: acceso de solo lectura
+- `finanzas`: sin acceso directo al modulo
+- El stock actual se actualiza desde movimientos de inventario
+
+## Inventario
+
+- `/inventario`: historial y registro de movimientos reales de stock
+- Tipos soportados: `entrada`, `salida`, `ajuste`, `merma`, `devolucion`
+- `administrador` e `inventario`: pueden registrar movimientos
+- `ventas`: acceso de solo lectura
+- `finanzas`: sin acceso directo al modulo
+- Las salidas y mermas bloquean stock negativo
+- En `ajuste`, la cantidad ingresada representa el nuevo stock final
 
 ## Estructura principal
 

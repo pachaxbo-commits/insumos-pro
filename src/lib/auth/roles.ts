@@ -15,7 +15,7 @@ export function getRoleLabel(role: UserRole | null | undefined) {
 
 const roleRouteAccess: Record<UserRole, string[]> = {
   administrador: ["*"],
-  ventas: ["/", "/ventas", "/clientes", "/reportes"],
+  ventas: ["/", "/ventas", "/clientes", "/productos", "/inventario", "/reportes"],
   inventario: [
     "/",
     "/productos",

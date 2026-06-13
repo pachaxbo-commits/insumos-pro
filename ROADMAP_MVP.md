@@ -20,7 +20,23 @@
 ## Fase 3
 
 - Productos y catalogo real
+- Categorias y unidades de medida
+- Formularios de alta, edicion y desactivacion logica
+- Filtros por nombre, SKU, categoria, estado y stock bajo
+- RLS y permisos aplicados al catalogo
+
+## Fase 4
+
 - Inventario y movimientos persistidos
-- Ventas y compras reales
+- Entradas, salidas y ajustes
+- Mermas y devoluciones
+- Actualizacion de `products.stock_current` mediante movimientos
+- Alertas reales de stock bajo
+- Historial filtrable de movimientos
+
+## Fase 5
+
+- Compras basicas conectadas a reposicion
+- Ventas reales
 - Finanzas operativas sobre datos reales
 - Reportes operativos y financieros
