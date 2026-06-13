@@ -36,7 +36,14 @@
 
 ## Fase 5
 
-- Compras basicas conectadas a reposicion
+- Proveedores reales conectados a Supabase
+- Compras con items y estados operativos
+- Confirmacion de compras conectada a movimientos de inventario tipo `entrada`
+- Listados, filtros y detalle de compra
+- Permisos diferenciados para inventario, administracion y finanzas
+
+## Fase 6
+
 - Ventas reales
 - Finanzas operativas sobre datos reales
 - Reportes operativos y financieros

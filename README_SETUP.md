@@ -30,8 +30,8 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 
 1. Ir al SQL Editor del proyecto.
 2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
-3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products` y `public.inventory_movements`.
-4. Confirmar que se creen triggers, politicas RLS, la funcion `register_inventory_movement` y datos demo de catalogo.
+3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases` y `public.purchase_items`.
+4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft` y datos demo de catalogo/proveedores.
 
 ## Primer usuario administrador
 
@@ -88,6 +88,17 @@ npm run build
 - `finanzas`: sin acceso directo al modulo
 - Las salidas y mermas bloquean stock negativo
 - En `ajuste`, la cantidad ingresada representa el nuevo stock final
+
+## Proveedores y compras
+
+- `/proveedores`: gestion de proveedores activos/inactivos conectada a Supabase
+- `/compras`: compras con estado `borrador`, `confirmada` o `cancelada`
+- Una compra en borrador no modifica stock
+- Al confirmar una compra se generan movimientos de inventario tipo `entrada` por cada item
+- La confirmacion usa la funcion SQL `confirm_purchase` para evitar duplicar entradas
+- `administrador` e `inventario`: pueden crear proveedores, crear compras, confirmar y cancelar borradores
+- `finanzas`: puede ver compras en modo lectura
+- `ventas`: sin acceso directo a compras ni proveedores
 
 ## Estructura principal
 

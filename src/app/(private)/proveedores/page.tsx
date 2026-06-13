@@ -1,13 +1,41 @@
-import { FeaturePlaceholder } from "@/components/shared/feature-placeholder";
+import { SupplierManagement } from "@/components/purchases/supplier-management";
+import { PageHeader } from "@/components/layout/page-header";
 import { requireRoleAccess } from "@/lib/auth/session";
+import { getSuppliersData } from "@/lib/purchases/data";
+import type { SupplierFilters } from "@/types/purchases";
 
-export default async function ProveedoresPage() {
-  await requireRoleAccess("/proveedores");
+type ProveedoresPageProps = {
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+  }>;
+};
+
+function normalizeFilters(params: Awaited<ProveedoresPageProps["searchParams"]>): SupplierFilters {
+  return {
+    q: params.q,
+    status:
+      params.status === "active" || params.status === "inactive" || params.status === "all"
+        ? params.status
+        : "all",
+  };
+}
+
+export default async function ProveedoresPage({ searchParams }: ProveedoresPageProps) {
+  const auth = await requireRoleAccess("/proveedores");
+  const filters = normalizeFilters(await searchParams);
+  const data = await getSuppliersData(filters);
+  const canManage =
+    auth.user.role === "administrador" || auth.user.role === "inventario";
 
   return (
-    <FeaturePlaceholder
-      title="Proveedores"
-      description="Base visual lista para acuerdos de compra, abastecimiento y seguimiento de entregas."
-    />
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Abastecimiento"
+        title="Proveedores"
+        description="Administra proveedores activos, contactos y notas operativas para compras futuras."
+      />
+      <SupplierManagement {...data} filters={filters} canManage={canManage} />
+    </div>
   );
 }

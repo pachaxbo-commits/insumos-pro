@@ -618,3 +618,478 @@ $$;
 
 revoke all on function public.register_inventory_movement(uuid, text, numeric, text, text) from public;
 grant execute on function public.register_inventory_movement(uuid, text, numeric, text, text) to authenticated;
+
+create table if not exists public.suppliers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  contact_name text,
+  phone text,
+  address text,
+  notes text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint suppliers_name_unique unique (name)
+);
+
+create index if not exists suppliers_name_idx on public.suppliers (name);
+create index if not exists suppliers_is_active_idx on public.suppliers (is_active);
+
+drop trigger if exists set_suppliers_updated_at on public.suppliers;
+
+create trigger set_suppliers_updated_at
+before update on public.suppliers
+for each row
+execute function public.set_current_timestamp_updated_at();
+
+create table if not exists public.purchases (
+  id uuid primary key default gen_random_uuid(),
+  supplier_id uuid references public.suppliers (id) on delete set null,
+  purchase_date date not null default current_date,
+  status text not null default 'borrador',
+  payment_status text not null default 'pendiente',
+  payment_method text not null default 'transferencia',
+  subtotal numeric(14, 2) not null default 0,
+  total numeric(14, 2) not null default 0,
+  notes text,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint purchases_status_check check (status in ('borrador', 'confirmada', 'cancelada')),
+  constraint purchases_payment_status_check check (payment_status in ('pagada', 'pendiente', 'parcial')),
+  constraint purchases_payment_method_check check (payment_method in ('efectivo', 'transferencia', 'qr', 'credito')),
+  constraint purchases_subtotal_check check (subtotal >= 0),
+  constraint purchases_total_check check (total >= 0)
+);
+
+create index if not exists purchases_supplier_id_idx on public.purchases (supplier_id);
+create index if not exists purchases_status_idx on public.purchases (status);
+create index if not exists purchases_payment_status_idx on public.purchases (payment_status);
+create index if not exists purchases_purchase_date_idx on public.purchases (purchase_date desc);
+create index if not exists purchases_created_by_idx on public.purchases (created_by);
+
+drop trigger if exists set_purchases_updated_at on public.purchases;
+
+create trigger set_purchases_updated_at
+before update on public.purchases
+for each row
+execute function public.set_current_timestamp_updated_at();
+
+create table if not exists public.purchase_items (
+  id uuid primary key default gen_random_uuid(),
+  purchase_id uuid not null references public.purchases (id) on delete cascade,
+  product_id uuid not null references public.products (id) on delete restrict,
+  quantity numeric(14, 2) not null,
+  unit_cost numeric(14, 2) not null,
+  subtotal numeric(14, 2) not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint purchase_items_quantity_check check (quantity > 0),
+  constraint purchase_items_unit_cost_check check (unit_cost >= 0),
+  constraint purchase_items_subtotal_check check (subtotal >= 0)
+);
+
+create index if not exists purchase_items_purchase_id_idx on public.purchase_items (purchase_id);
+create index if not exists purchase_items_product_id_idx on public.purchase_items (product_id);
+
+alter table public.suppliers enable row level security;
+alter table public.purchases enable row level security;
+alter table public.purchase_items enable row level security;
+
+drop policy if exists "Allowed roles can view suppliers" on public.suppliers;
+create policy "Allowed roles can view suppliers"
+on public.suppliers
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Inventory roles can insert suppliers" on public.suppliers;
+create policy "Inventory roles can insert suppliers"
+on public.suppliers
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+);
+
+drop policy if exists "Inventory roles can update suppliers" on public.suppliers;
+create policy "Inventory roles can update suppliers"
+on public.suppliers
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+);
+
+drop policy if exists "Allowed roles can view purchases" on public.purchases;
+create policy "Allowed roles can view purchases"
+on public.purchases
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Inventory roles can insert purchases" on public.purchases;
+create policy "Inventory roles can insert purchases"
+on public.purchases
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+);
+
+drop policy if exists "Inventory roles can update purchases" on public.purchases;
+create policy "Inventory roles can update purchases"
+on public.purchases
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+);
+
+drop policy if exists "Allowed roles can view purchase items" on public.purchase_items;
+create policy "Allowed roles can view purchase items"
+on public.purchase_items
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Inventory roles can insert purchase items" on public.purchase_items;
+create policy "Inventory roles can insert purchase items"
+on public.purchase_items
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'inventario')
+  )
+);
+
+create or replace function public.create_purchase_draft(
+  p_supplier_id uuid,
+  p_purchase_date date,
+  p_payment_status text,
+  p_payment_method text,
+  p_notes text,
+  p_items jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_purchase_id uuid;
+  v_total numeric(14, 2) := 0;
+  v_item jsonb;
+  v_product_id uuid;
+  v_quantity numeric(14, 2);
+  v_unit_cost numeric(14, 2);
+  v_subtotal numeric(14, 2);
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'inventario') then
+    raise exception 'No tienes permisos para crear compras.';
+  end if;
+
+  if p_payment_status not in ('pagada', 'pendiente', 'parcial') then
+    raise exception 'Estado de pago invalido.';
+  end if;
+
+  if p_payment_method not in ('efectivo', 'transferencia', 'qr', 'credito') then
+    raise exception 'Metodo de pago invalido.';
+  end if;
+
+  if not exists (select 1 from public.suppliers where id = p_supplier_id and is_active = true) then
+    raise exception 'Proveedor no encontrado o inactivo.';
+  end if;
+
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'Agrega al menos un item a la compra.';
+  end if;
+
+  insert into public.purchases (
+    supplier_id,
+    purchase_date,
+    status,
+    payment_status,
+    payment_method,
+    subtotal,
+    total,
+    notes,
+    created_by
+  )
+  values (
+    p_supplier_id,
+    p_purchase_date,
+    'borrador',
+    p_payment_status,
+    p_payment_method,
+    0,
+    0,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  )
+  returning id into v_purchase_id;
+
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    v_product_id := (v_item ->> 'product_id')::uuid;
+    v_quantity := (v_item ->> 'quantity')::numeric;
+    v_unit_cost := (v_item ->> 'unit_cost')::numeric;
+
+    if v_quantity <= 0 then
+      raise exception 'La cantidad de un item debe ser mayor a cero.';
+    end if;
+
+    if v_unit_cost < 0 then
+      raise exception 'El costo unitario no puede ser negativo.';
+    end if;
+
+    if not exists (select 1 from public.products where id = v_product_id and is_active = true) then
+      raise exception 'Producto no encontrado o inactivo.';
+    end if;
+
+    v_subtotal := round(v_quantity * v_unit_cost, 2);
+    v_total := v_total + v_subtotal;
+
+    insert into public.purchase_items (
+      purchase_id,
+      product_id,
+      quantity,
+      unit_cost,
+      subtotal
+    )
+    values (
+      v_purchase_id,
+      v_product_id,
+      v_quantity,
+      v_unit_cost,
+      v_subtotal
+    );
+  end loop;
+
+  update public.purchases
+  set subtotal = v_total,
+      total = v_total
+  where id = v_purchase_id;
+
+  return v_purchase_id;
+end;
+$$;
+
+create or replace function public.confirm_purchase(p_purchase_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_purchase record;
+  v_item record;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'inventario') then
+    raise exception 'No tienes permisos para confirmar compras.';
+  end if;
+
+  select *
+  into v_purchase
+  from public.purchases
+  where id = p_purchase_id
+  for update;
+
+  if v_purchase.id is null then
+    raise exception 'Compra no encontrada.';
+  end if;
+
+  if v_purchase.status = 'confirmada' then
+    raise exception 'La compra ya fue confirmada.';
+  end if;
+
+  if v_purchase.status <> 'borrador' then
+    raise exception 'Solo se pueden confirmar compras en borrador.';
+  end if;
+
+  if not exists (select 1 from public.purchase_items where purchase_id = p_purchase_id) then
+    raise exception 'La compra no tiene items.';
+  end if;
+
+  for v_item in
+    select product_id, quantity
+    from public.purchase_items
+    where purchase_id = p_purchase_id
+  loop
+    perform public.register_inventory_movement(
+      v_item.product_id,
+      'entrada',
+      v_item.quantity,
+      'Compra confirmada',
+      'Compra ' || p_purchase_id::text
+    );
+  end loop;
+
+  update public.purchases
+  set status = 'confirmada'
+  where id = p_purchase_id;
+end;
+$$;
+
+create or replace function public.cancel_purchase_draft(p_purchase_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_status text;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'inventario') then
+    raise exception 'No tienes permisos para cancelar compras.';
+  end if;
+
+  select status into v_status
+  from public.purchases
+  where id = p_purchase_id
+  for update;
+
+  if v_status is null then
+    raise exception 'Compra no encontrada.';
+  end if;
+
+  if v_status <> 'borrador' then
+    raise exception 'Solo se pueden cancelar compras en borrador.';
+  end if;
+
+  update public.purchases
+  set status = 'cancelada'
+  where id = p_purchase_id;
+end;
+$$;
+
+revoke all on function public.create_purchase_draft(uuid, date, text, text, text, jsonb) from public;
+grant execute on function public.create_purchase_draft(uuid, date, text, text, text, jsonb) to authenticated;
+
+revoke all on function public.confirm_purchase(uuid) from public;
+grant execute on function public.confirm_purchase(uuid) to authenticated;
+
+revoke all on function public.cancel_purchase_draft(uuid) from public;
+grant execute on function public.cancel_purchase_draft(uuid) to authenticated;
+
+insert into public.suppliers (name, contact_name, phone, address, notes, is_active)
+values
+  ('Agricola Don Pepe', 'Jose Perez', '700-10001', 'Mercado mayorista demo', 'Proveedor demo de verduras.', true),
+  ('Distribuidora El Sol', 'Carla Rojas', '700-10002', 'Zona industrial demo', 'Proveedor demo de aceites y abarrotes.', true),
+  ('Sabores del Valle', 'Mario Vargas', '700-10003', 'Av. Comercial demo', 'Proveedor demo de condimentos.', true)
+on conflict (name) do update
+set
+  contact_name = excluded.contact_name,
+  phone = excluded.phone,
+  address = excluded.address,
+  notes = excluded.notes,
+  is_active = excluded.is_active;
