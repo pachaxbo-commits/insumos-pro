@@ -10,15 +10,17 @@
 
 ## Fase 2
 
-- Conexion real a Supabase
-- Modelado inicial de productos, clientes, proveedores e inventario
-- CRUD basico para catalogos
-- Flujo real de ventas y compras
-- Estados de stock y cuentas por cobrar usando datos persistidos
+- Autenticacion real con Supabase Auth
+- Tabla `profiles` con roles y estado activo
+- Proteccion de rutas privadas y logout
+- Sidebar dinamico segun permisos
+- Pantalla de acceso restringido y base de permisos
+- SQL inicial para perfiles, trigger y RLS basica
 
 ## Fase 3
 
+- Productos y catalogo real
+- Inventario y movimientos persistidos
+- Ventas y compras reales
+- Finanzas operativas sobre datos reales
 - Reportes operativos y financieros
-- Permisos, autenticacion y perfiles
-- Automatizaciones, alertas y dashboards avanzados
-- Exportaciones y mejoras de rendimiento

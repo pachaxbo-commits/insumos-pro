@@ -1,6 +1,9 @@
 import { FeaturePlaceholder } from "@/components/shared/feature-placeholder";
+import { requireRoleAccess } from "@/lib/auth/session";
 
-export default function ProductosPage() {
+export default async function ProductosPage() {
+  await requireRoleAccess("/productos");
+
   return (
     <FeaturePlaceholder
       title="Productos"

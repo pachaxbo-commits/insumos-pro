@@ -1,6 +1,9 @@
 import { FeaturePlaceholder } from "@/components/shared/feature-placeholder";
+import { requireRoleAccess } from "@/lib/auth/session";
 
-export default function FinanzasPage() {
+export default async function FinanzasPage() {
+  await requireRoleAccess("/finanzas");
+
   return (
     <FeaturePlaceholder
       title="Finanzas"

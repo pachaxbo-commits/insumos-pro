@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, PlusCircle, Search } from "lucide-react";
 
+import { UserMenu } from "@/components/auth/user-menu";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +15,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { canAccessPath, getRoleLabel } from "@/lib/auth/roles";
+import type { SessionUser } from "@/types/auth";
 
-export function AppHeader() {
+type AppHeaderProps = {
+  user: SessionUser;
+};
+
+export function AppHeader({ user }: AppHeaderProps) {
   const [open, setOpen] = useState(false);
+  const canCreateSale = canAccessPath(user.role, "/ventas");
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-[1.5rem] border border-white/60 bg-white/78 px-4 py-3 shadow-sm backdrop-blur lg:px-5">
@@ -32,7 +40,7 @@ export function AppHeader() {
             <SheetHeader className="sr-only">
               <SheetTitle>Navegacion principal</SheetTitle>
             </SheetHeader>
-            <AppSidebar mobile onNavigate={() => setOpen(false)} />
+            <AppSidebar mobile onNavigate={() => setOpen(false)} user={user} />
           </SheetContent>
         </Sheet>
 
@@ -57,15 +65,20 @@ export function AppHeader() {
 
       <div className="flex items-center gap-2">
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-medium">Santa Cruz</p>
-          <p className="text-xs text-muted-foreground">Turno tarde activo</p>
+          <p className="max-w-48 truncate text-sm font-medium">
+            {user.fullName || user.email || "Usuario"}
+          </p>
+          <p className="text-xs text-muted-foreground">{getRoleLabel(user.role)}</p>
         </div>
-        <Button asChild className="rounded-xl">
-          <Link href="/ventas">
-            <PlusCircle className="size-4" />
-            <span className="hidden sm:inline">Nueva venta</span>
-          </Link>
-        </Button>
+        {canCreateSale ? (
+          <Button asChild className="rounded-xl">
+            <Link href="/ventas">
+              <PlusCircle className="size-4" />
+              <span className="hidden sm:inline">Nueva venta</span>
+            </Link>
+          </Button>
+        ) : null}
+        <UserMenu user={user} />
       </div>
     </header>
   );

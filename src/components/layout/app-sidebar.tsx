@@ -6,16 +6,21 @@ import { PlusCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { canAccessPath, filterNavigationByRole, getRoleLabel } from "@/lib/auth/roles";
 import { mainNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import type { SessionUser } from "@/types/auth";
 
 type AppSidebarProps = {
   onNavigate?: () => void;
   mobile?: boolean;
+  user: SessionUser;
 };
 
-export function AppSidebar({ onNavigate, mobile = false }: AppSidebarProps) {
+export function AppSidebar({ onNavigate, mobile = false, user }: AppSidebarProps) {
   const pathname = usePathname();
+  const visibleNavigation = filterNavigationByRole(mainNavigation, user.role);
+  const canCreateSale = canAccessPath(user.role, "/ventas");
 
   return (
     <aside
@@ -33,24 +38,26 @@ export function AppSidebar({ onNavigate, mobile = false }: AppSidebarProps) {
           </div>
           <div>
             <p className="font-heading text-lg font-semibold">Insumos Pro</p>
-            <p className="text-sm text-sidebar-foreground/70">Mayorista de alimentos</p>
+            <p className="text-sm text-sidebar-foreground/70">{getRoleLabel(user.role)}</p>
           </div>
         </div>
-        <Button
-          asChild
-          className="mt-6 h-11 w-full justify-start rounded-xl bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
-        >
-          <Link href="/ventas" onClick={onNavigate}>
-            <PlusCircle className="size-4" />
-            Nueva venta
-          </Link>
-        </Button>
+        {canCreateSale ? (
+          <Button
+            asChild
+            className="mt-6 h-11 w-full justify-start rounded-xl bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
+          >
+            <Link href="/ventas" onClick={onNavigate}>
+              <PlusCircle className="size-4" />
+              Nueva venta
+            </Link>
+          </Button>
+        ) : null}
       </div>
 
       <Separator className="bg-white/10" />
 
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {mainNavigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
 
@@ -86,9 +93,9 @@ export function AppSidebar({ onNavigate, mobile = false }: AppSidebarProps) {
       </nav>
 
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-sm font-medium">Base Fase 1</p>
+        <p className="text-sm font-medium">Permisos activos</p>
         <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
-          Layout, componentes y datos demo listos para crecer hacia ventas, compras e inventario real.
+          El menu muestra solo los modulos habilitados para el rol actual y protege el resto del sistema.
         </p>
       </div>
     </aside>
