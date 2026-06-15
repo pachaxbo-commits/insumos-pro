@@ -11,6 +11,7 @@ import {
 } from "@/lib/sales/actions";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type { Customer, CustomerFilters } from "@/types/sales";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,6 +122,7 @@ function CustomerForm({ customer }: { customer?: Customer }) {
     customer ? updateCustomerAction : createCustomerAction,
     initialState,
   );
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -220,6 +222,21 @@ function CustomerForm({ customer }: { customer?: Customer }) {
           {pending ? "Guardando..." : "Guardar"}
         </Button>
       </DialogFooter>
+    </form>
+  );
+}
+
+function CustomerDeactivateForm({ customerId }: { customerId: string }) {
+  const [state, formAction, pending] = useActionState(deactivateCustomerAction, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={customerId} />
+      <Button variant="outline" size="icon-sm" type="submit" disabled={pending}>
+        <Archive className="size-4" />
+        <span className="sr-only">Desactivar cliente</span>
+      </Button>
     </form>
   );
 }
@@ -371,13 +388,7 @@ export function CustomerManagement({
                               </DialogContent>
                             </Dialog>
                             {customer.is_active ? (
-                              <form action={deactivateCustomerAction}>
-                                <input type="hidden" name="id" value={customer.id} />
-                                <Button variant="outline" size="icon-sm" type="submit">
-                                  <Archive className="size-4" />
-                                  <span className="sr-only">Desactivar cliente</span>
-                                </Button>
-                              </form>
+                              <CustomerDeactivateForm customerId={customer.id} />
                             ) : null}
                           </>
                         ) : (

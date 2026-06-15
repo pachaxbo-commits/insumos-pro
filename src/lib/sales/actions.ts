@@ -122,11 +122,11 @@ function getBusinessErrorMessage(message: string | undefined) {
   if (!message) return "No se pudo completar la operacion.";
 
   if (message.includes("El cliente no esta habilitado para ventas a credito")) {
-    return "Este cliente está configurado como contado y no puede generar ventas a crédito.";
+    return "Este cliente esta configurado como contado y no puede generar ventas a credito.";
   }
 
   if (message.includes("La venta supera el limite de credito")) {
-    return "La venta supera el límite de crédito disponible para este cliente.";
+    return "La venta supera el limite de credito disponible para este cliente.";
   }
 
   if (message.includes("Stock insuficiente")) {
@@ -138,11 +138,11 @@ function getBusinessErrorMessage(message: string | undefined) {
   }
 
   if (message.includes("Solo se pueden confirmar ventas en borrador")) {
-    return "Esta venta ya no está en borrador y no puede confirmarse.";
+    return "Esta venta ya no esta en borrador y no puede confirmarse.";
   }
 
   if (message.includes("Solo se pueden anular ventas en borrador")) {
-    return "Esta venta ya no está en borrador y no puede anularse desde este flujo.";
+    return "Esta venta ya no esta en borrador y no puede anularse desde este flujo.";
   }
 
   return message;
@@ -195,15 +195,24 @@ export async function updateCustomerAction(
   return { success: true, message: "Cliente actualizado correctamente." };
 }
 
-export async function deactivateCustomerAction(formData: FormData) {
+export async function deactivateCustomerAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertRole(customerManageRoles, "Tu rol no permite desactivar clientes.");
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Cliente invalido." };
+  }
 
-  await access.supabase.from("customers").update({ is_active: false }).eq("id", id);
+  const { error } = await access.supabase.from("customers").update({ is_active: false }).eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
   revalidateSales();
+  return { success: true, message: "Cliente desactivado correctamente." };
 }
 
 export async function createSaleAction(

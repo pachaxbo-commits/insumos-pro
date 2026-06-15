@@ -10,6 +10,7 @@ import {
   updateSupplierAction,
 } from "@/lib/purchases/actions";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type { Supplier, SupplierFilters } from "@/types/purchases";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,7 @@ function SupplierForm({ supplier }: { supplier?: Supplier }) {
     supplier ? updateSupplierAction : createSupplierAction,
     initialState,
   );
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -172,6 +174,21 @@ function SupplierForm({ supplier }: { supplier?: Supplier }) {
           {pending ? "Guardando..." : "Guardar"}
         </Button>
       </DialogFooter>
+    </form>
+  );
+}
+
+function SupplierDeactivateForm({ supplierId }: { supplierId: string }) {
+  const [state, formAction, pending] = useActionState(deactivateSupplierAction, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={supplierId} />
+      <Button variant="outline" size="icon-sm" type="submit" disabled={pending}>
+        <Archive className="size-4" />
+        <span className="sr-only">Desactivar proveedor</span>
+      </Button>
     </form>
   );
 }
@@ -307,13 +324,7 @@ export function SupplierManagement({
                               </DialogContent>
                             </Dialog>
                             {supplier.is_active ? (
-                              <form action={deactivateSupplierAction}>
-                                <input type="hidden" name="id" value={supplier.id} />
-                                <Button variant="outline" size="icon-sm" type="submit">
-                                  <Archive className="size-4" />
-                                  <span className="sr-only">Desactivar proveedor</span>
-                                </Button>
-                              </form>
+                              <SupplierDeactivateForm supplierId={supplier.id} />
                             ) : null}
                           </>
                         ) : (

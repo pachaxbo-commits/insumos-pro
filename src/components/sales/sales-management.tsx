@@ -1,9 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import {
   Ban,
   CheckCircle2,
@@ -18,6 +17,7 @@ import {
 import { cancelSaleAction, confirmSaleAction, createSaleAction } from "@/lib/sales/actions";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type { ProductWithRelations } from "@/types/products";
 import type {
   Customer,
@@ -136,19 +136,6 @@ function FormMessage({ state }: { state: ActionState }) {
   );
 }
 
-function useActionToast(state: ActionState) {
-  useEffect(() => {
-    if (!state.message) return;
-
-    if (state.success) {
-      toast.success(state.message);
-      return;
-    }
-
-    toast.error(state.message);
-  }, [state]);
-}
-
 function ActionFeedback({ state }: { state: ActionState }) {
   if (!state.message || state.success) return null;
 
@@ -228,6 +215,8 @@ function SaleForm({
   const parsedDiscount = Math.max(Number(discount) || 0, 0);
   const total = Math.max(subtotal - parsedDiscount, 0);
 
+  useActionToast(state);
+
   return (
     <form action={formAction} className="space-y-5">
       <FormMessage state={state} />
@@ -306,17 +295,17 @@ function SaleForm({
         >
           <AlertDescription className="space-y-1 text-sm">
             <p>
-              <strong>Cliente:</strong> {selectedCustomer.name} · Tipo{" "}
+              <strong>Cliente:</strong> {selectedCustomer.name} - Tipo{" "}
               {selectedCustomer.customer_type === "credito" ? "credito" : "contado"}
             </p>
             {selectedCustomer.customer_type === "credito" ? (
               <>
                 <p>
-                  Saldo actual: <strong>{formatCurrency(Number(selectedCustomer.current_balance))}</strong> · Limite:{" "}
+                  Saldo actual: <strong>{formatCurrency(Number(selectedCustomer.current_balance))}</strong> - Limite:{" "}
                   <strong>{formatCurrency(Number(selectedCustomer.credit_limit))}</strong>
                 </p>
                 <p>
-                  Crédito disponible: <strong>{formatCurrency(creditAvailable)}</strong>
+                  Credito disponible: <strong>{formatCurrency(creditAvailable)}</strong>
                 </p>
               </>
             ) : (

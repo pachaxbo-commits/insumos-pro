@@ -18,6 +18,7 @@ import {
 import { createInventoryMovementAction } from "@/lib/inventory/actions";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type {
   InventoryFilters,
   InventoryMovementType,
@@ -174,6 +175,7 @@ function MovementForm({ products }: { products: ProductWithRelations[] }) {
     createInventoryMovementAction,
     initialState,
   );
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -305,7 +307,7 @@ export function InventoryManagement({
               {canManage ? (
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button className="rounded-xl">
+                    <Button className="rounded-xl" disabled={!products.length}>
                       <ClipboardList className="size-4" />
                       Registrar movimiento
                     </Button>
@@ -317,7 +319,13 @@ export function InventoryManagement({
                         Entradas y devoluciones suman; salidas y mermas restan; ajuste define el stock final.
                       </DialogDescription>
                     </DialogHeader>
-                    <MovementForm products={products} />
+                    {products.length ? (
+                      <MovementForm products={products} />
+                    ) : (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                        No hay productos activos para registrar movimientos. Primero crea o activa un producto.
+                      </div>
+                    )}
                   </DialogContent>
                 </Dialog>
               ) : (

@@ -26,6 +26,7 @@ import {
 } from "@/lib/products/actions";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type {
   ProductCategory,
   ProductFilters,
@@ -164,6 +165,7 @@ function ProductForm({
     mode === "create" ? createProductAction : updateProductAction,
     initialState,
   );
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -331,6 +333,7 @@ function CatalogForm({
   const createAction = isCategory ? createCategoryAction : createUnitAction;
   const updateAction = isCategory ? updateCategoryAction : updateUnitAction;
   const [state, formAction, pending] = useActionState(item ? updateAction : createAction, initialState);
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -451,6 +454,21 @@ function CatalogList({
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+function ProductDeactivateForm({ productId }: { productId: string }) {
+  const [state, formAction, pending] = useActionState(deactivateProductAction, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={productId} />
+      <Button variant="outline" size="icon-sm" type="submit" disabled={pending}>
+        <Archive className="size-4" />
+        <span className="sr-only">Desactivar producto</span>
+      </Button>
+    </form>
   );
 }
 
@@ -625,13 +643,7 @@ export function ProductManagement({
                               </DialogContent>
                             </Dialog>
                             {product.is_active ? (
-                              <form action={deactivateProductAction}>
-                                <input type="hidden" name="id" value={product.id} />
-                                <Button variant="outline" size="icon-sm" type="submit">
-                                  <Archive className="size-4" />
-                                  <span className="sr-only">Desactivar producto</span>
-                                </Button>
-                              </form>
+                              <ProductDeactivateForm productId={product.id} />
                             ) : null}
                           </>
                         ) : (

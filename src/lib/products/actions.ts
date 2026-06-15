@@ -134,17 +134,26 @@ export async function updateProductAction(
   return { success: true, message: "Producto actualizado correctamente." };
 }
 
-export async function deactivateProductAction(formData: FormData) {
+export async function deactivateProductAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertCanMutateProducts();
 
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
 
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Producto invalido." };
+  }
 
-  await access.supabase.from("products").update({ is_active: false }).eq("id", id);
+  const { error } = await access.supabase.from("products").update({ is_active: false }).eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
   revalidateProducts();
+  return { success: true, message: "Producto desactivado correctamente." };
 }
 
 export async function createCategoryAction(

@@ -18,7 +18,7 @@ export const mainNavigation: NavItem[] = [
     title: "Dashboard",
     href: "/",
     icon: LayoutDashboard,
-    description: "Visión general de ventas, inventario y alertas.",
+    description: "Vision general de ventas, inventario y alertas.",
   },
   {
     title: "Ventas",
@@ -30,7 +30,7 @@ export const mainNavigation: NavItem[] = [
     title: "Compras",
     href: "/compras",
     icon: ReceiptText,
-    description: "Órdenes a proveedores y abastecimiento.",
+    description: "Ordenes a proveedores y abastecimiento.",
   },
   {
     title: "Inventario",
@@ -42,7 +42,7 @@ export const mainNavigation: NavItem[] = [
     title: "Productos",
     href: "/productos",
     icon: Package,
-    description: "Catálogo, precios y presentaciones.",
+    description: "Catalogo, precios y presentaciones.",
   },
   {
     title: "Clientes",
@@ -69,9 +69,9 @@ export const mainNavigation: NavItem[] = [
     description: "Indicadores operativos y comerciales.",
   },
   {
-    title: "Configuración",
+    title: "Configuracion",
     href: "/configuracion",
     icon: Settings,
-    description: "Parámetros del sistema y empresa.",
+    description: "Parametros del sistema y empresa.",
   },
 ];

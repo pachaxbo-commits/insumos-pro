@@ -150,15 +150,24 @@ export async function updateSupplierAction(
   return { success: true, message: "Proveedor actualizado correctamente." };
 }
 
-export async function deactivateSupplierAction(formData: FormData) {
+export async function deactivateSupplierAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertCanManagePurchases();
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Proveedor invalido." };
+  }
 
-  await access.supabase.from("suppliers").update({ is_active: false }).eq("id", id);
+  const { error } = await access.supabase.from("suppliers").update({ is_active: false }).eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
   revalidatePurchases();
+  return { success: true, message: "Proveedor desactivado correctamente." };
 }
 
 export async function createPurchaseAction(
@@ -194,24 +203,60 @@ export async function createPurchaseAction(
   return { success: true, message: "Compra guardada como borrador." };
 }
 
-export async function confirmPurchaseAction(formData: FormData) {
-  const access = await assertCanManagePurchases();
-  if (!access.allowed) return;
+function purchaseBusinessMessage(message?: string) {
+  if (!message) return "No se pudo completar la compra.";
 
-  const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (message.includes("La compra ya fue confirmada")) {
+    return "La compra ya fue confirmada y no puede confirmarse nuevamente.";
+  }
 
-  await access.supabase.rpc("confirm_purchase", { p_purchase_id: id });
-  revalidatePurchases();
+  if (message.includes("Solo se pueden confirmar compras en borrador")) {
+    return "Solo se pueden confirmar compras en borrador.";
+  }
+
+  if (message.includes("La compra no tiene items")) {
+    return "La compra no tiene productos agregados.";
+  }
+
+  return message;
 }
 
-export async function cancelPurchaseAction(formData: FormData) {
+export async function confirmPurchaseAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertCanManagePurchases();
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Compra invalida." };
+  }
 
-  await access.supabase.rpc("cancel_purchase_draft", { p_purchase_id: id });
+  const { error } = await access.supabase.rpc("confirm_purchase", { p_purchase_id: id });
+
+  if (error) return { success: false, message: purchaseBusinessMessage(error.message) };
+
   revalidatePurchases();
+  return { success: true, message: "Compra confirmada correctamente. El inventario fue actualizado." };
+}
+
+export async function cancelPurchaseAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanManagePurchases();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Compra invalida." };
+  }
+
+  const { error } = await access.supabase.rpc("cancel_purchase_draft", { p_purchase_id: id });
+
+  if (error) return { success: false, message: purchaseBusinessMessage(error.message) };
+
+  revalidatePurchases();
+  return { success: true, message: "Compra cancelada correctamente." };
 }

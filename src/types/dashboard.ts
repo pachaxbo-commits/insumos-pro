@@ -18,9 +18,9 @@ export type KpiItem = {
   caption: string;
 };
 
-export type SaleStatus = "pagada" | "pendiente" | "vencida";
+export type SaleStatus = "pagada" | "pendiente" | "vencida" | "confirmada" | "borrador" | "anulada";
 export type AlertTone = "critical" | "warning" | "info" | "success";
-export type InventoryMovementType = "entrada" | "salida" | "ajuste";
+export type InventoryMovementType = "entrada" | "salida" | "ajuste" | "merma" | "devolucion";
 
 export type SaleItem = {
   id: string;

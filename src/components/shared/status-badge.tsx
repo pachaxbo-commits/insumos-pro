@@ -34,6 +34,21 @@ const saleStatusMap: Record<SaleStatus, { label: string; className: string; icon
     className: "border-rose-200 bg-rose-50 text-rose-700",
     icon: AlertCircle,
   },
+  confirmada: {
+    label: "Confirmada",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: CheckCircle2,
+  },
+  borrador: {
+    label: "Borrador",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: Clock3,
+  },
+  anulada: {
+    label: "Anulada",
+    className: "border-slate-200 bg-slate-100 text-slate-700",
+    icon: AlertCircle,
+  },
 };
 
 const alertToneMap: Record<AlertTone, { label: string; className: string; icon: LucideIcon }> = {
@@ -74,6 +89,16 @@ const movementTypeMap: Record<InventoryMovementType, { label: string; className:
     label: "Ajuste",
     className: "border-violet-200 bg-violet-50 text-violet-700",
     icon: ArrowRightLeft,
+  },
+  merma: {
+    label: "Merma",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+    icon: AlertCircle,
+  },
+  devolucion: {
+    label: "Devolucion",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+    icon: ArrowDownLeft,
   },
 };
 

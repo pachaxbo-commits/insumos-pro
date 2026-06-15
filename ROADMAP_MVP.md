@@ -4,7 +4,7 @@
 
 - Base tecnica con Next.js App Router, TypeScript, Tailwind CSS 4 y shadcn/ui
 - Layout privado responsive con sidebar, header y acceso rapido a nueva venta
-- Dashboard demo premium con KPIs, alertas, ventas recientes y movimientos de inventario
+- Dashboard premium inicial con KPIs, alertas, ventas recientes y movimientos de inventario
 - Componentes reutilizables para cards, badges, tablas y estados vacios
 - Helpers iniciales para Supabase sin dependencia obligatoria de credenciales
 
@@ -70,9 +70,18 @@
 - Exportaciones CSV para ventas, productos, inventario, clientes, compras, cuentas y caja
 - Permisos diferenciados por rol
 
-## Fase 9 propuesta
+## Fase 9
+
+- Pulido final para demo comercial
+- Dashboard conectado a datos reales de ventas, inventario y finanzas
+- Feedback con toast en acciones criticas
+- Correcciones de textos, codificacion y placeholders visibles
+- Pantalla `/configuracion` preparada para demo
+- Documentacion `DEMO_CLIENTE.md`
+
+## Fase 10 propuesta
 
 - Auditoria operativa y trazabilidad
 - Bitacora de acciones criticas
 - Mejoras de performance con vistas SQL o RPCs segun volumen real
-- Preparacion de reportes PDF e impresion
+- Reportes PDF e impresion

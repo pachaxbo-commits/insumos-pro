@@ -12,6 +12,7 @@ import {
 } from "@/lib/purchases/actions";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useActionToast } from "@/hooks/use-action-toast";
 import type { ProductWithRelations } from "@/types/products";
 import type {
   PurchaseFilters,
@@ -125,19 +126,28 @@ function PurchaseForm({
 }) {
   const [state, formAction, pending] = useActionState(createPurchaseAction, initialState);
   const today = new Date().toISOString().slice(0, 10);
+  const activeSuppliers = suppliers.filter((supplier) => supplier.is_active);
+
+  useActionToast(state);
 
   return (
     <form action={formAction} className="space-y-5">
       <FormMessage state={state} />
+
+      {!activeSuppliers.length || !products.length ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {!activeSuppliers.length
+            ? "No hay proveedores activos. Crea o activa un proveedor antes de registrar compras."
+            : "No hay productos activos. Crea o activa productos antes de registrar compras."}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Proveedor</Label>
           <NativeSelect name="supplier_id" required>
             <option value="">Seleccionar proveedor</option>
-            {suppliers
-              .filter((supplier) => supplier.is_active)
-              .map((supplier) => (
+            {activeSuppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
                   {supplier.name}
                 </option>
@@ -215,11 +225,36 @@ function PurchaseForm({
       </div>
 
       <DialogFooter>
-        <Button type="submit" disabled={pending} className="rounded-xl">
+        <Button type="submit" disabled={pending || !activeSuppliers.length || !products.length} className="rounded-xl">
           <Save className="size-4" />
           {pending ? "Guardando..." : "Guardar borrador"}
         </Button>
       </DialogFooter>
+    </form>
+  );
+}
+
+function PurchaseRowActionForm({
+  purchaseId,
+  action,
+  label,
+  icon,
+}: {
+  purchaseId: string;
+  action: typeof confirmPurchaseAction | typeof cancelPurchaseAction;
+  label: string;
+  icon: ReactNode;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="id" value={purchaseId} />
+      <Button variant="outline" size="icon-sm" type="submit" disabled={pending}>
+        {icon}
+        <span className="sr-only">{label}</span>
+      </Button>
     </form>
   );
 }
@@ -411,20 +446,18 @@ export function PurchaseManagement({
                         </Dialog>
                         {canManage && purchase.status === "borrador" ? (
                           <>
-                            <form action={confirmPurchaseAction}>
-                              <input type="hidden" name="id" value={purchase.id} />
-                              <Button variant="outline" size="icon-sm" type="submit">
-                                <CheckCircle2 className="size-4" />
-                                <span className="sr-only">Confirmar compra</span>
-                              </Button>
-                            </form>
-                            <form action={cancelPurchaseAction}>
-                              <input type="hidden" name="id" value={purchase.id} />
-                              <Button variant="outline" size="icon-sm" type="submit">
-                                <Ban className="size-4" />
-                                <span className="sr-only">Cancelar compra</span>
-                              </Button>
-                            </form>
+                            <PurchaseRowActionForm
+                              purchaseId={purchase.id}
+                              action={confirmPurchaseAction}
+                              label="Confirmar compra"
+                              icon={<CheckCircle2 className="size-4" />}
+                            />
+                            <PurchaseRowActionForm
+                              purchaseId={purchase.id}
+                              action={cancelPurchaseAction}
+                              label="Cancelar compra"
+                              icon={<Ban className="size-4" />}
+                            />
                           </>
                         ) : null}
                       </div>

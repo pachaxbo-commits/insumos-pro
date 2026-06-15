@@ -57,6 +57,8 @@ Abrir [http://localhost:3000](http://localhost:3000).
 
 Para probar autenticacion, abre tambien [http://localhost:3000/login](http://localhost:3000/login).
 
+Para preparar una presentacion comercial, revisar [`DEMO_CLIENTE.md`](/C:/dev/insumos-pro/DEMO_CLIENTE.md).
+
 ## Verificacion
 
 ```bash
@@ -132,14 +134,21 @@ npm run build
 - `inventario`: reportes de inventario, compras y productos
 - Las exportaciones se descargan como CSV desde el navegador y respetan los permisos del rol actual
 
+## Demo comercial
+
+- `/`: dashboard con datos reales de ventas, inventario y finanzas
+- `/configuracion`: estado profesional de parametros preparados para la demo
+- Las acciones principales muestran toast o mensaje inline: productos, inventario, compras, ventas, finanzas y reportes
+- No se requiere SQL adicional para Fase 9
+
 ## Estructura principal
 
 - `src/app`: rutas App Router y layouts
 - `src/components/ui`: componentes base de shadcn/ui
 - `src/components/layout`: sidebar, header y page header
-- `src/components/dashboard`: bloques del dashboard demo
+- `src/components/dashboard`: bloques del dashboard operativo
 - `src/components/shared`: tabla simple, estados y placeholders
-- `src/data`: datos demo del sistema
+- `src/data`: datos iniciales historicos no usados por el dashboard actual
 - `src/lib`: utilidades, navegacion y helpers de Supabase
 - `src/types`: contratos TypeScript del dashboard
 - `src/hooks`: hooks reutilizables

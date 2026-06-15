@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Download, Filter, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -136,6 +137,11 @@ function csvEscape(value: CsvRecord[string]) {
 }
 
 function downloadCsv(filename: string, rows: CsvRecord[]) {
+  if (!rows.length) {
+    toast.error("No hay datos para exportar con los filtros actuales.");
+    return;
+  }
+
   const headers = Array.from(rows.reduce((keys, row) => {
     Object.keys(row).forEach((key) => keys.add(key));
     return keys;
@@ -152,6 +158,7 @@ function downloadCsv(filename: string, rows: CsvRecord[]) {
   anchor.download = `${filename}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
+  toast.success("CSV generado correctamente.");
 }
 
 function RankingList({ rows, amountLabel = "Monto" }: { rows: RankingRow[]; amountLabel?: string }) {
