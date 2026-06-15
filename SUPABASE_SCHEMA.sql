@@ -1724,3 +1724,970 @@ set
   customer_type = excluded.customer_type,
   credit_limit = excluded.credit_limit,
   is_active = excluded.is_active;
+
+alter table public.accounts_receivable
+add column if not exists paid_amount numeric(14, 2) not null default 0,
+add column if not exists due_date date,
+add column if not exists notes text;
+
+alter table public.accounts_receivable
+drop constraint if exists accounts_receivable_status_check;
+
+alter table public.accounts_receivable
+add constraint accounts_receivable_status_check
+check (status in ('pendiente', 'parcial', 'pagada', 'vencida'));
+
+alter table public.accounts_receivable
+drop constraint if exists accounts_receivable_amount_check;
+
+alter table public.accounts_receivable
+add constraint accounts_receivable_amount_check check (amount >= 0);
+
+alter table public.accounts_receivable
+drop constraint if exists accounts_receivable_balance_check;
+
+alter table public.accounts_receivable
+add constraint accounts_receivable_balance_check check (balance >= 0);
+
+alter table public.accounts_receivable
+drop constraint if exists accounts_receivable_paid_amount_check;
+
+alter table public.accounts_receivable
+add constraint accounts_receivable_paid_amount_check check (paid_amount >= 0);
+
+update public.accounts_receivable
+set paid_amount = greatest(amount - balance, 0)
+where paid_amount = 0;
+
+create index if not exists accounts_receivable_due_date_idx on public.accounts_receivable (due_date);
+
+create table if not exists public.accounts_payable (
+  id uuid primary key default gen_random_uuid(),
+  supplier_id uuid references public.suppliers (id) on delete restrict,
+  purchase_id uuid references public.purchases (id) on delete restrict,
+  amount numeric(14, 2) not null,
+  paid_amount numeric(14, 2) not null default 0,
+  balance numeric(14, 2) not null,
+  due_date date,
+  status text not null default 'pendiente',
+  notes text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint accounts_payable_purchase_unique unique (purchase_id),
+  constraint accounts_payable_status_check check (status in ('pendiente', 'parcial', 'pagada', 'vencida')),
+  constraint accounts_payable_amount_check check (amount >= 0),
+  constraint accounts_payable_paid_amount_check check (paid_amount >= 0),
+  constraint accounts_payable_balance_check check (balance >= 0)
+);
+
+create index if not exists accounts_payable_supplier_id_idx on public.accounts_payable (supplier_id);
+create index if not exists accounts_payable_status_idx on public.accounts_payable (status);
+create index if not exists accounts_payable_due_date_idx on public.accounts_payable (due_date);
+
+drop trigger if exists set_accounts_payable_updated_at on public.accounts_payable;
+
+create trigger set_accounts_payable_updated_at
+before update on public.accounts_payable
+for each row
+execute function public.set_current_timestamp_updated_at();
+
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  payment_type text not null,
+  customer_id uuid references public.customers (id) on delete set null,
+  supplier_id uuid references public.suppliers (id) on delete set null,
+  sale_id uuid references public.sales (id) on delete set null,
+  purchase_id uuid references public.purchases (id) on delete set null,
+  accounts_receivable_id uuid references public.accounts_receivable (id) on delete set null,
+  accounts_payable_id uuid references public.accounts_payable (id) on delete set null,
+  amount numeric(14, 2) not null,
+  payment_method text not null,
+  payment_date date not null default current_date,
+  notes text,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint payments_type_check check (payment_type in ('cobro_cliente', 'pago_proveedor', 'ingreso_manual', 'gasto_manual')),
+  constraint payments_method_check check (payment_method in ('efectivo', 'transferencia', 'qr', 'tarjeta', 'otro')),
+  constraint payments_amount_check check (amount > 0)
+);
+
+create index if not exists payments_payment_type_idx on public.payments (payment_type);
+create index if not exists payments_payment_date_idx on public.payments (payment_date desc);
+create index if not exists payments_customer_id_idx on public.payments (customer_id);
+create index if not exists payments_supplier_id_idx on public.payments (supplier_id);
+create index if not exists payments_accounts_receivable_id_idx on public.payments (accounts_receivable_id);
+create index if not exists payments_accounts_payable_id_idx on public.payments (accounts_payable_id);
+
+create table if not exists public.cash_movements (
+  id uuid primary key default gen_random_uuid(),
+  movement_type text not null,
+  source_type text not null,
+  source_id uuid,
+  amount numeric(14, 2) not null,
+  payment_method text not null,
+  movement_date date not null default current_date,
+  notes text,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint cash_movements_type_check check (movement_type in ('ingreso', 'egreso')),
+  constraint cash_movements_source_type_check check (source_type in ('venta', 'compra', 'cobro_cliente', 'pago_proveedor', 'gasto_manual', 'ingreso_manual')),
+  constraint cash_movements_method_check check (payment_method in ('efectivo', 'transferencia', 'qr', 'tarjeta', 'otro')),
+  constraint cash_movements_amount_check check (amount > 0)
+);
+
+create index if not exists cash_movements_movement_type_idx on public.cash_movements (movement_type);
+create index if not exists cash_movements_source_type_idx on public.cash_movements (source_type);
+create index if not exists cash_movements_movement_date_idx on public.cash_movements (movement_date desc);
+
+alter table public.accounts_payable enable row level security;
+alter table public.payments enable row level security;
+alter table public.cash_movements enable row level security;
+
+drop policy if exists "Allowed roles can view accounts receivable" on public.accounts_receivable;
+create policy "Allowed roles can view accounts receivable"
+on public.accounts_receivable
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas', 'ventas')
+  )
+);
+
+drop policy if exists "Finance roles can update accounts receivable" on public.accounts_receivable;
+create policy "Finance roles can update accounts receivable"
+on public.accounts_receivable
+for update
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can insert accounts receivable" on public.accounts_receivable;
+create policy "Finance roles can insert accounts receivable"
+on public.accounts_receivable
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas', 'ventas')
+  )
+);
+
+drop policy if exists "Finance roles can view accounts payable" on public.accounts_payable;
+create policy "Finance roles can view accounts payable"
+on public.accounts_payable
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can mutate accounts payable" on public.accounts_payable;
+create policy "Finance roles can mutate accounts payable"
+on public.accounts_payable
+for all
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+)
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can view payments" on public.payments;
+create policy "Finance roles can view payments"
+on public.payments
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can insert payments" on public.payments;
+create policy "Finance roles can insert payments"
+on public.payments
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can view cash movements" on public.cash_movements;
+create policy "Finance roles can view cash movements"
+on public.cash_movements
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+drop policy if exists "Finance roles can insert cash movements" on public.cash_movements;
+create policy "Finance roles can insert cash movements"
+on public.cash_movements
+for insert
+to authenticated
+with check (
+  exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'finanzas')
+  )
+);
+
+create or replace function public.get_finance_status(
+  p_balance numeric,
+  p_amount numeric,
+  p_due_date date
+)
+returns text
+language plpgsql
+stable
+as $$
+begin
+  if p_balance <= 0 then
+    return 'pagada';
+  end if;
+
+  if p_due_date is not null and p_due_date < current_date then
+    return 'vencida';
+  end if;
+
+  if p_balance < p_amount then
+    return 'parcial';
+  end if;
+
+  return 'pendiente';
+end;
+$$;
+
+create or replace function public.assert_finance_role()
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'finanzas') then
+    raise exception 'No tienes permisos para gestionar finanzas.';
+  end if;
+
+  return v_user_id;
+end;
+$$;
+
+create or replace function public.register_customer_payment(
+  p_accounts_receivable_id uuid,
+  p_amount numeric,
+  p_payment_method text,
+  p_payment_date date,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_account record;
+  v_new_paid numeric(14, 2);
+  v_new_balance numeric(14, 2);
+  v_payment_id uuid;
+begin
+  v_user_id := public.assert_finance_role();
+
+  if p_payment_method not in ('efectivo', 'transferencia', 'qr', 'tarjeta', 'otro') then
+    raise exception 'Metodo de pago invalido.';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'El monto debe ser mayor a cero.';
+  end if;
+
+  select *
+  into v_account
+  from public.accounts_receivable
+  where id = p_accounts_receivable_id
+  for update;
+
+  if not found then
+    raise exception 'Cuenta por cobrar no encontrada.';
+  end if;
+
+  if v_account.balance <= 0 then
+    raise exception 'La cuenta por cobrar ya esta pagada.';
+  end if;
+
+  if p_amount > v_account.balance then
+    raise exception 'El pago no puede ser mayor al saldo pendiente.';
+  end if;
+
+  v_new_paid := v_account.paid_amount + p_amount;
+  v_new_balance := v_account.balance - p_amount;
+
+  insert into public.payments (
+    payment_type,
+    customer_id,
+    sale_id,
+    accounts_receivable_id,
+    amount,
+    payment_method,
+    payment_date,
+    notes,
+    created_by
+  )
+  values (
+    'cobro_cliente',
+    v_account.customer_id,
+    v_account.sale_id,
+    p_accounts_receivable_id,
+    p_amount,
+    p_payment_method,
+    p_payment_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  )
+  returning id into v_payment_id;
+
+  insert into public.cash_movements (
+    movement_type,
+    source_type,
+    source_id,
+    amount,
+    payment_method,
+    movement_date,
+    notes,
+    created_by
+  )
+  values (
+    'ingreso',
+    'cobro_cliente',
+    v_payment_id,
+    p_amount,
+    p_payment_method,
+    p_payment_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  );
+
+  update public.accounts_receivable
+  set paid_amount = v_new_paid,
+      balance = v_new_balance,
+      status = public.get_finance_status(v_new_balance, amount, due_date)
+  where id = p_accounts_receivable_id;
+
+  update public.customers
+  set current_balance = greatest(current_balance - p_amount, 0)
+  where id = v_account.customer_id;
+
+  return v_payment_id;
+end;
+$$;
+
+create or replace function public.register_supplier_payment(
+  p_accounts_payable_id uuid,
+  p_amount numeric,
+  p_payment_method text,
+  p_payment_date date,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_account record;
+  v_new_paid numeric(14, 2);
+  v_new_balance numeric(14, 2);
+  v_payment_id uuid;
+begin
+  v_user_id := public.assert_finance_role();
+
+  if p_payment_method not in ('efectivo', 'transferencia', 'qr', 'tarjeta', 'otro') then
+    raise exception 'Metodo de pago invalido.';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'El monto debe ser mayor a cero.';
+  end if;
+
+  select *
+  into v_account
+  from public.accounts_payable
+  where id = p_accounts_payable_id
+  for update;
+
+  if not found then
+    raise exception 'Cuenta por pagar no encontrada.';
+  end if;
+
+  if v_account.balance <= 0 then
+    raise exception 'La cuenta por pagar ya esta pagada.';
+  end if;
+
+  if p_amount > v_account.balance then
+    raise exception 'El pago no puede ser mayor al saldo pendiente.';
+  end if;
+
+  v_new_paid := v_account.paid_amount + p_amount;
+  v_new_balance := v_account.balance - p_amount;
+
+  insert into public.payments (
+    payment_type,
+    supplier_id,
+    purchase_id,
+    accounts_payable_id,
+    amount,
+    payment_method,
+    payment_date,
+    notes,
+    created_by
+  )
+  values (
+    'pago_proveedor',
+    v_account.supplier_id,
+    v_account.purchase_id,
+    p_accounts_payable_id,
+    p_amount,
+    p_payment_method,
+    p_payment_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  )
+  returning id into v_payment_id;
+
+  insert into public.cash_movements (
+    movement_type,
+    source_type,
+    source_id,
+    amount,
+    payment_method,
+    movement_date,
+    notes,
+    created_by
+  )
+  values (
+    'egreso',
+    'pago_proveedor',
+    v_payment_id,
+    p_amount,
+    p_payment_method,
+    p_payment_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  );
+
+  update public.accounts_payable
+  set paid_amount = v_new_paid,
+      balance = v_new_balance,
+      status = public.get_finance_status(v_new_balance, amount, due_date)
+  where id = p_accounts_payable_id;
+
+  return v_payment_id;
+end;
+$$;
+
+create or replace function public.register_manual_cash_movement(
+  p_source_type text,
+  p_amount numeric,
+  p_payment_method text,
+  p_movement_date date,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_payment_id uuid;
+  v_movement_type text;
+  v_payment_type text;
+begin
+  v_user_id := public.assert_finance_role();
+
+  if p_source_type not in ('ingreso_manual', 'gasto_manual') then
+    raise exception 'Tipo de movimiento manual invalido.';
+  end if;
+
+  if p_payment_method not in ('efectivo', 'transferencia', 'qr', 'tarjeta', 'otro') then
+    raise exception 'Metodo de pago invalido.';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'El monto debe ser mayor a cero.';
+  end if;
+
+  v_movement_type := case when p_source_type = 'ingreso_manual' then 'ingreso' else 'egreso' end;
+  v_payment_type := case when p_source_type = 'ingreso_manual' then 'ingreso_manual' else 'gasto_manual' end;
+
+  insert into public.payments (
+    payment_type,
+    amount,
+    payment_method,
+    payment_date,
+    notes,
+    created_by
+  )
+  values (
+    v_payment_type,
+    p_amount,
+    p_payment_method,
+    p_movement_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  )
+  returning id into v_payment_id;
+
+  insert into public.cash_movements (
+    movement_type,
+    source_type,
+    source_id,
+    amount,
+    payment_method,
+    movement_date,
+    notes,
+    created_by
+  )
+  values (
+    v_movement_type,
+    p_source_type,
+    v_payment_id,
+    p_amount,
+    p_payment_method,
+    p_movement_date,
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  );
+
+  return v_payment_id;
+end;
+$$;
+
+create or replace function public.confirm_sale(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_sale record;
+  v_customer record;
+  v_item record;
+  v_stock_before numeric(14, 2);
+  v_stock_after numeric(14, 2);
+  v_payment_method text;
+  v_payment_id uuid;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'ventas') then
+    raise exception 'No tienes permisos para confirmar ventas.';
+  end if;
+
+  select *
+  into v_sale
+  from public.sales
+  where id = p_sale_id
+  for update;
+
+  if not found then
+    raise exception 'Venta no encontrada.';
+  end if;
+
+  if v_sale.status = 'confirmada' then
+    raise exception 'La venta ya fue confirmada.';
+  end if;
+
+  if v_sale.status <> 'borrador' then
+    raise exception 'Solo se pueden confirmar ventas en borrador.';
+  end if;
+
+  if not exists (select 1 from public.sale_items where sale_id = p_sale_id) then
+    raise exception 'La venta no tiene items.';
+  end if;
+
+  select *
+  into v_customer
+  from public.customers
+  where id = v_sale.customer_id
+    and is_active = true
+  for update;
+
+  if not found then
+    raise exception 'Cliente no encontrado o inactivo.';
+  end if;
+
+  if v_sale.payment_type = 'credito' then
+    if v_customer.customer_type <> 'credito' then
+      raise exception 'El cliente no esta habilitado para ventas a credito.';
+    end if;
+
+    if v_customer.current_balance + v_sale.total > v_customer.credit_limit then
+      raise exception 'La venta supera el limite de credito del cliente.';
+    end if;
+  end if;
+
+  for v_item in
+    select product_id, quantity
+    from public.sale_items
+    where sale_id = p_sale_id
+  loop
+    select stock_current
+    into v_stock_before
+    from public.products
+    where id = v_item.product_id
+      and is_active = true
+    for update;
+
+    if not found then
+      raise exception 'Producto no encontrado o inactivo.';
+    end if;
+
+    v_stock_after := v_stock_before - v_item.quantity;
+
+    if v_stock_after < 0 then
+      raise exception 'Stock insuficiente para confirmar la venta.';
+    end if;
+
+    insert into public.inventory_movements (
+      product_id,
+      movement_type,
+      quantity,
+      stock_before,
+      stock_after,
+      reason,
+      notes,
+      created_by
+    )
+    values (
+      v_item.product_id,
+      'salida',
+      v_item.quantity,
+      v_stock_before,
+      v_stock_after,
+      'Venta confirmada',
+      'Venta ' || p_sale_id::text,
+      v_user_id
+    );
+
+    update public.products
+    set stock_current = v_stock_after
+    where id = v_item.product_id;
+  end loop;
+
+  if v_sale.payment_type = 'credito' then
+    update public.customers
+    set current_balance = current_balance + v_sale.total
+    where id = v_sale.customer_id;
+
+    insert into public.accounts_receivable (
+      sale_id,
+      customer_id,
+      amount,
+      paid_amount,
+      balance,
+      due_date,
+      status,
+      notes
+    )
+    values (
+      p_sale_id,
+      v_sale.customer_id,
+      v_sale.total,
+      0,
+      v_sale.total,
+      v_sale.sale_date + 15,
+      public.get_finance_status(v_sale.total, v_sale.total, v_sale.sale_date + 15),
+      'Venta a credito'
+    );
+  else
+    v_payment_method := case
+      when v_sale.payment_type = 'contado' then 'efectivo'
+      when v_sale.payment_type in ('transferencia', 'qr') then v_sale.payment_type
+      else 'otro'
+    end;
+
+    insert into public.payments (
+      payment_type,
+      customer_id,
+      sale_id,
+      amount,
+      payment_method,
+      payment_date,
+      notes,
+      created_by
+    )
+    values (
+      'cobro_cliente',
+      v_sale.customer_id,
+      p_sale_id,
+      v_sale.total,
+      v_payment_method,
+      v_sale.sale_date,
+      'Venta de contado confirmada',
+      v_user_id
+    )
+    returning id into v_payment_id;
+
+    insert into public.cash_movements (
+      movement_type,
+      source_type,
+      source_id,
+      amount,
+      payment_method,
+      movement_date,
+      notes,
+      created_by
+    )
+    values (
+      'ingreso',
+      'venta',
+      v_payment_id,
+      v_sale.total,
+      v_payment_method,
+      v_sale.sale_date,
+      'Venta confirmada',
+      v_user_id
+    );
+  end if;
+
+  update public.sales
+  set status = 'confirmada'
+  where id = p_sale_id;
+end;
+$$;
+
+create or replace function public.confirm_purchase(p_purchase_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_purchase record;
+  v_item record;
+  v_payment_method text;
+  v_payment_id uuid;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'inventario') then
+    raise exception 'No tienes permisos para confirmar compras.';
+  end if;
+
+  select *
+  into v_purchase
+  from public.purchases
+  where id = p_purchase_id
+  for update;
+
+  if not found then
+    raise exception 'Compra no encontrada.';
+  end if;
+
+  if v_purchase.status = 'confirmada' then
+    raise exception 'La compra ya fue confirmada.';
+  end if;
+
+  if v_purchase.status <> 'borrador' then
+    raise exception 'Solo se pueden confirmar compras en borrador.';
+  end if;
+
+  if not exists (select 1 from public.purchase_items where purchase_id = p_purchase_id) then
+    raise exception 'La compra no tiene items.';
+  end if;
+
+  for v_item in
+    select product_id, quantity
+    from public.purchase_items
+    where purchase_id = p_purchase_id
+  loop
+    perform public.register_inventory_movement(
+      v_item.product_id,
+      'entrada',
+      v_item.quantity,
+      'Compra confirmada',
+      'Compra ' || p_purchase_id::text
+    );
+  end loop;
+
+  if v_purchase.payment_status = 'pagada' then
+    v_payment_method := case
+      when v_purchase.payment_method in ('efectivo', 'transferencia', 'qr') then v_purchase.payment_method
+      else 'otro'
+    end;
+
+    insert into public.payments (
+      payment_type,
+      supplier_id,
+      purchase_id,
+      amount,
+      payment_method,
+      payment_date,
+      notes,
+      created_by
+    )
+    values (
+      'pago_proveedor',
+      v_purchase.supplier_id,
+      p_purchase_id,
+      v_purchase.total,
+      v_payment_method,
+      v_purchase.purchase_date,
+      'Compra pagada al confirmar',
+      v_user_id
+    )
+    returning id into v_payment_id;
+
+    insert into public.cash_movements (
+      movement_type,
+      source_type,
+      source_id,
+      amount,
+      payment_method,
+      movement_date,
+      notes,
+      created_by
+    )
+    values (
+      'egreso',
+      'compra',
+      v_payment_id,
+      v_purchase.total,
+      v_payment_method,
+      v_purchase.purchase_date,
+      'Compra confirmada pagada',
+      v_user_id
+    );
+  else
+    insert into public.accounts_payable (
+      supplier_id,
+      purchase_id,
+      amount,
+      paid_amount,
+      balance,
+      due_date,
+      status,
+      notes
+    )
+    values (
+      v_purchase.supplier_id,
+      p_purchase_id,
+      v_purchase.total,
+      0,
+      v_purchase.total,
+      v_purchase.purchase_date + 15,
+      public.get_finance_status(v_purchase.total, v_purchase.total, v_purchase.purchase_date + 15),
+      'Compra pendiente o parcial'
+    )
+    on conflict (purchase_id) do nothing;
+  end if;
+
+  update public.purchases
+  set status = 'confirmada'
+  where id = p_purchase_id;
+end;
+$$;
+
+revoke all on function public.assert_finance_role() from public;
+grant execute on function public.assert_finance_role() to authenticated;
+
+revoke all on function public.register_customer_payment(uuid, numeric, text, date, text) from public;
+grant execute on function public.register_customer_payment(uuid, numeric, text, date, text) to authenticated;
+
+revoke all on function public.register_supplier_payment(uuid, numeric, text, date, text) from public;
+grant execute on function public.register_supplier_payment(uuid, numeric, text, date, text) to authenticated;
+
+revoke all on function public.register_manual_cash_movement(text, numeric, text, date, text) from public;
+grant execute on function public.register_manual_cash_movement(text, numeric, text, date, text) to authenticated;

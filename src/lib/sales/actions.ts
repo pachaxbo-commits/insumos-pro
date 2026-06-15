@@ -118,6 +118,36 @@ function revalidateSales() {
   revalidatePath("/");
 }
 
+function getBusinessErrorMessage(message: string | undefined) {
+  if (!message) return "No se pudo completar la operacion.";
+
+  if (message.includes("El cliente no esta habilitado para ventas a credito")) {
+    return "Este cliente está configurado como contado y no puede generar ventas a crédito.";
+  }
+
+  if (message.includes("La venta supera el limite de credito")) {
+    return "La venta supera el límite de crédito disponible para este cliente.";
+  }
+
+  if (message.includes("Stock insuficiente")) {
+    return "Stock insuficiente para confirmar la venta. Revisa las cantidades disponibles.";
+  }
+
+  if (message.includes("La venta ya fue confirmada")) {
+    return "La venta ya fue confirmada y no puede confirmarse nuevamente.";
+  }
+
+  if (message.includes("Solo se pueden confirmar ventas en borrador")) {
+    return "Esta venta ya no está en borrador y no puede confirmarse.";
+  }
+
+  if (message.includes("Solo se pueden anular ventas en borrador")) {
+    return "Esta venta ya no está en borrador y no puede anularse desde este flujo.";
+  }
+
+  return message;
+}
+
 export async function createCustomerAction(
   _previousState: ActionState,
   formData: FormData,
@@ -209,24 +239,46 @@ export async function createSaleAction(
   return { success: true, message: "Venta guardada como borrador." };
 }
 
-export async function confirmSaleAction(formData: FormData) {
+export async function confirmSaleAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertRole(salesManageRoles, "Tu rol no permite confirmar ventas.");
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Venta invalida." };
+  }
 
-  await access.supabase.rpc("confirm_sale", { p_sale_id: id });
+  const { error } = await access.supabase.rpc("confirm_sale", { p_sale_id: id });
+
+  if (error) {
+    return { success: false, message: getBusinessErrorMessage(error.message) };
+  }
+
   revalidateSales();
+  return { success: true, message: "Venta confirmada correctamente." };
 }
 
-export async function cancelSaleAction(formData: FormData) {
+export async function cancelSaleAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const access = await assertRole(salesManageRoles, "Tu rol no permite anular ventas.");
-  if (!access.allowed) return;
+  if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  if (!z.uuid().safeParse(id).success) return;
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Venta invalida." };
+  }
 
-  await access.supabase.rpc("cancel_sale_draft", { p_sale_id: id });
+  const { error } = await access.supabase.rpc("cancel_sale_draft", { p_sale_id: id });
+
+  if (error) {
+    return { success: false, message: getBusinessErrorMessage(error.message) };
+  }
+
   revalidateSales();
+  return { success: true, message: "Venta anulada correctamente." };
 }

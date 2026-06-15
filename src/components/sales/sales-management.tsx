@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   Ban,
   CheckCircle2,
@@ -29,6 +30,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -86,6 +88,7 @@ function NativeSelect({
   required,
   value,
   onChange,
+  disabled,
 }: {
   name: string;
   defaultValue?: string;
@@ -93,6 +96,7 @@ function NativeSelect({
   required?: boolean;
   value?: string;
   onChange?: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  disabled?: boolean;
 }) {
   return (
     <select
@@ -101,7 +105,8 @@ function NativeSelect({
       required={required}
       value={value}
       onChange={onChange}
-      className="flex h-10 w-full rounded-xl border border-input bg-white/70 px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+      disabled={disabled}
+      className="flex h-10 w-full rounded-xl border border-input bg-white/70 px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
     </select>
@@ -131,6 +136,58 @@ function FormMessage({ state }: { state: ActionState }) {
   );
 }
 
+function useActionToast(state: ActionState) {
+  useEffect(() => {
+    if (!state.message) return;
+
+    if (state.success) {
+      toast.success(state.message);
+      return;
+    }
+
+    toast.error(state.message);
+  }, [state]);
+}
+
+function ActionFeedback({ state }: { state: ActionState }) {
+  if (!state.message || state.success) return null;
+
+  return (
+    <p role="alert" className="max-w-72 rounded-xl bg-rose-50 px-3 py-2 text-left text-xs text-rose-700">
+      {state.message}
+    </p>
+  );
+}
+
+function SaleRowActionForm({
+  saleId,
+  action,
+  label,
+  icon,
+}: {
+  saleId: string;
+  action: typeof confirmSaleAction | typeof cancelSaleAction;
+  label: string;
+  icon: ReactNode;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialState);
+
+  useActionToast(state);
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <form action={formAction}>
+        <input type="hidden" name="id" value={saleId} />
+        <Button variant="outline" size="icon-sm" type="submit" disabled={pending}>
+          {icon}
+          <span className="sr-only">{label}</span>
+        </Button>
+      </form>
+      <ActionFeedback state={state} />
+    </div>
+  );
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-BO", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
 }
@@ -146,8 +203,14 @@ function SaleForm({
   const [lines, setLines] = useState<SaleLine[]>(
     Array.from({ length: 10 }, () => ({ productId: "", quantity: "", unitPrice: "" })),
   );
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [paymentType, setPaymentType] = useState("contado");
   const [discount, setDiscount] = useState("0");
   const today = new Date().toISOString().slice(0, 10);
+  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+  const creditAvailable = selectedCustomer
+    ? Math.max(Number(selectedCustomer.credit_limit) - Number(selectedCustomer.current_balance), 0)
+    : 0;
 
   const updateLine = (index: number, nextLine: Partial<SaleLine>) => {
     setLines((current) =>
@@ -172,7 +235,19 @@ function SaleForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Cliente</Label>
-          <NativeSelect name="customer_id" required>
+          <NativeSelect
+            name="customer_id"
+            required
+            value={selectedCustomerId}
+            onChange={(event) => {
+              const nextCustomer = customers.find((customer) => customer.id === event.target.value);
+              setSelectedCustomerId(event.target.value);
+
+              if (!nextCustomer || nextCustomer.customer_type === "contado") {
+                setPaymentType("contado");
+              }
+            }}
+          >
             <option value="">Seleccionar cliente</option>
             {customers
               .filter((customer) => customer.is_active)
@@ -189,11 +264,17 @@ function SaleForm({
         </div>
         <div className="space-y-2">
           <Label>Metodo de pago</Label>
-          <NativeSelect name="payment_type" defaultValue="contado">
+          <NativeSelect
+            name="payment_type"
+            value={paymentType}
+            onChange={(event) => setPaymentType(event.target.value)}
+          >
             <option value="contado">Contado</option>
             <option value="transferencia">Transferencia</option>
             <option value="qr">QR</option>
-            <option value="credito">Credito</option>
+            {selectedCustomer?.customer_type === "credito" ? (
+              <option value="credito">Credito</option>
+            ) : null}
           </NativeSelect>
         </div>
         <div className="space-y-2">
@@ -213,6 +294,37 @@ function SaleForm({
           <Textarea name="notes" placeholder="Observaciones de despacho, entrega o cobranza" className="rounded-xl" />
         </div>
       </div>
+
+      {selectedCustomer ? (
+        <Alert
+          className={cn(
+            "rounded-2xl border px-4 py-3",
+            selectedCustomer.customer_type === "credito"
+              ? "border-sky-200 bg-sky-50 text-sky-900"
+              : "border-amber-200 bg-amber-50 text-amber-900",
+          )}
+        >
+          <AlertDescription className="space-y-1 text-sm">
+            <p>
+              <strong>Cliente:</strong> {selectedCustomer.name} · Tipo{" "}
+              {selectedCustomer.customer_type === "credito" ? "credito" : "contado"}
+            </p>
+            {selectedCustomer.customer_type === "credito" ? (
+              <>
+                <p>
+                  Saldo actual: <strong>{formatCurrency(Number(selectedCustomer.current_balance))}</strong> · Limite:{" "}
+                  <strong>{formatCurrency(Number(selectedCustomer.credit_limit))}</strong>
+                </p>
+                <p>
+                  Crédito disponible: <strong>{formatCurrency(creditAvailable)}</strong>
+                </p>
+              </>
+            ) : (
+              <p>Cliente de contado: solo puede pagar con efectivo, QR o transferencia.</p>
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <div className="space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -496,20 +608,18 @@ export function SalesManagement({
                           </Dialog>
                           {canManage && sale.status === "borrador" ? (
                             <>
-                              <form action={confirmSaleAction}>
-                                <input type="hidden" name="id" value={sale.id} />
-                                <Button variant="outline" size="icon-sm" type="submit">
-                                  <CheckCircle2 className="size-4" />
-                                  <span className="sr-only">Confirmar venta</span>
-                                </Button>
-                              </form>
-                              <form action={cancelSaleAction}>
-                                <input type="hidden" name="id" value={sale.id} />
-                                <Button variant="outline" size="icon-sm" type="submit">
-                                  <Ban className="size-4" />
-                                  <span className="sr-only">Anular borrador</span>
-                                </Button>
-                              </form>
+                              <SaleRowActionForm
+                                saleId={sale.id}
+                                action={confirmSaleAction}
+                                label="Confirmar venta"
+                                icon={<CheckCircle2 className="size-4" />}
+                              />
+                              <SaleRowActionForm
+                                saleId={sale.id}
+                                action={cancelSaleAction}
+                                label="Anular borrador"
+                                icon={<Ban className="size-4" />}
+                              />
                             </>
                           ) : null}
                         </div>

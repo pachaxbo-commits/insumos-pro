@@ -54,4 +54,12 @@
 ## Fase 7
 
 - Finanzas operativas sobre datos reales
+- Cuentas por cobrar con pagos parciales/totales
+- Cuentas por pagar conectadas a compras pendientes
+- Historial de pagos
+- Caja diaria con ingresos, egresos y movimientos manuales
+- RLS y Server Actions para roles financieros
+
+## Fase 8
+
 - Reportes operativos y financieros

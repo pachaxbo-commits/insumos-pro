@@ -30,8 +30,8 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 
 1. Ir al SQL Editor del proyecto.
 2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
-3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items` y `public.accounts_receivable`.
-4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft` y datos demo de catalogo/proveedores/clientes.
+3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items`, `public.accounts_receivable`, `public.accounts_payable`, `public.payments` y `public.cash_movements`.
+4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft`, `register_customer_payment`, `register_supplier_payment`, `register_manual_cash_movement` y datos demo de catalogo/proveedores/clientes.
 
 ## Primer usuario administrador
 
@@ -111,6 +111,16 @@ npm run build
 - `administrador` y `ventas`: pueden crear clientes, crear ventas, confirmar y anular borradores
 - `inventario`: puede ver ventas en modo lectura
 - `finanzas`: puede ver ventas y clientes para cuentas por cobrar
+
+## Finanzas
+
+- `/finanzas`: resumen financiero, cuentas por cobrar, cuentas por pagar, pagos, caja y movimientos manuales
+- Cuentas por cobrar: pagos parciales o totales actualizan `accounts_receivable` y `customers.current_balance`
+- Cuentas por pagar: pagos parciales o totales actualizan `accounts_payable`
+- `payments`: historial de cobros, pagos a proveedores, ingresos manuales y gastos manuales
+- `cash_movements`: ingresos y egresos de caja diaria
+- `administrador` y `finanzas`: gestionan pagos, caja y cuentas
+- `ventas` e `inventario`: no gestionan finanzas completas
 
 ## Estructura principal
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Manrope } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -27,7 +28,10 @@ export default function RootLayout({
       lang="es"
       className={`${manrope.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Toaster richColors position="top-right" />
+      </body>
     </html>
   );
 }
