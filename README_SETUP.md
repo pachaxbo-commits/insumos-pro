@@ -30,8 +30,8 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 
 1. Ir al SQL Editor del proyecto.
 2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
-3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases` y `public.purchase_items`.
-4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft` y datos demo de catalogo/proveedores.
+3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items` y `public.accounts_receivable`.
+4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft` y datos demo de catalogo/proveedores/clientes.
 
 ## Primer usuario administrador
 
@@ -99,6 +99,18 @@ npm run build
 - `administrador` e `inventario`: pueden crear proveedores, crear compras, confirmar y cancelar borradores
 - `finanzas`: puede ver compras en modo lectura
 - `ventas`: sin acceso directo a compras ni proveedores
+
+## Clientes y ventas
+
+- `/clientes`: clientes de contado o credito con limite y saldo actual
+- `/ventas`: ventas con estado `borrador`, `confirmada` o `anulada`
+- Una venta en borrador no modifica stock ni deuda
+- Al confirmar una venta se generan movimientos de inventario tipo `salida`
+- La confirmacion bloquea stock negativo y ventas a credito por encima del limite
+- Si el metodo de pago es `credito`, se actualiza `customers.current_balance` y se crea una cuenta por cobrar en `accounts_receivable`
+- `administrador` y `ventas`: pueden crear clientes, crear ventas, confirmar y anular borradores
+- `inventario`: puede ver ventas en modo lectura
+- `finanzas`: puede ver ventas y clientes para cuentas por cobrar
 
 ## Estructura principal
 

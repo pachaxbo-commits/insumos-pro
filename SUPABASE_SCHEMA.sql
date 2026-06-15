@@ -1093,3 +1093,634 @@ set
   address = excluded.address,
   notes = excluded.notes,
   is_active = excluded.is_active;
+
+create table if not exists public.customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  business_name text,
+  nit text,
+  phone text,
+  email text,
+  address text,
+  customer_type text not null default 'contado',
+  credit_limit numeric(14, 2) not null default 0,
+  current_balance numeric(14, 2) not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint customers_customer_type_check check (customer_type in ('contado', 'credito')),
+  constraint customers_credit_limit_check check (credit_limit >= 0),
+  constraint customers_current_balance_check check (current_balance >= 0)
+);
+
+create index if not exists customers_name_idx on public.customers (name);
+create unique index if not exists customers_name_unique_idx on public.customers (name);
+create index if not exists customers_nit_idx on public.customers (nit);
+create index if not exists customers_customer_type_idx on public.customers (customer_type);
+create index if not exists customers_is_active_idx on public.customers (is_active);
+
+drop trigger if exists set_customers_updated_at on public.customers;
+
+create trigger set_customers_updated_at
+before update on public.customers
+for each row
+execute function public.set_current_timestamp_updated_at();
+
+create table if not exists public.sales (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.customers (id) on delete restrict,
+  sale_date date not null default current_date,
+  subtotal numeric(14, 2) not null default 0,
+  discount numeric(14, 2) not null default 0,
+  total numeric(14, 2) not null default 0,
+  payment_type text not null default 'contado',
+  status text not null default 'borrador',
+  notes text,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint sales_payment_type_check check (payment_type in ('contado', 'transferencia', 'qr', 'credito')),
+  constraint sales_status_check check (status in ('borrador', 'confirmada', 'anulada')),
+  constraint sales_subtotal_check check (subtotal >= 0),
+  constraint sales_discount_check check (discount >= 0),
+  constraint sales_total_check check (total >= 0)
+);
+
+create index if not exists sales_customer_id_idx on public.sales (customer_id);
+create index if not exists sales_sale_date_idx on public.sales (sale_date desc);
+create index if not exists sales_status_idx on public.sales (status);
+create index if not exists sales_payment_type_idx on public.sales (payment_type);
+create index if not exists sales_created_by_idx on public.sales (created_by);
+
+create table if not exists public.sale_items (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null references public.sales (id) on delete cascade,
+  product_id uuid not null references public.products (id) on delete restrict,
+  quantity numeric(14, 2) not null,
+  unit_price numeric(14, 2) not null,
+  subtotal numeric(14, 2) not null,
+  constraint sale_items_quantity_check check (quantity > 0),
+  constraint sale_items_unit_price_check check (unit_price >= 0),
+  constraint sale_items_subtotal_check check (subtotal >= 0)
+);
+
+create index if not exists sale_items_sale_id_idx on public.sale_items (sale_id);
+create index if not exists sale_items_product_id_idx on public.sale_items (product_id);
+
+create table if not exists public.accounts_receivable (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null references public.sales (id) on delete restrict,
+  customer_id uuid not null references public.customers (id) on delete restrict,
+  amount numeric(14, 2) not null,
+  balance numeric(14, 2) not null,
+  status text not null default 'pendiente',
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint accounts_receivable_sale_unique unique (sale_id),
+  constraint accounts_receivable_status_check check (status in ('pendiente', 'pagada', 'parcial', 'anulada')),
+  constraint accounts_receivable_amount_check check (amount >= 0),
+  constraint accounts_receivable_balance_check check (balance >= 0)
+);
+
+create index if not exists accounts_receivable_customer_id_idx on public.accounts_receivable (customer_id);
+create index if not exists accounts_receivable_status_idx on public.accounts_receivable (status);
+
+drop trigger if exists set_accounts_receivable_updated_at on public.accounts_receivable;
+
+create trigger set_accounts_receivable_updated_at
+before update on public.accounts_receivable
+for each row
+execute function public.set_current_timestamp_updated_at();
+
+alter table public.customers enable row level security;
+alter table public.sales enable row level security;
+alter table public.sale_items enable row level security;
+alter table public.accounts_receivable enable row level security;
+
+drop policy if exists "Allowed roles can view customers" on public.customers;
+create policy "Allowed roles can view customers"
+on public.customers
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Sales roles can insert customers" on public.customers;
+create policy "Sales roles can insert customers"
+on public.customers
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+drop policy if exists "Sales roles can update customers" on public.customers;
+create policy "Sales roles can update customers"
+on public.customers
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+drop policy if exists "Allowed roles can view sales" on public.sales;
+create policy "Allowed roles can view sales"
+on public.sales
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Sales roles can insert sales" on public.sales;
+create policy "Sales roles can insert sales"
+on public.sales
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+drop policy if exists "Sales roles can update sales" on public.sales;
+create policy "Sales roles can update sales"
+on public.sales
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+drop policy if exists "Allowed roles can view sale items" on public.sale_items;
+create policy "Allowed roles can view sale items"
+on public.sale_items
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas', 'inventario', 'finanzas')
+  )
+);
+
+drop policy if exists "Sales roles can insert sale items" on public.sale_items;
+create policy "Sales roles can insert sale items"
+on public.sale_items
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+drop policy if exists "Allowed roles can view accounts receivable" on public.accounts_receivable;
+create policy "Allowed roles can view accounts receivable"
+on public.accounts_receivable
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas', 'finanzas')
+  )
+);
+
+drop policy if exists "Sales roles can insert accounts receivable" on public.accounts_receivable;
+create policy "Sales roles can insert accounts receivable"
+on public.accounts_receivable
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active = true
+      and p.role in ('administrador', 'ventas')
+  )
+);
+
+create or replace function public.create_sale_draft(
+  p_customer_id uuid,
+  p_sale_date date,
+  p_payment_type text,
+  p_discount numeric,
+  p_notes text,
+  p_items jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_sale_id uuid;
+  v_subtotal numeric(14, 2) := 0;
+  v_discount numeric(14, 2) := coalesce(p_discount, 0);
+  v_item jsonb;
+  v_product_id uuid;
+  v_quantity numeric(14, 2);
+  v_unit_price numeric(14, 2);
+  v_item_subtotal numeric(14, 2);
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'ventas') then
+    raise exception 'No tienes permisos para crear ventas.';
+  end if;
+
+  if p_payment_type not in ('contado', 'transferencia', 'qr', 'credito') then
+    raise exception 'Metodo de pago invalido.';
+  end if;
+
+  if v_discount < 0 then
+    raise exception 'El descuento no puede ser negativo.';
+  end if;
+
+  if not exists (select 1 from public.customers where id = p_customer_id and is_active = true) then
+    raise exception 'Cliente no encontrado o inactivo.';
+  end if;
+
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'Agrega al menos un item a la venta.';
+  end if;
+
+  insert into public.sales (
+    customer_id,
+    sale_date,
+    subtotal,
+    discount,
+    total,
+    payment_type,
+    status,
+    notes,
+    created_by
+  )
+  values (
+    p_customer_id,
+    p_sale_date,
+    0,
+    v_discount,
+    0,
+    p_payment_type,
+    'borrador',
+    nullif(trim(coalesce(p_notes, '')), ''),
+    v_user_id
+  )
+  returning id into v_sale_id;
+
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    v_product_id := (v_item ->> 'product_id')::uuid;
+    v_quantity := (v_item ->> 'quantity')::numeric;
+    v_unit_price := (v_item ->> 'unit_price')::numeric;
+
+    if v_quantity <= 0 then
+      raise exception 'La cantidad de un item debe ser mayor a cero.';
+    end if;
+
+    if v_unit_price < 0 then
+      raise exception 'El precio unitario no puede ser negativo.';
+    end if;
+
+    if not exists (select 1 from public.products where id = v_product_id and is_active = true) then
+      raise exception 'Producto no encontrado o inactivo.';
+    end if;
+
+    v_item_subtotal := round(v_quantity * v_unit_price, 2);
+    v_subtotal := v_subtotal + v_item_subtotal;
+
+    insert into public.sale_items (
+      sale_id,
+      product_id,
+      quantity,
+      unit_price,
+      subtotal
+    )
+    values (
+      v_sale_id,
+      v_product_id,
+      v_quantity,
+      v_unit_price,
+      v_item_subtotal
+    );
+  end loop;
+
+  if v_discount > v_subtotal then
+    raise exception 'El descuento no puede superar el subtotal.';
+  end if;
+
+  update public.sales
+  set subtotal = v_subtotal,
+      discount = v_discount,
+      total = v_subtotal - v_discount
+  where id = v_sale_id;
+
+  return v_sale_id;
+end;
+$$;
+
+create or replace function public.confirm_sale(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_sale record;
+  v_customer record;
+  v_item record;
+  v_stock_before numeric(14, 2);
+  v_stock_after numeric(14, 2);
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'ventas') then
+    raise exception 'No tienes permisos para confirmar ventas.';
+  end if;
+
+  select *
+  into v_sale
+  from public.sales
+  where id = p_sale_id
+  for update;
+
+  if not found then
+    raise exception 'Venta no encontrada.';
+  end if;
+
+  if v_sale.status = 'confirmada' then
+    raise exception 'La venta ya fue confirmada.';
+  end if;
+
+  if v_sale.status <> 'borrador' then
+    raise exception 'Solo se pueden confirmar ventas en borrador.';
+  end if;
+
+  if not exists (select 1 from public.sale_items where sale_id = p_sale_id) then
+    raise exception 'La venta no tiene items.';
+  end if;
+
+  select *
+  into v_customer
+  from public.customers
+  where id = v_sale.customer_id
+    and is_active = true
+  for update;
+
+  if not found then
+    raise exception 'Cliente no encontrado o inactivo.';
+  end if;
+
+  if v_sale.payment_type = 'credito' then
+    if v_customer.customer_type <> 'credito' then
+      raise exception 'El cliente no esta habilitado para ventas a credito.';
+    end if;
+
+    if v_customer.current_balance + v_sale.total > v_customer.credit_limit then
+      raise exception 'La venta supera el limite de credito del cliente.';
+    end if;
+  end if;
+
+  for v_item in
+    select product_id, quantity
+    from public.sale_items
+    where sale_id = p_sale_id
+  loop
+    select stock_current
+    into v_stock_before
+    from public.products
+    where id = v_item.product_id
+      and is_active = true
+    for update;
+
+    if not found then
+      raise exception 'Producto no encontrado o inactivo.';
+    end if;
+
+    v_stock_after := v_stock_before - v_item.quantity;
+
+    if v_stock_after < 0 then
+      raise exception 'Stock insuficiente para confirmar la venta.';
+    end if;
+
+    insert into public.inventory_movements (
+      product_id,
+      movement_type,
+      quantity,
+      stock_before,
+      stock_after,
+      reason,
+      notes,
+      created_by
+    )
+    values (
+      v_item.product_id,
+      'salida',
+      v_item.quantity,
+      v_stock_before,
+      v_stock_after,
+      'Venta confirmada',
+      'Venta ' || p_sale_id::text,
+      v_user_id
+    );
+
+    update public.products
+    set stock_current = v_stock_after
+    where id = v_item.product_id;
+  end loop;
+
+  if v_sale.payment_type = 'credito' then
+    update public.customers
+    set current_balance = current_balance + v_sale.total
+    where id = v_sale.customer_id;
+
+    insert into public.accounts_receivable (
+      sale_id,
+      customer_id,
+      amount,
+      balance,
+      status
+    )
+    values (
+      p_sale_id,
+      v_sale.customer_id,
+      v_sale.total,
+      v_sale.total,
+      'pendiente'
+    );
+  end if;
+
+  update public.sales
+  set status = 'confirmada'
+  where id = p_sale_id;
+end;
+$$;
+
+create or replace function public.cancel_sale_draft(p_sale_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid;
+  v_user_role text;
+  v_status text;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'Usuario no autenticado.';
+  end if;
+
+  select role into v_user_role
+  from public.profiles
+  where id = v_user_id
+    and is_active = true;
+
+  if v_user_role is null or v_user_role not in ('administrador', 'ventas') then
+    raise exception 'No tienes permisos para anular ventas.';
+  end if;
+
+  select status into v_status
+  from public.sales
+  where id = p_sale_id
+  for update;
+
+  if v_status is null then
+    raise exception 'Venta no encontrada.';
+  end if;
+
+  if v_status <> 'borrador' then
+    raise exception 'Solo se pueden anular ventas en borrador.';
+  end if;
+
+  update public.sales
+  set status = 'anulada'
+  where id = p_sale_id;
+end;
+$$;
+
+revoke all on function public.create_sale_draft(uuid, date, text, numeric, text, jsonb) from public;
+grant execute on function public.create_sale_draft(uuid, date, text, numeric, text, jsonb) to authenticated;
+
+revoke all on function public.confirm_sale(uuid) from public;
+grant execute on function public.confirm_sale(uuid) to authenticated;
+
+revoke all on function public.cancel_sale_draft(uuid) from public;
+grant execute on function public.cancel_sale_draft(uuid) to authenticated;
+
+insert into public.customers (
+  name,
+  business_name,
+  nit,
+  phone,
+  email,
+  address,
+  customer_type,
+  credit_limit,
+  current_balance,
+  is_active
+)
+values
+  ('Restaurante El Buen Sabor', 'El Buen Sabor SRL', '10203040', '700-20001', 'compras@buensabor.demo', 'Zona central demo', 'credito', 12000, 0, true),
+  ('Pollos Don Raul', 'Don Raul Gastronomia', '20406080', '700-20002', 'pedidos@donraul.demo', 'Av. Comercial demo', 'contado', 0, 0, true),
+  ('Hotel Valle Verde', 'Valle Verde Hoteles', '30102030', '700-20003', 'abastecimiento@valleverde.demo', 'Zona hotelera demo', 'credito', 25000, 0, true),
+  ('Mercado Express Norte', 'Mercado Express Norte', '40908070', '700-20004', null, 'Sucursal norte demo', 'contado', 0, 0, true)
+on conflict (name) do update
+set
+  business_name = excluded.business_name,
+  nit = excluded.nit,
+  phone = excluded.phone,
+  email = excluded.email,
+  address = excluded.address,
+  customer_type = excluded.customer_type,
+  credit_limit = excluded.credit_limit,
+  is_active = excluded.is_active;

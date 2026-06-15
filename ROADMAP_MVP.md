@@ -45,5 +45,13 @@
 ## Fase 6
 
 - Ventas reales
+- Clientes con tipos contado/credito, limites y saldos
+- Confirmacion de ventas conectada a movimientos de inventario tipo `salida`
+- Cuentas por cobrar iniciales para ventas a credito
+- Dashboard operativo de ventas con KPIs y productos mas vendidos
+- Permisos diferenciados para ventas, inventario y finanzas
+
+## Fase 7
+
 - Finanzas operativas sobre datos reales
 - Reportes operativos y financieros

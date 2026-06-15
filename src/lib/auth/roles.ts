@@ -18,6 +18,7 @@ const roleRouteAccess: Record<UserRole, string[]> = {
   ventas: ["/", "/ventas", "/clientes", "/productos", "/inventario", "/reportes"],
   inventario: [
     "/",
+    "/ventas",
     "/productos",
     "/inventario",
     "/compras",
@@ -26,6 +27,7 @@ const roleRouteAccess: Record<UserRole, string[]> = {
   ],
   finanzas: [
     "/",
+    "/ventas",
     "/compras",
     "/finanzas",
     "/clientes",
