@@ -5,10 +5,13 @@
 - [ ] Variables de entorno configuradas en Vercel.
 - [ ] `SUPABASE_SCHEMA.sql` ejecutado completo o con bloque Fase 10 aplicado.
 - [ ] Usuario administrador creado.
-- [ ] Usuarios demo creados.
+- [ ] Usuarios reales creados y roles validados.
+- [ ] Datos demo limpiados o separados del entorno productivo.
+- [ ] Datos reales iniciales cargados y aprobados.
 - [ ] `npm run lint` OK.
 - [ ] `npm run build` OK.
 - [ ] Deploy en Vercel verificado.
+- [ ] Dominio productivo y HTTPS verificados si aplica.
 
 ## Seguridad
 
@@ -18,7 +21,7 @@
 - [ ] Usuarios inactivos revisados.
 - [ ] Bitacora visible solo para administradores.
 
-## Demo
+## Demo y produccion
 
 - [ ] Datos demo suficientes: productos, clientes, proveedores.
 - [ ] Compra confirmable.
@@ -27,6 +30,7 @@
 - [ ] Cuenta por pagar para probar pago.
 - [ ] Reportes con datos.
 - [ ] Exportacion CSV probada.
+- [ ] Checklist de pruebas cliente completado antes de operar con datos reales.
 
 ## Documentos
 
@@ -37,3 +41,10 @@
 - [ ] `SEGURIDAD_PERMISOS.md`
 - [ ] `PENDIENTES_CONTROLADOS.md`
 - [ ] `USUARIOS_DEMO.md`
+- [ ] `PLAN_PUESTA_EN_PRODUCCION.md`
+- [ ] `LIMPIEZA_DATOS_DEMO.md`
+- [ ] `PLANTILLA_CARGA_DATOS.md`
+- [ ] `CREACION_USUARIOS_REALES.md`
+- [ ] `CHECKLIST_PRUEBAS_CLIENTE.md`
+- [ ] `CONFIGURACION_PRODUCCION.md`
+- [ ] `NOTAS_FASE_11.md`

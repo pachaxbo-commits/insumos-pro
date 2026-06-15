@@ -12,14 +12,14 @@ export function FeaturePlaceholder({ title, description }: FeaturePlaceholderPro
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Modulo demo"
+        eyebrow="Modulo preparado"
         title={title}
         description={description}
       />
       <EmptyState
         icon={<FlaskConical className="size-5" />}
-        title={`${title} quedo preparado para Fase 2`}
-        description="En esta fase se priorizo la base visual, la navegacion y los componentes reutilizables. La logica de negocio real vendra despues."
+        title={`${title} esta preparado para evolucionar`}
+        description="Esta seccion queda reservada para crecimiento controlado del sistema, manteniendo la navegacion y los componentes base."
       />
     </div>
   );

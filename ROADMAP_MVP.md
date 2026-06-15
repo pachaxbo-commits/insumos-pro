@@ -88,7 +88,17 @@
 - Guias finales de usuario, administrador y entrega
 - Pendientes controlados para reversas y riesgos contables
 
-## Fase 11 propuesta
+## Fase 11
+
+- Preparacion para produccion real y entrega al cliente
+- Separacion documental de demo, prueba y produccion
+- Guia segura de limpieza de datos demo
+- Plantilla de carga inicial de datos reales
+- Guia de usuarios reales y roles
+- Checklist de pruebas cliente
+- Configuracion productiva de Vercel, Supabase, dominio y backups
+
+## Fase 12 propuesta
 
 - Reversion contable controlada de ventas y compras confirmadas
 - Auditoria avanzada con diffs antes/despues

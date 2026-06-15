@@ -71,7 +71,7 @@ export function DashboardOverview({ data }: { data: DashboardData }) {
                   Ventas, stock y caja en una sola lectura.
                 </h2>
                 <p className="max-w-xl text-sm leading-6 text-white/72">
-                  La demo muestra el circuito completo: catalogo, compras, inventario, ventas, finanzas y reportes.
+                  El sistema integra el circuito completo: catalogo, compras, inventario, ventas, finanzas y reportes.
                 </p>
               </div>
 

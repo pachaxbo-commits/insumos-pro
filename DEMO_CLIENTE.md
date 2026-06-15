@@ -2,7 +2,8 @@
 
 ## Link de demo
 
-- Vercel: reemplazar por el link final de produccion del proyecto.
+- Vercel demo: reemplazar por el link final del entorno de demo o staging.
+- Produccion: usar solo despues de completar `PLAN_PUESTA_EN_PRODUCCION.md`.
 - Local: `http://localhost:3000`
 
 ## Usuario demo sugerido
@@ -14,6 +15,8 @@ Crear en Supabase Auth un usuario exclusivo para demo comercial, por ejemplo:
 - Perfil: actualizar `public.profiles.role = 'administrador'`
 
 No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno de demo.
+
+Para usuarios reales de produccion, usar `CREACION_USUARIOS_REALES.md`.
 
 ## Modulos implementados
 
@@ -41,10 +44,16 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 8. Reportes: filtrar por fechas y exportar CSV.
 9. Configuracion: mostrar roles, modulos activos y bitacora.
 
+## Separacion demo / produccion
+
+- Demo: puede contener datos ficticios para explicar flujo.
+- Prueba: puede usarse para validacion del cliente antes de salida.
+- Produccion: debe contener solo datos reales aprobados y usuarios reales.
+- Antes de pasar a produccion, seguir `LIMPIEZA_DATOS_DEMO.md` y `PLANTILLA_CARGA_DATOS.md`.
+
 ## Funcionalidades pendientes
 
 - Edicion avanzada de compras/ventas confirmadas.
-- Auditoria completa de acciones.
 - Reportes PDF e impresion formal.
 - Multi-sucursal y multi-almacen.
 - Costeo historico por lote.
@@ -59,3 +68,4 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 - Los usuarios demo se crean desde Supabase, no desde una pantalla interna.
 - El sistema ya esta conectado a Supabase, pero la calidad de la demo depende de tener datos preparados.
 - La bitacora requiere ejecutar el SQL de Fase 10 en Supabase.
+- La puesta en produccion debe completarse con `CHECKLIST_PRUEBAS_CLIENTE.md`.
