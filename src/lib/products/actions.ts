@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
+import { writeAuditLog } from "@/lib/audit/log";
 
 type ActionState = {
   success: boolean;
@@ -67,7 +68,7 @@ async function assertCanMutateProducts() {
     };
   }
 
-  return { allowed: true as const, supabase };
+  return { allowed: true as const, supabase, userId: auth.user.id };
 }
 
 function parseId(formData: FormData) {
@@ -96,9 +97,22 @@ export async function createProductAction(
     };
   }
 
-  const { error } = await access.supabase.from("products").insert(parsed.data);
+  const { data, error } = await access.supabase
+    .from("products")
+    .insert(parsed.data)
+    .select("id")
+    .single<{ id: string }>();
 
   if (error) return { success: false, message: error.message };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "create_product",
+    entityType: "product",
+    entityId: data?.id,
+    metadata: { name: parsed.data.name, sku: parsed.data.sku },
+  });
 
   revalidateProducts();
   return { success: true, message: "Producto creado correctamente." };
@@ -130,6 +144,15 @@ export async function updateProductAction(
 
   if (error) return { success: false, message: error.message };
 
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "update_product",
+    entityType: "product",
+    entityId: id,
+    metadata: { name: parsed.data.name, sku: parsed.data.sku },
+  });
+
   revalidateProducts();
   return { success: true, message: "Producto actualizado correctamente." };
 }
@@ -151,6 +174,14 @@ export async function deactivateProductAction(
   const { error } = await access.supabase.from("products").update({ is_active: false }).eq("id", id);
 
   if (error) return { success: false, message: error.message };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "deactivate_product",
+    entityType: "product",
+    entityId: id,
+  });
 
   revalidateProducts();
   return { success: true, message: "Producto desactivado correctamente." };

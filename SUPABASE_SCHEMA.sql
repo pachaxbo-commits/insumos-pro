@@ -2726,3 +2726,74 @@ on public.payments (payment_method, payment_date desc);
 
 create index if not exists cash_movements_method_date_idx
 on public.cash_movements (payment_method, movement_date desc);
+
+-- Fase 10: auditoria, bitacora y seguridad operativa.
+create or replace function public.current_user_role()
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select p.role
+  from public.profiles p
+  where p.id = auth.uid()
+    and p.is_active = true
+  limit 1
+$$;
+
+revoke all on function public.current_user_role() from public;
+grant execute on function public.current_user_role() to authenticated;
+
+drop policy if exists "Admins can view profiles" on public.profiles;
+create policy "Admins can view profiles"
+on public.profiles
+for select
+to authenticated
+using (public.current_user_role() = 'administrador');
+
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles (id) on delete set null,
+  action text not null,
+  entity_type text not null,
+  entity_id uuid,
+  metadata jsonb not null default '{}'::jsonb,
+  ip_address text,
+  user_agent text,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists audit_logs_user_id_idx
+on public.audit_logs (user_id);
+
+create index if not exists audit_logs_action_idx
+on public.audit_logs (action);
+
+create index if not exists audit_logs_entity_type_idx
+on public.audit_logs (entity_type);
+
+create index if not exists audit_logs_entity_id_idx
+on public.audit_logs (entity_id);
+
+create index if not exists audit_logs_created_at_idx
+on public.audit_logs (created_at desc);
+
+alter table public.audit_logs enable row level security;
+
+drop policy if exists "Admins can view audit logs" on public.audit_logs;
+create policy "Admins can view audit logs"
+on public.audit_logs
+for select
+to authenticated
+using (public.current_user_role() = 'administrador');
+
+drop policy if exists "Authenticated users can insert own audit logs" on public.audit_logs;
+create policy "Authenticated users can insert own audit logs"
+on public.audit_logs
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and public.current_user_role() in ('administrador', 'ventas', 'inventario', 'finanzas')
+);

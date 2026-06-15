@@ -33,6 +33,7 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items`, `public.accounts_receivable`, `public.accounts_payable`, `public.payments` y `public.cash_movements`.
 4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft`, `register_customer_payment`, `register_supplier_payment`, `register_manual_cash_movement` y datos demo de catalogo/proveedores/clientes.
 5. Para Fase 8, confirmar tambien los indices de reportes sobre ventas, items, compras, inventario, pagos y caja. Si ya tienes el esquema anterior aplicado, puedes ejecutar solo el bloque `Fase 8: indices de apoyo para reportes y exportaciones` al final de `SUPABASE_SCHEMA.sql`.
+6. Para Fase 10, confirmar la tabla `public.audit_logs`, sus indices, RLS y la funcion `current_user_role`. Si ya tienes fases previas aplicadas, puedes ejecutar solo el bloque `Fase 10: auditoria, bitacora y seguridad operativa` al final de `SUPABASE_SCHEMA.sql`.
 
 ## Primer usuario administrador
 
@@ -140,6 +141,12 @@ npm run build
 - `/configuracion`: estado profesional de parametros preparados para la demo
 - Las acciones principales muestran toast o mensaje inline: productos, inventario, compras, ventas, finanzas y reportes
 - No se requiere SQL adicional para Fase 9
+
+## Entrega y auditoria
+
+- `/configuracion`: incluye modulos activos, roles y bitacora de actividad
+- `audit_logs`: registra acciones criticas de productos, inventario, compras, ventas y finanzas
+- Documentos finales: `GUIA_USUARIO.md`, `GUIA_ADMIN.md`, `CHECKLIST_ENTREGA.md`, `SEGURIDAD_PERMISOS.md`, `PENDIENTES_CONTROLADOS.md`, `USUARIOS_DEMO.md`
 
 ## Estructura principal
 

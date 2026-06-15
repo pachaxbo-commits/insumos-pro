@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireAuthenticatedUser } from "@/lib/auth/session";
+import { writeAuditLog } from "@/lib/audit/log";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { INVENTORY_MOVEMENT_TYPES } from "@/types/inventory";
 
@@ -48,7 +49,7 @@ async function assertCanRegisterMovement() {
     };
   }
 
-  return { allowed: true as const, supabase };
+  return { allowed: true as const, supabase, userId: auth.user.id };
 }
 
 export async function createInventoryMovementAction(
@@ -68,7 +69,7 @@ export async function createInventoryMovementAction(
     };
   }
 
-  const { error } = await access.supabase.rpc("register_inventory_movement", {
+  const { data, error } = await access.supabase.rpc("register_inventory_movement", {
     p_product_id: parsed.data.product_id,
     p_movement_type: parsed.data.movement_type,
     p_quantity: parsed.data.quantity,
@@ -79,6 +80,20 @@ export async function createInventoryMovementAction(
   if (error) {
     return { success: false, message: error.message };
   }
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "create_inventory_movement",
+    entityType: "inventory_movement",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      product_id: parsed.data.product_id,
+      movement_type: parsed.data.movement_type,
+      quantity: parsed.data.quantity,
+      reason: parsed.data.reason,
+    },
+  });
 
   revalidatePath("/inventario");
   revalidatePath("/productos");

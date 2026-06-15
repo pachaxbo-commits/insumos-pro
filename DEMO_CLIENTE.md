@@ -27,6 +27,7 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 - Cuentas por cobrar, cuentas por pagar, pagos y caja.
 - Reportes ejecutivos y operativos.
 - Exportaciones CSV.
+- Bitacora de acciones criticas para administradores.
 
 ## Flujo recomendado para mostrar
 
@@ -38,6 +39,7 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 6. Venta: crear venta en borrador y confirmar para descontar stock.
 7. Finanzas: registrar cobros/pagos y revisar caja diaria.
 8. Reportes: filtrar por fechas y exportar CSV.
+9. Configuracion: mostrar roles, modulos activos y bitacora.
 
 ## Funcionalidades pendientes
 
@@ -48,6 +50,7 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 - Costeo historico por lote.
 - Busqueda global real desde el header.
 - Parametros de empresa editables desde UI.
+- Reversion contable completa de ventas/compras confirmadas.
 
 ## Notas para no prometer de mas
 
@@ -55,3 +58,4 @@ No usar usuarios reales del cliente ni contrasenas compartidas fuera del entorno
 - Las exportaciones actuales son CSV, no PDF.
 - Los usuarios demo se crean desde Supabase, no desde una pantalla interna.
 - El sistema ya esta conectado a Supabase, pero la calidad de la demo depende de tener datos preparados.
+- La bitacora requiere ejecutar el SQL de Fase 10 en Supabase.

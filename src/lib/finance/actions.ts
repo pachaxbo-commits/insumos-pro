@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { writeAuditLog } from "@/lib/audit/log";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CASH_SOURCE_TYPES, PAYMENT_METHODS_FINANCE } from "@/types/finance";
@@ -60,7 +61,7 @@ async function assertCanManageFinance() {
     };
   }
 
-  return { allowed: true as const, supabase };
+  return { allowed: true as const, supabase, userId: auth.user.id };
 }
 
 function financeMessage(message?: string) {
@@ -107,7 +108,7 @@ export async function registerReceivablePaymentAction(
     return { success: false, message: parsed.error.issues[0]?.message ?? initialError };
   }
 
-  const { error } = await access.supabase.rpc("register_customer_payment", {
+  const { data, error } = await access.supabase.rpc("register_customer_payment", {
     p_accounts_receivable_id: parsed.data.id,
     p_amount: parsed.data.amount,
     p_payment_method: parsed.data.payment_method,
@@ -116,6 +117,19 @@ export async function registerReceivablePaymentAction(
   });
 
   if (error) return { success: false, message: financeMessage(error.message) };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "register_customer_payment",
+    entityType: "payment",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      accounts_receivable_id: parsed.data.id,
+      amount: parsed.data.amount,
+      payment_method: parsed.data.payment_method,
+    },
+  });
 
   revalidateFinance();
   return { success: true, message: "Cobro registrado correctamente." };
@@ -140,7 +154,7 @@ export async function registerPayablePaymentAction(
     return { success: false, message: parsed.error.issues[0]?.message ?? initialError };
   }
 
-  const { error } = await access.supabase.rpc("register_supplier_payment", {
+  const { data, error } = await access.supabase.rpc("register_supplier_payment", {
     p_accounts_payable_id: parsed.data.id,
     p_amount: parsed.data.amount,
     p_payment_method: parsed.data.payment_method,
@@ -149,6 +163,19 @@ export async function registerPayablePaymentAction(
   });
 
   if (error) return { success: false, message: financeMessage(error.message) };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "register_supplier_payment",
+    entityType: "payment",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      accounts_payable_id: parsed.data.id,
+      amount: parsed.data.amount,
+      payment_method: parsed.data.payment_method,
+    },
+  });
 
   revalidateFinance();
   return { success: true, message: "Pago registrado correctamente." };
@@ -167,7 +194,7 @@ export async function registerManualCashMovementAction(
     return { success: false, message: parsed.error.issues[0]?.message ?? initialError };
   }
 
-  const { error } = await access.supabase.rpc("register_manual_cash_movement", {
+  const { data, error } = await access.supabase.rpc("register_manual_cash_movement", {
     p_source_type: parsed.data.source_type,
     p_amount: parsed.data.amount,
     p_payment_method: parsed.data.payment_method,
@@ -176,6 +203,19 @@ export async function registerManualCashMovementAction(
   });
 
   if (error) return { success: false, message: financeMessage(error.message) };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "register_manual_cash_movement",
+    entityType: "cash_movement",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      source_type: parsed.data.source_type,
+      amount: parsed.data.amount,
+      payment_method: parsed.data.payment_method,
+    },
+  });
 
   revalidateFinance();
   return { success: true, message: "Movimiento manual registrado correctamente." };

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { writeAuditLog } from "@/lib/audit/log";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from "@/types/purchases";
@@ -59,7 +60,7 @@ async function assertCanManagePurchases() {
     };
   }
 
-  return { allowed: true as const, supabase };
+  return { allowed: true as const, supabase, userId: auth.user.id };
 }
 
 function parseId(formData: FormData) {
@@ -166,6 +167,14 @@ export async function deactivateSupplierAction(
 
   if (error) return { success: false, message: error.message };
 
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "deactivate_supplier",
+    entityType: "supplier",
+    entityId: id,
+  });
+
   revalidatePurchases();
   return { success: true, message: "Proveedor desactivado correctamente." };
 }
@@ -188,7 +197,7 @@ export async function createPurchaseAction(
     return { success: false, message: "Agrega al menos un producto a la compra." };
   }
 
-  const { error } = await access.supabase.rpc("create_purchase_draft", {
+  const { data, error } = await access.supabase.rpc("create_purchase_draft", {
     p_supplier_id: parsed.data.supplier_id,
     p_purchase_date: parsed.data.purchase_date,
     p_payment_status: parsed.data.payment_status,
@@ -198,6 +207,20 @@ export async function createPurchaseAction(
   });
 
   if (error) return { success: false, message: error.message };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "create_purchase",
+    entityType: "purchase",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      supplier_id: parsed.data.supplier_id,
+      payment_status: parsed.data.payment_status,
+      payment_method: parsed.data.payment_method,
+      items_count: items.length,
+    },
+  });
 
   revalidatePurchases();
   return { success: true, message: "Compra guardada como borrador." };
@@ -237,6 +260,14 @@ export async function confirmPurchaseAction(
 
   if (error) return { success: false, message: purchaseBusinessMessage(error.message) };
 
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "confirm_purchase",
+    entityType: "purchase",
+    entityId: id,
+  });
+
   revalidatePurchases();
   return { success: true, message: "Compra confirmada correctamente. El inventario fue actualizado." };
 }
@@ -256,6 +287,14 @@ export async function cancelPurchaseAction(
   const { error } = await access.supabase.rpc("cancel_purchase_draft", { p_purchase_id: id });
 
   if (error) return { success: false, message: purchaseBusinessMessage(error.message) };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "cancel_purchase",
+    entityType: "purchase",
+    entityId: id,
+  });
 
   revalidatePurchases();
   return { success: true, message: "Compra cancelada correctamente." };

@@ -79,9 +79,18 @@
 - Pantalla `/configuracion` preparada para demo
 - Documentacion `DEMO_CLIENTE.md`
 
-## Fase 10 propuesta
+## Fase 10
 
-- Auditoria operativa y trazabilidad
-- Bitacora de acciones criticas
-- Mejoras de performance con vistas SQL o RPCs segun volumen real
+- Tabla `audit_logs` con RLS e indices
+- Helper de auditoria en Server Actions criticas
+- Bitacora visible en `/configuracion`
+- Revision y documentacion de seguridad/permisos
+- Guias finales de usuario, administrador y entrega
+- Pendientes controlados para reversas y riesgos contables
+
+## Fase 11 propuesta
+
+- Reversion contable controlada de ventas y compras confirmadas
+- Auditoria avanzada con diffs antes/despues
 - Reportes PDF e impresion
+- Optimizacion con vistas SQL/RPC para alto volumen

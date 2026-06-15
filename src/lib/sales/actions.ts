@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { writeAuditLog } from "@/lib/audit/log";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CUSTOMER_TYPES, SALE_PAYMENT_TYPES } from "@/types/sales";
@@ -73,7 +74,7 @@ async function assertRole(allowedRoles: Set<string>, deniedMessage: string) {
     };
   }
 
-  return { allowed: true as const, supabase };
+  return { allowed: true as const, supabase, userId: auth.user.id };
 }
 
 function parseId(formData: FormData) {
@@ -211,6 +212,14 @@ export async function deactivateCustomerAction(
 
   if (error) return { success: false, message: error.message };
 
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "deactivate_customer",
+    entityType: "customer",
+    entityId: id,
+  });
+
   revalidateSales();
   return { success: true, message: "Cliente desactivado correctamente." };
 }
@@ -233,7 +242,7 @@ export async function createSaleAction(
     return { success: false, message: "Agrega al menos un producto a la venta." };
   }
 
-  const { error } = await access.supabase.rpc("create_sale_draft", {
+  const { data, error } = await access.supabase.rpc("create_sale_draft", {
     p_customer_id: parsed.data.customer_id,
     p_sale_date: parsed.data.sale_date,
     p_payment_type: parsed.data.payment_type,
@@ -243,6 +252,20 @@ export async function createSaleAction(
   });
 
   if (error) return { success: false, message: error.message };
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "create_sale",
+    entityType: "sale",
+    entityId: typeof data === "string" ? data : null,
+    metadata: {
+      customer_id: parsed.data.customer_id,
+      payment_type: parsed.data.payment_type,
+      items_count: items.length,
+      discount: parsed.data.discount,
+    },
+  });
 
   revalidateSales();
   return { success: true, message: "Venta guardada como borrador." };
@@ -266,6 +289,14 @@ export async function confirmSaleAction(
     return { success: false, message: getBusinessErrorMessage(error.message) };
   }
 
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "confirm_sale",
+    entityType: "sale",
+    entityId: id,
+  });
+
   revalidateSales();
   return { success: true, message: "Venta confirmada correctamente." };
 }
@@ -287,6 +318,14 @@ export async function cancelSaleAction(
   if (error) {
     return { success: false, message: getBusinessErrorMessage(error.message) };
   }
+
+  await writeAuditLog({
+    supabase: access.supabase,
+    userId: access.userId,
+    action: "cancel_sale",
+    entityType: "sale",
+    entityId: id,
+  });
 
   revalidateSales();
   return { success: true, message: "Venta anulada correctamente." };
