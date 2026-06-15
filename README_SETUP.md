@@ -32,6 +32,7 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
 3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items`, `public.accounts_receivable`, `public.accounts_payable`, `public.payments` y `public.cash_movements`.
 4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft`, `register_customer_payment`, `register_supplier_payment`, `register_manual_cash_movement` y datos demo de catalogo/proveedores/clientes.
+5. Para Fase 8, confirmar tambien los indices de reportes sobre ventas, items, compras, inventario, pagos y caja. Si ya tienes el esquema anterior aplicado, puedes ejecutar solo el bloque `Fase 8: indices de apoyo para reportes y exportaciones` al final de `SUPABASE_SCHEMA.sql`.
 
 ## Primer usuario administrador
 
@@ -121,6 +122,15 @@ npm run build
 - `cash_movements`: ingresos y egresos de caja diaria
 - `administrador` y `finanzas`: gestionan pagos, caja y cuentas
 - `ventas` e `inventario`: no gestionan finanzas completas
+
+## Reportes y exportaciones
+
+- `/reportes`: reportes de ventas, inventario, clientes, compras, finanzas y exportaciones CSV
+- Los filtros principales son por rango de fecha, cliente, producto, categoria, proveedor, estado y metodo de pago
+- `administrador` y `finanzas`: acceso completo a reportes y exportaciones
+- `ventas`: reportes de ventas, clientes e inventario basico
+- `inventario`: reportes de inventario, compras y productos
+- Las exportaciones se descargan como CSV desde el navegador y respetan los permisos del rol actual
 
 ## Estructura principal
 

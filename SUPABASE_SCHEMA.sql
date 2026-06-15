@@ -2691,3 +2691,38 @@ grant execute on function public.register_supplier_payment(uuid, numeric, text, 
 
 revoke all on function public.register_manual_cash_movement(text, numeric, text, date, text) from public;
 grant execute on function public.register_manual_cash_movement(text, numeric, text, date, text) to authenticated;
+
+-- Fase 8: indices de apoyo para reportes y exportaciones.
+-- No crean tablas nuevas; optimizan filtros por fecha, estado, metodo y relaciones frecuentes.
+create index if not exists sales_status_sale_date_idx
+on public.sales (status, sale_date desc);
+
+create index if not exists sales_payment_type_sale_date_idx
+on public.sales (payment_type, sale_date desc);
+
+create index if not exists sale_items_sale_id_idx
+on public.sale_items (sale_id);
+
+create index if not exists sale_items_product_id_idx
+on public.sale_items (product_id);
+
+create index if not exists purchases_status_purchase_date_idx
+on public.purchases (status, purchase_date desc);
+
+create index if not exists purchases_payment_method_purchase_date_idx
+on public.purchases (payment_method, purchase_date desc);
+
+create index if not exists purchase_items_purchase_id_idx
+on public.purchase_items (purchase_id);
+
+create index if not exists purchase_items_product_id_idx
+on public.purchase_items (product_id);
+
+create index if not exists inventory_movements_type_created_at_idx
+on public.inventory_movements (movement_type, created_at desc);
+
+create index if not exists payments_method_date_idx
+on public.payments (payment_method, payment_date desc);
+
+create index if not exists cash_movements_method_date_idx
+on public.cash_movements (payment_method, movement_date desc);

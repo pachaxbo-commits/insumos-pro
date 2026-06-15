@@ -62,4 +62,17 @@
 
 ## Fase 8
 
-- Reportes operativos y financieros
+- Reportes operativos y financieros reales
+- Vista `/reportes` con tabs de ventas, inventario, clientes, compras, finanzas y exportaciones
+- KPIs ejecutivos por rango de fecha y filtros de negocio
+- Rankings de productos, clientes y proveedores
+- Valorizacion de inventario y utilidad estimada
+- Exportaciones CSV para ventas, productos, inventario, clientes, compras, cuentas y caja
+- Permisos diferenciados por rol
+
+## Fase 9 propuesta
+
+- Auditoria operativa y trazabilidad
+- Bitacora de acciones criticas
+- Mejoras de performance con vistas SQL o RPCs segun volumen real
+- Preparacion de reportes PDF e impresion
