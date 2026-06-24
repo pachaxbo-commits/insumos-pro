@@ -4,6 +4,12 @@
 
 No se implemento una anulacion contable completa de ventas confirmadas en Fase 10.
 
+Regla operativa temporal:
+
+- Compras y ventas confirmadas no se editan ni eliminan.
+- Las correcciones se realizan mediante movimientos compensatorios autorizados y auditados.
+- Toda correccion debe tener motivo claro, responsable y respaldo documental.
+
 Recomendacion:
 
 - Crear una accion especifica `anular_venta_confirmada`.

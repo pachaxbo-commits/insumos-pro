@@ -29,11 +29,13 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 ## Supabase
 
 1. Ir al SQL Editor del proyecto.
-2. Ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
+2. Para produccion o staging limpio, ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).
 3. Verificar que se creen `public.profiles`, `public.product_categories`, `public.units_of_measure`, `public.products`, `public.inventory_movements`, `public.suppliers`, `public.purchases`, `public.purchase_items`, `public.customers`, `public.sales`, `public.sale_items`, `public.accounts_receivable`, `public.accounts_payable`, `public.payments` y `public.cash_movements`.
-4. Confirmar que se creen triggers, politicas RLS, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft`, `register_customer_payment`, `register_supplier_payment`, `register_manual_cash_movement` y los datos iniciales de referencia si se deciden cargar.
+4. Confirmar que se creen triggers, politicas RLS endurecidas, las funciones `register_inventory_movement`, `create_purchase_draft`, `confirm_purchase`, `cancel_purchase_draft`, `create_sale_draft`, `confirm_sale`, `cancel_sale_draft`, `register_customer_payment`, `register_supplier_payment`, `register_manual_cash_movement` y `admin_update_profile`.
 5. Para Fase 8, confirmar tambien los indices de reportes sobre ventas, items, compras, inventario, pagos y caja. Si ya tienes el esquema anterior aplicado, puedes ejecutar solo el bloque `Fase 8: indices de apoyo para reportes y exportaciones` al final de `SUPABASE_SCHEMA.sql`.
 6. Para Fase 10, confirmar la tabla `public.audit_logs`, sus indices, RLS y la funcion `current_user_role`. Si ya tienes fases previas aplicadas, puedes ejecutar solo el bloque `Fase 10: auditoria, bitacora y seguridad operativa` al final de `SUPABASE_SCHEMA.sql`.
+7. Para una base existente de staging con fases previas, aplicar [`SUPABASE_MIGRATION_FASE_12A_SECURITY.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_12A_SECURITY.sql) despues de backup.
+8. Los datos demo ya no estan dentro del SQL productivo. Si necesitas datos ficticios para demo/staging, ejecutar manualmente [`SUPABASE_SEED_DEMO.sql`](/C:/dev/insumos-pro/SUPABASE_SEED_DEMO.sql). No usar este seed en produccion real.
 
 ## Primer usuario administrador
 
@@ -46,6 +48,17 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 update public.profiles
 set role = 'administrador'
 where id = 'UUID_DEL_USUARIO';
+```
+
+Para cambios posteriores de perfil en staging/produccion, preferir la RPC protegida:
+
+```sql
+select public.admin_update_profile(
+  'UUID_DEL_USUARIO',
+  'Nombre Apellido',
+  'administrador',
+  true
+);
 ```
 
 ## Desarrollo
@@ -151,6 +164,7 @@ npm run build
 - `audit_logs`: registra acciones criticas de productos, inventario, compras, ventas y finanzas
 - Documentos finales: `GUIA_USUARIO.md`, `GUIA_ADMIN.md`, `CHECKLIST_ENTREGA.md`, `SEGURIDAD_PERMISOS.md`, `PENDIENTES_CONTROLADOS.md`, `USUARIOS_DEMO.md`
 - Documentos de produccion: `PLAN_PUESTA_EN_PRODUCCION.md`, `LIMPIEZA_DATOS_DEMO.md`, `PLANTILLA_CARGA_DATOS.md`, `CREACION_USUARIOS_REALES.md`, `CHECKLIST_PRUEBAS_CLIENTE.md`, `CONFIGURACION_PRODUCCION.md`
+- Fase 12A: `SUPABASE_SCHEMA.sql` queda sin seeds demo y con RLS endurecida para perfiles y tablas operativas criticas
 
 ## Estructura principal
 

@@ -2,7 +2,16 @@
 
 ## Advertencia principal
 
-No ejecutar limpieza automaticamente. Antes de borrar datos, confirmar que estas dentro del proyecto Supabase correcto y crear un backup.
+Este documento describe operaciones destructivas. No es una rutina diaria ni debe ejecutarse por costumbre.
+
+Antes de cualquier limpieza:
+
+- Confirmar por escrito que se trabajara en el proyecto Supabase correcto.
+- Confirmar URL del proyecto, nombre del entorno y responsable.
+- Crear backup y verificar que el backup termino correctamente.
+- Obtener aprobacion explicita del responsable del cliente o del lider tecnico.
+- Hacer primero la prueba en staging.
+- No ejecutar si el sistema ya tiene operacion real sin una ventana aprobada.
 
 ## Que NO borrar
 
@@ -32,9 +41,18 @@ Limpiar primero tablas transaccionales y luego datos maestros opcionales.
 14. `product_categories` si las categorias demo no se usaran
 15. `units_of_measure` si las unidades demo no se usaran
 
-## SQL base para limpiar transacciones
+## SQL de referencia para limpiar transacciones
 
-Ejecutar solo despues de backup y aprobacion.
+No copiar y ejecutar sin revision. Este bloque es una referencia tecnica para staging o para una limpieza aprobada antes de la salida a produccion.
+
+Checklist obligatorio antes de ejecutar:
+
+- [ ] Estoy en el proyecto Supabase correcto.
+- [ ] La URL del proyecto coincide con el entorno objetivo.
+- [ ] El entorno no contiene operacion real que deba conservarse.
+- [ ] Hay backup confirmado y descargable.
+- [ ] Existe aprobacion explicita para ejecutar SQL destructivo.
+- [ ] Otra persona reviso el SQL y el entorno.
 
 ```sql
 begin;
@@ -59,7 +77,7 @@ commit;
 
 ## SQL opcional para limpiar datos maestros
 
-Usar solo si se cargara todo desde cero.
+Usar solo si se cargara todo desde cero y el cliente aprobo borrar catalogos, clientes y proveedores. No ejecutar en una operacion real sin validacion completa.
 
 ```sql
 begin;
@@ -93,3 +111,6 @@ where role <> 'administrador'
 - Confirmar que no hay ventas, compras, pagos ni movimientos historicos.
 - Registrar un movimiento de stock inicial de prueba y revertirlo solo en entorno de prueba.
 
+## Regla de produccion
+
+En produccion real, preferir migraciones controladas y desactivacion logica antes que `truncate`. Si ya existen ventas, compras, pagos o movimientos reales, detenerse y disenar un plan de migracion especifico.

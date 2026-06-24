@@ -98,7 +98,15 @@
 - Checklist de pruebas cliente
 - Configuracion productiva de Vercel, Supabase, dominio y backups
 
-## Fase 12 propuesta
+## Fase 12A
+
+- Endurecimiento de RLS para perfiles y tablas operativas criticas
+- Separacion de SQL productivo y seed demo
+- Migracion incremental segura para staging
+- Matriz de permisos por rol/tabla
+- Plan de pruebas de staging previo a produccion
+
+## Fase 12B propuesta
 
 - Reversion contable controlada de ventas y compras confirmadas
 - Auditoria avanzada con diffs antes/despues

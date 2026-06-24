@@ -32,6 +32,13 @@ Las acciones principales validan rol antes de mutar:
 
 `SUPABASE_SCHEMA.sql` habilita RLS en tablas operativas. Las politicas separan lectura y mutacion por rol.
 
+Fase 12A endurece esta regla:
+
+- `profiles` ya no permite update directo del propio usuario para evitar escalamiento de rol.
+- `inventory_movements`, `sales`, `purchases`, `payments` y `cash_movements` no aceptan mutaciones directas desde cliente.
+- Las mutaciones que afectan stock, caja o saldos deben pasar por RPCs validadas y Server Actions.
+- La matriz detallada vive en `MATRIZ_PERMISOS_FASE_12A.md`.
+
 Hallazgos de Fase 10:
 
 - Se agrego `audit_logs` con RLS.
@@ -52,3 +59,4 @@ Hallazgos de Fase 10:
 - Usar usuarios demo separados de usuarios reales.
 - Revisar RLS al agregar cualquier tabla nueva.
 - Habilitar logs/alertas de Supabase y Vercel para produccion.
+- Ejecutar `PLAN_PRUEBAS_STAGING_FASE_12A.md` antes de tocar produccion real.

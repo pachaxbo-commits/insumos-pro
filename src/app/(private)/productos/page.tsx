@@ -37,7 +37,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
       <PageHeader
         eyebrow="Catalogo"
         title="Productos, categorias y unidades"
-        description="Gestiona el catalogo base conectado a Supabase. El stock aqui es referencial hasta implementar movimientos de inventario."
+        description="Gestiona el catalogo base conectado a Supabase. El stock se actualiza mediante movimientos de inventario, compras y ventas confirmadas."
       />
       <ProductManagement {...data} filters={filters} canManage={canManage} />
     </div>

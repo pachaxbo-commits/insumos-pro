@@ -29,7 +29,8 @@ No subir `.env.local` al repositorio.
 ## Supabase
 
 - Proyecto correcto confirmado.
-- SQL `SUPABASE_SCHEMA.sql` aplicado.
+- SQL `SUPABASE_SCHEMA.sql` aplicado para proyecto limpio, o `SUPABASE_MIGRATION_FASE_12A_SECURITY.sql` aplicado en staging existente antes de produccion.
+- `SUPABASE_SEED_DEMO.sql` no aplicado en produccion real.
 - RLS habilitado en tablas operativas.
 - Usuario administrador real creado.
 - Backups revisados segun plan contratado.
@@ -42,6 +43,7 @@ Registrar fecha y responsable:
 | Fecha | Bloque SQL | Responsable | Observaciones |
 | --- | --- | --- | --- |
 | YYYY-MM-DD | SUPABASE_SCHEMA.sql completo | Nombre | Sin errores |
+| YYYY-MM-DD | SUPABASE_MIGRATION_FASE_12A_SECURITY.sql | Nombre | Validado en staging |
 
 ## Backups recomendados
 
@@ -80,4 +82,3 @@ Referencia operativa:
 - [ ] Datos reales cargados.
 - [ ] Exportaciones probadas.
 - [ ] Backup inicial creado.
-

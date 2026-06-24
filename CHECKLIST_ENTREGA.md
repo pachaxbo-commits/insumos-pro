@@ -4,6 +4,8 @@
 
 - [ ] Variables de entorno configuradas en Vercel.
 - [ ] `SUPABASE_SCHEMA.sql` ejecutado completo o con bloque Fase 10 aplicado.
+- [ ] `SUPABASE_MIGRATION_FASE_12A_SECURITY.sql` aplicado y probado en staging si la base ya existia.
+- [ ] `SUPABASE_SEED_DEMO.sql` no aplicado en produccion.
 - [ ] Usuario administrador creado.
 - [ ] Usuarios reales creados y roles validados.
 - [ ] Datos demo limpiados o separados del entorno productivo.
@@ -17,6 +19,7 @@
 
 - [ ] `.env.local` no esta en el repositorio.
 - [ ] RLS habilitado en tablas operativas.
+- [ ] RLS bloquea mutaciones directas en tablas operativas criticas.
 - [ ] Roles asignados correctamente.
 - [ ] Usuarios inactivos revisados.
 - [ ] Bitacora visible solo para administradores.
@@ -48,3 +51,6 @@
 - [ ] `CHECKLIST_PRUEBAS_CLIENTE.md`
 - [ ] `CONFIGURACION_PRODUCCION.md`
 - [ ] `NOTAS_FASE_11.md`
+- [ ] `MATRIZ_PERMISOS_FASE_12A.md`
+- [ ] `PLAN_PRUEBAS_STAGING_FASE_12A.md`
+- [ ] `NOTAS_FASE_12A.md`

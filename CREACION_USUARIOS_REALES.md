@@ -18,28 +18,30 @@
 
 ## Asignar rol
 
-El trigger crea el perfil por defecto. Ajustar el rol con SQL:
+El trigger crea el perfil por defecto. En staging/produccion, ajustar el rol con la RPC protegida ejecutada por un administrador:
 
 ```sql
-update public.profiles
-set full_name = 'Nombre Apellido',
-    role = 'ventas',
-    is_active = true,
-    updated_at = now()
-where id = 'UUID_DEL_USUARIO';
+select public.admin_update_profile(
+  'UUID_DEL_USUARIO',
+  'Nombre Apellido',
+  'ventas',
+  true
+);
 ```
 
 Cambiar `role` por `administrador`, `ventas`, `inventario` o `finanzas`.
 
 ## Desactivar usuario operativo
 
-No borrar perfiles historicos si ya tuvieron actividad. Desactivar:
+No borrar perfiles historicos si ya tuvieron actividad. Desactivar con administrador:
 
 ```sql
-update public.profiles
-set is_active = false,
-    updated_at = now()
-where id = 'UUID_DEL_USUARIO';
+select public.admin_update_profile(
+  'UUID_DEL_USUARIO',
+  'Nombre Apellido',
+  'ventas',
+  false
+);
 ```
 
 Tambien se recomienda deshabilitar o eliminar el usuario en Supabase Auth si ya no debe ingresar.
@@ -52,4 +54,3 @@ Tambien se recomienda deshabilitar o eliminar el usuario en Supabase Auth si ya 
 - Revocar accesos cuando una persona deje de operar.
 - Mantener al menos dos administradores reales.
 - Probar cada rol antes de entregar credenciales.
-

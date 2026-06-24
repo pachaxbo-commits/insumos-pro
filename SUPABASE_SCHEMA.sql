@@ -66,12 +66,8 @@ to authenticated
 using (auth.uid() = id);
 
 drop policy if exists "Users can update own profile" on public.profiles;
-create policy "Users can update own profile"
-on public.profiles
-for update
-to authenticated
-using (auth.uid() = id)
-with check (auth.uid() = id);
+-- Fase 12A: los usuarios autenticados no pueden actualizar su perfil desde cliente.
+-- Cambios de rol, activacion o datos administrativos deben hacerse con RPC/admin seguro.
 
 create extension if not exists pgcrypto;
 
@@ -317,139 +313,6 @@ with check (
   )
 );
 
-insert into public.product_categories (name, description, is_active)
-values
-  ('Verduras', 'Productos frescos por peso o unidad.', true),
-  ('Abarrotes', 'Insumos secos de alta rotacion.', true),
-  ('Condimentos', 'Especias, sazonadores y mezclas.', true),
-  ('Aceites', 'Aceites y grasas para cocina.', true)
-on conflict (name) do update
-set
-  description = excluded.description,
-  is_active = excluded.is_active;
-
-insert into public.units_of_measure (name, abbreviation, is_active)
-values
-  ('Kilogramo', 'kg', true),
-  ('Unidad', 'unidad', true),
-  ('Caja', 'caja', true),
-  ('Bolsa', 'bolsa', true),
-  ('Paquete', 'paquete', true),
-  ('Litro', 'litro', true)
-on conflict (name) do update
-set
-  abbreviation = excluded.abbreviation,
-  is_active = excluded.is_active;
-
-insert into public.products (
-  name,
-  sku,
-  category_id,
-  unit_id,
-  stock_current,
-  stock_min,
-  purchase_price,
-  sale_price,
-  supplier_name,
-  is_active
-)
-values
-  (
-    'Tomate perita',
-    'VER-TOM-001',
-    (select id from public.product_categories where name = 'Verduras'),
-    (select id from public.units_of_measure where abbreviation = 'kg'),
-    120,
-    40,
-    4.50,
-    6.50,
-    'Proveedor demo verduras',
-    true
-  ),
-  (
-    'Papa holandesa',
-    'VER-PAP-001',
-    (select id from public.product_categories where name = 'Verduras'),
-    (select id from public.units_of_measure where abbreviation = 'kg'),
-    85,
-    60,
-    3.20,
-    4.80,
-    'Proveedor demo verduras',
-    true
-  ),
-  (
-    'Cebolla roja',
-    'VER-CEB-001',
-    (select id from public.product_categories where name = 'Verduras'),
-    (select id from public.units_of_measure where abbreviation = 'kg'),
-    38,
-    60,
-    2.90,
-    4.20,
-    'Proveedor demo verduras',
-    true
-  ),
-  (
-    'Locoto fresco',
-    'VER-LOC-001',
-    (select id from public.product_categories where name = 'Verduras'),
-    (select id from public.units_of_measure where abbreviation = 'kg'),
-    0,
-    25,
-    8.00,
-    12.00,
-    'Proveedor demo verduras',
-    true
-  ),
-  (
-    'Arroz premium 50 kg',
-    'ABA-ARR-050',
-    (select id from public.product_categories where name = 'Abarrotes'),
-    (select id from public.units_of_measure where abbreviation = 'bolsa'),
-    42,
-    15,
-    320.00,
-    390.00,
-    'Proveedor demo abarrotes',
-    true
-  ),
-  (
-    'Aceite vegetal 5 L',
-    'ACE-VEG-005',
-    (select id from public.product_categories where name = 'Aceites'),
-    (select id from public.units_of_measure where abbreviation = 'litro'),
-    18,
-    20,
-    42.00,
-    58.00,
-    'Proveedor demo aceites',
-    true
-  ),
-  (
-    'Condimento mixto',
-    'CON-MIX-001',
-    (select id from public.product_categories where name = 'Condimentos'),
-    (select id from public.units_of_measure where abbreviation = 'paquete'),
-    64,
-    18,
-    9.50,
-    14.00,
-    'Proveedor demo condimentos',
-    true
-  )
-on conflict (sku) do update
-set
-  name = excluded.name,
-  category_id = excluded.category_id,
-  unit_id = excluded.unit_id,
-  stock_current = excluded.stock_current,
-  stock_min = excluded.stock_min,
-  purchase_price = excluded.purchase_price,
-  sale_price = excluded.sale_price,
-  supplier_name = excluded.supplier_name,
-  is_active = excluded.is_active;
-
 create table if not exists public.inventory_movements (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.products (id) on delete restrict,
@@ -498,19 +361,8 @@ using (
 );
 
 drop policy if exists "Inventory roles can insert inventory movements" on public.inventory_movements;
-create policy "Inventory roles can insert inventory movements"
-on public.inventory_movements
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'inventario')
-  )
-);
+-- Fase 12A: no se permiten inserts directos desde cliente.
+-- Usar public.register_inventory_movement(...) o RPCs de compras/ventas.
 
 create or replace function public.register_inventory_movement(
   p_product_id uuid,
@@ -765,43 +617,12 @@ using (
 );
 
 drop policy if exists "Inventory roles can insert purchases" on public.purchases;
-create policy "Inventory roles can insert purchases"
-on public.purchases
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'inventario')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de compras.
+-- Usar public.create_purchase_draft(...).
 
 drop policy if exists "Inventory roles can update purchases" on public.purchases;
-create policy "Inventory roles can update purchases"
-on public.purchases
-for update
-to authenticated
-using (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'inventario')
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'inventario')
-  )
-);
+-- Fase 12A: no se permiten updates directos de compras.
+-- Usar public.confirm_purchase(...) o public.cancel_purchase_draft(...).
 
 drop policy if exists "Allowed roles can view purchase items" on public.purchase_items;
 create policy "Allowed roles can view purchase items"
@@ -819,19 +640,8 @@ using (
 );
 
 drop policy if exists "Inventory roles can insert purchase items" on public.purchase_items;
-create policy "Inventory roles can insert purchase items"
-on public.purchase_items
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'inventario')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de items de compra.
+-- Usar public.create_purchase_draft(...).
 
 create or replace function public.create_purchase_draft(
   p_supplier_id uuid,
@@ -1081,19 +891,6 @@ grant execute on function public.confirm_purchase(uuid) to authenticated;
 revoke all on function public.cancel_purchase_draft(uuid) from public;
 grant execute on function public.cancel_purchase_draft(uuid) to authenticated;
 
-insert into public.suppliers (name, contact_name, phone, address, notes, is_active)
-values
-  ('Agricola Don Pepe', 'Jose Perez', '700-10001', 'Mercado mayorista demo', 'Proveedor demo de verduras.', true),
-  ('Distribuidora El Sol', 'Carla Rojas', '700-10002', 'Zona industrial demo', 'Proveedor demo de aceites y abarrotes.', true),
-  ('Sabores del Valle', 'Mario Vargas', '700-10003', 'Av. Comercial demo', 'Proveedor demo de condimentos.', true)
-on conflict (name) do update
-set
-  contact_name = excluded.contact_name,
-  phone = excluded.phone,
-  address = excluded.address,
-  notes = excluded.notes,
-  is_active = excluded.is_active;
-
 create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -1266,43 +1063,12 @@ using (
 );
 
 drop policy if exists "Sales roles can insert sales" on public.sales;
-create policy "Sales roles can insert sales"
-on public.sales
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'ventas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de ventas.
+-- Usar public.create_sale_draft(...).
 
 drop policy if exists "Sales roles can update sales" on public.sales;
-create policy "Sales roles can update sales"
-on public.sales
-for update
-to authenticated
-using (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'ventas')
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'ventas')
-  )
-);
+-- Fase 12A: no se permiten updates directos de ventas.
+-- Usar public.confirm_sale(...) o public.cancel_sale_draft(...).
 
 drop policy if exists "Allowed roles can view sale items" on public.sale_items;
 create policy "Allowed roles can view sale items"
@@ -1320,19 +1086,8 @@ using (
 );
 
 drop policy if exists "Sales roles can insert sale items" on public.sale_items;
-create policy "Sales roles can insert sale items"
-on public.sale_items
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'ventas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de items de venta.
+-- Usar public.create_sale_draft(...).
 
 drop policy if exists "Allowed roles can view accounts receivable" on public.accounts_receivable;
 create policy "Allowed roles can view accounts receivable"
@@ -1350,19 +1105,8 @@ using (
 );
 
 drop policy if exists "Sales roles can insert accounts receivable" on public.accounts_receivable;
-create policy "Sales roles can insert accounts receivable"
-on public.accounts_receivable
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'ventas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de CxC desde cliente.
+-- La CxC se crea al confirmar venta a credito o mediante migracion controlada.
 
 create or replace function public.create_sale_draft(
   p_customer_id uuid,
@@ -1697,34 +1441,6 @@ grant execute on function public.confirm_sale(uuid) to authenticated;
 revoke all on function public.cancel_sale_draft(uuid) from public;
 grant execute on function public.cancel_sale_draft(uuid) to authenticated;
 
-insert into public.customers (
-  name,
-  business_name,
-  nit,
-  phone,
-  email,
-  address,
-  customer_type,
-  credit_limit,
-  current_balance,
-  is_active
-)
-values
-  ('Restaurante El Buen Sabor', 'El Buen Sabor SRL', '10203040', '700-20001', 'compras@buensabor.demo', 'Zona central demo', 'credito', 12000, 0, true),
-  ('Pollos Don Raul', 'Don Raul Gastronomia', '20406080', '700-20002', 'pedidos@donraul.demo', 'Av. Comercial demo', 'contado', 0, 0, true),
-  ('Hotel Valle Verde', 'Valle Verde Hoteles', '30102030', '700-20003', 'abastecimiento@valleverde.demo', 'Zona hotelera demo', 'credito', 25000, 0, true),
-  ('Mercado Express Norte', 'Mercado Express Norte', '40908070', '700-20004', null, 'Sucursal norte demo', 'contado', 0, 0, true)
-on conflict (name) do update
-set
-  business_name = excluded.business_name,
-  nit = excluded.nit,
-  phone = excluded.phone,
-  email = excluded.email,
-  address = excluded.address,
-  customer_type = excluded.customer_type,
-  credit_limit = excluded.credit_limit,
-  is_active = excluded.is_active;
-
 alter table public.accounts_receivable
 add column if not exists paid_amount numeric(14, 2) not null default 0,
 add column if not exists due_date date,
@@ -1858,40 +1574,12 @@ using (
 );
 
 drop policy if exists "Finance roles can update accounts receivable" on public.accounts_receivable;
-create policy "Finance roles can update accounts receivable"
-on public.accounts_receivable
-for update
-to authenticated
-using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-)
-with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-);
+-- Fase 12A: no se permiten updates directos de CxC.
+-- Usar public.register_customer_payment(...).
 
 drop policy if exists "Finance roles can insert accounts receivable" on public.accounts_receivable;
-create policy "Finance roles can insert accounts receivable"
-on public.accounts_receivable
-for insert
-to authenticated
-with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas', 'ventas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de CxC desde cliente.
+-- La CxC se crea al confirmar venta a credito o mediante migracion controlada.
 
 drop policy if exists "Finance roles can view accounts payable" on public.accounts_payable;
 create policy "Finance roles can view accounts payable"
@@ -1908,26 +1596,8 @@ using (
 );
 
 drop policy if exists "Finance roles can mutate accounts payable" on public.accounts_payable;
-create policy "Finance roles can mutate accounts payable"
-on public.accounts_payable
-for all
-to authenticated
-using (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-)
-with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-);
+-- Fase 12A: no se permiten mutaciones directas de CxP.
+-- La CxP se crea al confirmar compra pendiente/parcial y se paga por RPC.
 
 drop policy if exists "Finance roles can view payments" on public.payments;
 create policy "Finance roles can view payments"
@@ -1944,18 +1614,8 @@ using (
 );
 
 drop policy if exists "Finance roles can insert payments" on public.payments;
-create policy "Finance roles can insert payments"
-on public.payments
-for insert
-to authenticated
-with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de pagos.
+-- Usar RPCs financieras validadas.
 
 drop policy if exists "Finance roles can view cash movements" on public.cash_movements;
 create policy "Finance roles can view cash movements"
@@ -1972,18 +1632,8 @@ using (
 );
 
 drop policy if exists "Finance roles can insert cash movements" on public.cash_movements;
-create policy "Finance roles can insert cash movements"
-on public.cash_movements
-for insert
-to authenticated
-with check (
-  exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid()
-      and p.is_active = true
-      and p.role in ('administrador', 'finanzas')
-  )
-);
+-- Fase 12A: no se permiten inserts directos de caja.
+-- Usar RPCs financieras validadas o confirmaciones de venta/compra.
 
 create or replace function public.get_finance_status(
   p_balance numeric,
@@ -2744,6 +2394,49 @@ $$;
 
 revoke all on function public.current_user_role() from public;
 grant execute on function public.current_user_role() to authenticated;
+
+create or replace function public.admin_update_profile(
+  p_profile_id uuid,
+  p_full_name text,
+  p_role text,
+  p_is_active boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor_role text;
+begin
+  v_actor_role := public.current_user_role();
+
+  if v_actor_role <> 'administrador' then
+    raise exception 'Solo un administrador puede modificar perfiles.';
+  end if;
+
+  if p_profile_id is null then
+    raise exception 'Perfil invalido.';
+  end if;
+
+  if p_role not in ('administrador', 'ventas', 'inventario', 'finanzas') then
+    raise exception 'Rol invalido.';
+  end if;
+
+  update public.profiles
+  set full_name = nullif(trim(coalesce(p_full_name, '')), ''),
+      role = p_role,
+      is_active = coalesce(p_is_active, false)
+  where id = p_profile_id;
+
+  if not found then
+    raise exception 'Perfil no encontrado.';
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_update_profile(uuid, text, text, boolean) from public;
+grant execute on function public.admin_update_profile(uuid, text, text, boolean) to authenticated;
 
 drop policy if exists "Admins can view profiles" on public.profiles;
 create policy "Admins can view profiles"
