@@ -227,7 +227,7 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
 
   const productsQuery = supabase
     .from("products")
-    .select("id, name, sku, category_id, unit_id, stock_current, stock_min, is_active, requires_classification, is_sellable, is_catalog_visible, is_qb_loss_product, created_at, updated_at")
+    .select("id, name, sku, category_id, unit_id, stock_current, stock_min, is_active, requires_classification, is_sellable, is_qb_loss_product, created_at, updated_at")
     .order("name", { ascending: true });
 
   const [
@@ -287,7 +287,7 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
 
   let ordersQuery = supabase
     .from("qb_orders")
-    .select("id, public_reference, customer_account_id, location_id, status, submitted_at, delivered_at, customer_snapshot, location_snapshot, customer_notes, preparation_started_by, preparation_started_at, prepared_by, prepared_at, delivered_by")
+    .select("id, public_reference, customer_account_id, customer_location_id, status, submitted_at, delivered_at, customer_snapshot, location_snapshot, customer_notes, preparation_started_by, preparation_started_at, prepared_by, prepared_at, delivered_by")
     .order("submitted_at", { ascending: false })
     .limit(700);
   ordersQuery = applyDateRange(ordersQuery, "submitted_at", filters);
@@ -339,7 +339,7 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     merchandiseReceiptIds.length
       ? supabase
           .from("qb_merchandise_receipt_classification_results")
-          .select("id, line_id, result_type, output_product_id, output_label, base_quantity, assigned_cost")
+          .select("id, line_id, output_type, output_product_id, label, base_quantity, assigned_cost")
           .limit(1500)
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
@@ -359,7 +359,7 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     orderIds.length
       ? supabase
           .from("qb_order_delivery_movements")
-          .select("id, order_id, preparation_id, preparation_item_id, product_id, delivered_base_quantity, base_unit_symbol, delivered_by, delivered_at")
+          .select("id, order_id, preparation_id, preparation_item_id, product_id, delivered_base_quantity, delivered_by, delivered_at")
           .in("order_id", orderIds)
           .limit(2500)
       : Promise.resolve({ data: [], error: null }),
@@ -410,6 +410,16 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
 
   if (preparationItemsResult.error) return null;
 
+  const preparationItems = (preparationItemsResult.data ?? []) as Row[];
+  const preparationItemsById = firstById(preparationItems);
+  const deliveryMovements = ((deliveryMovementsResult.data ?? []) as Row[]).map((movement) => ({
+    ...movement,
+    base_unit_symbol: str(
+      preparationItemsById.get(getId(movement.preparation_item_id))?.actual_base_unit_symbol,
+      "N/A",
+    ),
+  }));
+
   return {
     products: (productsResult.data ?? []) as Row[],
     categories: (categoriesResult.data ?? []) as Row[],
@@ -425,8 +435,8 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     orders: (ordersResult.data ?? []) as Row[],
     orderItems: (orderItemsResult.data ?? []) as Row[],
     preparations: (preparationsResult.data ?? []) as Row[],
-    preparationItems: (preparationItemsResult.data ?? []) as Row[],
-    deliveryMovements: (deliveryMovementsResult.data ?? []) as Row[],
+    preparationItems,
+    deliveryMovements,
     receipts: (receiptsResult.data ?? []) as Row[],
     receiptOrders: (receiptOrdersResult.data ?? []) as Row[],
     receiptLines: (receiptLinesResult.data ?? []) as Row[],
@@ -498,8 +508,8 @@ function buildMerchandiseReceipts(bundle: Bundle, filters: QbReportFilters): QbM
       const firstLine = lines[0];
       const lineResults = lines.flatMap((line) => resultsByLine.get(getId(line.id)) ?? []);
       const resultProducts = lineResults
-        .filter((row) => str(row.result_type) === "product")
-        .map((row) => str(row.output_label, str(products.get(getId(row.output_product_id))?.name, "Resultado")))
+        .filter((row) => str(row.output_type) === "product")
+        .map((row) => str(row.label, str(products.get(getId(row.output_product_id))?.name, "Resultado")))
         .join(", ");
 
       return {
@@ -515,7 +525,7 @@ function buildMerchandiseReceipts(bundle: Bundle, filters: QbReportFilters): QbM
         isClassified: lineResults.length > 0,
         resultProducts: resultProducts || "Sin clasificacion",
         lossQuantity: lineResults
-          .filter((row) => str(row.result_type) === "loss")
+          .filter((row) => str(row.output_type) === "loss")
           .reduce((sum, row) => sum + num(row.base_quantity), 0),
         status: str(receipt.status, "sin_estado"),
         confirmedBy: userName(profiles, receipt.confirmed_by),
@@ -528,7 +538,7 @@ function buildMerchandiseReceipts(bundle: Bundle, filters: QbReportFilters): QbM
 }
 
 function locationLabel(order: Row, locations: Map<string, Row>) {
-  const location = locations.get(getId(order.location_id));
+  const location = locations.get(getId(order.customer_location_id));
   const snapshot = order.location_snapshot as Row | null;
   return str(location?.label, str(snapshot?.label, str(snapshot?.address, "Sin ubicacion")));
 }

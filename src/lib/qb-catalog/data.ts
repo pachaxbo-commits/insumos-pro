@@ -73,7 +73,6 @@ type OrderItemRow = {
   source_label: string;
   requested_quantity: number | string;
   customer_notes: string | null;
-  product?: { id: string; name: string } | { id: string; name: string }[] | null;
 };
 
 function numberOr(value: number | string | null | undefined, fallback: number) {
@@ -95,11 +94,6 @@ function sanitizeImageUrl(value: string | null) {
 function locationSnapshotText(snapshot: Record<string, unknown> | null, key: string) {
   const value = snapshot?.[key];
   return typeof value === "string" && value.trim() ? value : null;
-}
-
-function getProductName(item: OrderItemRow) {
-  const product = Array.isArray(item.product) ? item.product[0] : item.product;
-  return product?.name ?? "Producto QB";
 }
 
 function buildCatalog(rows: CatalogRow[], frequentProducts: QbFrequentProduct[] = []) {
@@ -256,9 +250,14 @@ async function getQbCustomerOrders(
   const orderIds = orders.map((order) => order.id);
   if (!orderIds.length) return [];
 
+  const { data: catalogData } = await supabase.rpc("get_qb_public_catalog");
+  const catalogNames = new Map(
+    ((catalogData ?? []) as CatalogRow[]).map((row) => [row.product_id, row.product_name]),
+  );
+
   const { data: itemsData, error: itemsError } = await supabase
     .from("qb_order_items")
-    .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, customer_notes, product:products(id, name)")
+    .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, customer_notes")
     .in("order_id", orderIds)
     .order("sort_order", { ascending: true });
 
@@ -282,7 +281,7 @@ async function getQbCustomerOrders(
     items: (itemsByOrder.get(order.id) ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,
-      productName: getProductName(item),
+      productName: catalogNames.get(item.product_id) ?? "Producto QB",
       allowedUnitId: item.allowed_unit_id,
       sourceLabel: item.source_label,
       requestedQuantity: Number(item.requested_quantity) || 0,

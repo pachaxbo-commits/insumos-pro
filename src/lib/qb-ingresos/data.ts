@@ -64,12 +64,10 @@ function normalizeProduct(product: ProductQueryRow): ProductWithRelations {
     ...product,
     requires_classification: Boolean(product.requires_classification),
     is_sellable: product.is_sellable !== false,
-    is_catalog_visible: Boolean(product.is_catalog_visible),
     catalog_description: product.catalog_description ?? null,
     catalog_sort_order: Number(product.catalog_sort_order ?? 0),
     catalog_min_quantity: Number(product.catalog_min_quantity ?? 1),
     catalog_quantity_step: Number(product.catalog_quantity_step ?? 1),
-    catalog_availability: product.catalog_availability ?? "consultar",
     category,
     unit,
     margin_percentage: calculateMarginPercentage(
@@ -125,7 +123,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
   }
 
   const productSelect =
-    "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, requires_classification, is_sellable, is_catalog_visible, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, catalog_availability, is_active, created_at, updated_at, category:product_categories(id, name, description, is_catalog_visible, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)";
+    "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, requires_classification, is_sellable, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, is_active, created_at, updated_at, category:product_categories(id, name, description, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)";
 
   const receiptsResult = await supabase
     .from("qb_merchandise_receipts")
@@ -134,7 +132,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
        created_by_profile:profiles!qb_merchandise_receipts_created_by_fkey(id, full_name, role),
        lines:qb_merchandise_receipt_lines(id, receipt_id, product_id, allowed_unit_id, source_kind, source_unit_id, product_presentation_id, source_label, source_quantity, base_unit_id, base_unit_symbol, base_quantity, conversion_factor_to_base, conversion_snapshot_id, unit_cost, total_cost, requires_classification, notes, created_by, updated_by, created_at, updated_at,
          product:products(${productSelect}),
-         classification_results:qb_merchandise_receipt_classification_results(id, line_id, configured_output_id, output_type, output_product_id, label, base_quantity, assigned_cost, notes, sort_order, created_by, updated_by, created_at, updated_at, output_product:products!qb_merchandise_receipt_classification_results_output_product_id_fkey(${productSelect})),
+         classification_results:qb_merchandise_receipt_classification_results(id, line_id, configured_output_id, output_type, output_product_id, label, base_quantity, assigned_cost, notes, sort_order, created_by, updated_by, created_at, updated_at, output_product:products!qb_merchandise_receipt_classification_re_output_product_id_fkey(${productSelect})),
          movements:qb_merchandise_receipt_movements(id, receipt_id, line_id, classification_result_id, inventory_movement_id, product_id, movement_type, movement_role, movement_quantity, created_at, product:products(${productSelect}))
        )`,
     )

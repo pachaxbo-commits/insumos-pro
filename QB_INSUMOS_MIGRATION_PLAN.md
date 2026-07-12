@@ -350,3 +350,68 @@ Razon: varias migraciones alteran las mismas tablas o redefinen funciones (`conf
 10. Probar migraciones en PostgreSQL local o Supabase local aislado.
 11. Preparar Staging con backup y rollback.
 12. Retirar legado solo despues de validacion, respaldo y aprobacion explicita.
+
+### QB-9.2 - Actor de snapshots y reanudacion E2E local
+
+Objetivo: separar la identidad Auth del perfil interno sin convertir clientes en roles internos.
+
+Implementado localmente:
+
+- `qb_conversion_snapshots.created_by` mantiene semantica de perfil interno.
+- `created_by_auth_user_id` referencia `auth.users(id) ON DELETE SET NULL`.
+- Un trigger de insercion normaliza ambos campos para QB-4, QB-5 y QB-6.
+- QB-7 conserva referencias y no crea snapshots nuevos.
+- El E2E funcional completo pasa con 10 cargas, pedido externo, entrega de 1.5 arrobas y recibo 5/7/5/7.
+
+Bloqueos antes de Staging:
+
+- declarar grants SQL compatibles con las politicas RLS existentes;
+- corregir nombres de columnas en `src/lib/reports/data.ts`;
+- repetir `db reset`, E2E, lint, TypeScript y build despues de esas correcciones.
+
+### QB-9.3 - Grants SQL y referencias de reportes
+
+Implementado:
+
+- migracion `SUPABASE_MIGRATION_FASE_23_QB9_3_GRANTS_REPORT_FIX.sql`;
+- revocacion de defaults peligrosos en tablas QB;
+- grants minimos compatibles con RLS;
+- mutaciones criticas conservadas en RPC;
+- aislamiento de parametrizacion y snapshots para clientes;
+- correccion `customer_location_id`, `output_type` y `label`;
+- E2E completo sin grants temporales.
+
+Bloqueo siguiente:
+
+- reconstruir un baseline local canonico que incluya todas las columnas base usadas por productos, ingresos y reportes;
+- repetir consultas reales y CSV antes de preparar Staging.
+
+### QB-9.4 - Baseline de producto y acceso seguro
+
+Implementado:
+
+- Fase 24 aditiva con `sku`, `stock_min`, `supplier_name`, `audit_logs.ip_address` y `user_agent`;
+- eliminacion de dependencias activas de visibilidad legacy;
+- visibilidad QB unica en `qb_product_unit_settings`;
+- RLS interno para `products`, categorias, unidades y lectura de movimientos;
+- portal cliente sin join directo a `products`;
+- correcciones runtime de ingresos y reportes;
+- reset, E2E, rutas por rol, reportes y CSV real aprobados.
+
+Siguiente paso: preparar Staging sin aplicar cambios, con backup, inventario de versiones y diff del esquema real. Revisar antes el uso administrativo de `service_role` sobre tablas posteriores al baseline.
+
+### QB-9.5 - Service role y preflight de Staging
+
+Implementado:
+
+- Fase 25 con contrato minimo server-only;
+- Admin Auth API separado de grants de tablas public;
+- perfiles `SELECT/INSERT`, auditoria `INSERT`, cuentas cliente `INSERT`;
+- revocacion de acceso service role a productos, stock, tablas QB y legacy;
+- fixture E2E Auth compatible con Admin API;
+- reset y E2E sobre 14 migraciones;
+- prueba local de operaciones permitidas y denegadas;
+- scripts de inventario de solo lectura;
+- esquema esperado, runbook de backup y checklist de autorizaciones.
+
+Siguiente paso: solicitar autorizacion exclusiva para inventario de solo lectura de Staging. No solicitar aun aplicacion de migraciones ni deploy.

@@ -143,3 +143,36 @@ Opcion controlada si no hay datos reales afectados:
 - Resultado de conteos de tablas QB.
 - Resultado del checklist manual.
 - Decision final: aprobado, aprobado con riesgos o rechazado.
+
+## Precondicion QB-9.4 satisfecha
+
+La base local aislada aprobo Fase 24, E2E completo, aislamiento de precios, reportes, CSV y rutas por rol. Antes de ejecutar este plan:
+
+1. Comparar el esquema real de Staging con la matriz de `QB_INSUMOS_QB9_4_BASELINE_PRODUCT_ACCESS_FIX.md`.
+2. Confirmar si `sku`, `stock_min`, `supplier_name`, `ip_address` y `user_agent` ya existen.
+3. Confirmar que no se aplicaran columnas de visibilidad 15B como fuente QB.
+4. Auditar el uso requerido de `service_role` sin ampliar privilegios de clientes.
+5. Hacer backup verificable antes de cualquier migracion.
+
+La aprobacion local autoriza preparar el procedimiento; no autoriza conectar ni aplicar cambios en Staging.
+
+## Preflight QB-9.5
+
+Artefactos preparados:
+
+- inventario de esquema, migraciones, funciones, RLS, grants, indices, constraints, conteos y legacy;
+- esquema esperado posterior a Fase 25;
+- runbook de backup y restauracion;
+- checklist de autorizaciones independientes.
+
+Estado: listo para solicitar acceso de solo lectura. No se conoce todavia el estado real de Staging.
+
+Secuencia obligatoria:
+
+1. Autorizar solo lectura.
+2. Confirmar host/project ref y distinguir Produccion.
+3. Ejecutar inventario aprobado.
+4. Emitir diff.
+5. Autorizar backup.
+6. Preparar compatibilidad local si corresponde.
+7. Solicitar otra autorizacion antes de cualquier escritura.

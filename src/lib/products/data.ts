@@ -171,7 +171,7 @@ export async function getProductsCatalogData(
     supabase
       .from("product_categories")
       .select(
-        "id, name, description, is_catalog_visible, catalog_slug, catalog_sort_order, is_active, created_at, updated_at",
+        "id, name, description, catalog_slug, catalog_sort_order, is_active, created_at, updated_at",
       )
       .order("name", { ascending: true }),
     supabase
@@ -183,7 +183,7 @@ export async function getProductsCatalogData(
   let productsQuery = supabase
     .from("products")
     .select(
-      "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, requires_classification, is_sellable, is_catalog_visible, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, catalog_availability, is_active, created_at, updated_at, category:product_categories(id, name, description, is_catalog_visible, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
+      "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, requires_classification, is_sellable, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, is_active, created_at, updated_at, category:product_categories(id, name, description, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
     )
     .order("created_at", { ascending: false });
 
@@ -231,12 +231,10 @@ export async function getProductsCatalogData(
     ...product,
     requires_classification: Boolean(product.requires_classification),
     is_sellable: product.is_sellable !== false,
-    is_catalog_visible: Boolean(product.is_catalog_visible),
     catalog_description: product.catalog_description ?? null,
     catalog_sort_order: Number(product.catalog_sort_order ?? 0),
     catalog_min_quantity: Number(product.catalog_min_quantity ?? 1),
     catalog_quantity_step: Number(product.catalog_quantity_step ?? 1),
-    catalog_availability: product.catalog_availability ?? "consultar",
     category: Array.isArray(product.category) ? product.category[0] ?? null : product.category,
     unit: Array.isArray(product.unit) ? product.unit[0] ?? null : product.unit,
     margin_percentage: calculateMarginPercentage(

@@ -8,7 +8,6 @@ import {
   Boxes,
   Edit3,
   Eye,
-  EyeOff,
   PackagePlus,
   Plus,
   Ruler,
@@ -352,17 +351,6 @@ function ProductForm({
           </NativeSelect>
         </div>
 
-        <div className="space-y-2">
-          <Label>Catalogo publico</Label>
-          <NativeSelect
-            name="is_catalog_visible"
-            defaultValue={String(product?.is_catalog_visible ?? false)}
-          >
-            <option value="false">Oculto</option>
-            <option value="true">Visible en /catalogo</option>
-          </NativeSelect>
-        </div>
-
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor={`${mode}-catalog-description`}>Descripcion publica</Label>
           <Textarea
@@ -373,18 +361,6 @@ function ProductForm({
             placeholder="Descripcion breve para el cliente, sin datos internos."
             className="min-h-24 rounded-xl"
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Disponibilidad publica</Label>
-          <NativeSelect
-            name="catalog_availability"
-            defaultValue={product?.catalog_availability ?? "consultar"}
-          >
-            <option value="disponible">Disponible</option>
-            <option value="consultar">Consultar</option>
-            <option value="agotado">Agotado</option>
-          </NativeSelect>
         </div>
 
         <div className="space-y-2">
@@ -475,18 +451,6 @@ function CatalogForm({
               defaultValue={(item as ProductCategory | undefined)?.description ?? ""}
               className="rounded-xl"
             />
-          </div>
-          <div className="space-y-2">
-            <Label>Catalogo publico</Label>
-            <NativeSelect
-              name="is_catalog_visible"
-              defaultValue={String(
-                (item as ProductCategory | undefined)?.is_catalog_visible ?? false,
-              )}
-            >
-              <option value="false">Oculta</option>
-              <option value="true">Visible</option>
-            </NativeSelect>
           </div>
           <div className="space-y-2">
             <Label>Slug publico</Label>
@@ -593,24 +557,6 @@ function CatalogList({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {type === "category" ? (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "rounded-full",
-                    (item as ProductCategory).is_catalog_visible
-                      ? "border-teal-200 bg-teal-50 text-teal-700"
-                      : "border-slate-200 bg-slate-50 text-slate-500",
-                  )}
-                >
-                  {(item as ProductCategory).is_catalog_visible ? (
-                    <Eye className="size-3" />
-                  ) : (
-                    <EyeOff className="size-3" />
-                  )}
-                  {(item as ProductCategory).is_catalog_visible ? "Publica" : "Oculta"}
-                </Badge>
-              ) : null}
               <StatusBadge active={item.is_active} />
               {canManage ? (
                 <Dialog>
@@ -668,8 +614,13 @@ export function ProductManagement({
 }: ProductManagementProps) {
   const activeProducts = products.filter((product) => product.is_active).length;
   const lowStock = products.filter((product) => product.stock_status !== "ok").length;
+  const qbVisibleProductIds = new Set(
+    qbProductUnitSettings
+      .filter((settings) => settings.is_qb_active && settings.is_visible_in_qb_catalog)
+      .map((settings) => settings.product_id),
+  );
   const publicProducts = products.filter(
-    (product) => product.is_active && product.is_catalog_visible,
+    (product) => product.is_active && qbVisibleProductIds.has(product.id),
   ).length;
   const qbConfiguredProductIds = new Set(
     qbProductUnitSettings.map((settings) => settings.product_id),
@@ -816,13 +767,13 @@ export function ProductManagement({
                       <div className="flex flex-wrap gap-1.5">
                         <StatusBadge active={product.is_active} />
                         <StockBadge product={product} />
-                        {product.is_catalog_visible ? (
+                        {qbVisibleProductIds.has(product.id) ? (
                           <Badge
                             variant="outline"
                             className="rounded-full border-teal-200 bg-teal-50 text-teal-700"
                           >
                             <Eye className="size-3" />
-                            Publico
+                            Catalogo QB
                           </Badge>
                         ) : null}
                         {product.is_sellable === false ? (

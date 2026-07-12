@@ -1,0 +1,2 @@
+-- QB-9.1 local seed placeholder.
+-- Test data is inserted by explicit local-only validation scripts.

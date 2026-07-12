@@ -6,11 +6,7 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/audit/log";
-import {
-  CATALOG_AVAILABILITIES,
-  QB_ALLOWED_UNIT_CONTEXTS,
-  QB_CLASSIFICATION_MODES,
-} from "@/types/products";
+import { QB_ALLOWED_UNIT_CONTEXTS, QB_CLASSIFICATION_MODES } from "@/types/products";
 
 type ActionState = {
   success: boolean;
@@ -74,8 +70,7 @@ const qbCodeSchema = z
   .min(1, "El codigo es obligatorio.")
   .regex(/^[a-z0-9_]+$/, "Usa solo minusculas, numeros y guion bajo.");
 
-const productSchema = z
-  .object({
+const productSchema = z.object({
     name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
     sku: optionalText,
     category_id: z.uuid("Selecciona una categoria."),
@@ -94,7 +89,6 @@ const productSchema = z
     image_url: optionalText,
     requires_classification: booleanField,
     is_sellable: booleanField,
-    is_catalog_visible: booleanField,
     catalog_description: z.preprocess(
       (value) => {
         if (typeof value !== "string") return null;
@@ -115,41 +109,12 @@ const productSchema = z
       .number()
       .finite("El incremento debe ser valido.")
       .positive("El incremento debe ser mayor a cero."),
-    catalog_availability: z.enum(CATALOG_AVAILABILITIES),
     is_active: booleanField,
-  })
-  .superRefine((product, context) => {
-    if (!product.is_catalog_visible) return;
-
-    if (product.requires_classification) {
-      context.addIssue({
-        code: "custom",
-        path: ["is_catalog_visible"],
-        message: "Un producto que requiere clasificacion no puede publicarse en el catalogo.",
-      });
-    }
-
-    if (!product.is_sellable) {
-      context.addIssue({
-        code: "custom",
-        path: ["is_catalog_visible"],
-        message: "Un producto solo de compra no puede publicarse en el catalogo.",
-      });
-    }
-
-    if (product.sale_price <= 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["sale_price"],
-        message: "Un producto publicado debe tener un precio de venta mayor a cero.",
-      });
-    }
   });
 
 const catalogSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
   description: optionalText,
-  is_catalog_visible: booleanField,
   catalog_slug: optionalText,
   catalog_sort_order: z.coerce
     .number()
@@ -342,13 +307,6 @@ function normalizeCatalogSlug(value: string) {
 function getCategoryPayload(category: z.infer<typeof catalogSchema>) {
   const catalogSlug = normalizeCatalogSlug(category.catalog_slug ?? category.name);
 
-  if (category.is_catalog_visible && !catalogSlug) {
-    return {
-      success: false as const,
-      message: "La categoria publica necesita un slug valido.",
-    };
-  }
-
   return {
     success: true as const,
     data: {
@@ -429,7 +387,6 @@ export async function createProductAction(
     metadata: {
       name: parsed.data.name,
       sku: parsed.data.sku,
-      is_catalog_visible: parsed.data.is_catalog_visible,
       is_sellable: parsed.data.is_sellable,
     },
   });
@@ -473,7 +430,6 @@ export async function updateProductAction(
     metadata: {
       name: parsed.data.name,
       sku: parsed.data.sku,
-      is_catalog_visible: parsed.data.is_catalog_visible,
       is_sellable: parsed.data.is_sellable,
     },
   });
@@ -531,8 +487,6 @@ export async function createCategoryAction(
 
   const payload = getCategoryPayload(parsed.data);
 
-  if (!payload.success) return { success: false, message: payload.message };
-
   const { error } = await access.supabase.from("product_categories").insert(payload.data);
 
   if (error) return { success: false, message: error.message };
@@ -564,8 +518,6 @@ export async function updateCategoryAction(
   }
 
   const payload = getCategoryPayload(parsed.data);
-
-  if (!payload.success) return { success: false, message: payload.message };
 
   const { error } = await access.supabase
     .from("product_categories")

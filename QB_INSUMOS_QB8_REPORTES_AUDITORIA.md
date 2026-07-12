@@ -110,3 +110,21 @@ No se modificaron Auth, roles reales ni RLS. La seguridad de base sigue dependie
 ## Siguiente fase recomendada
 
 QB-9: Limpieza final, migraciones canonicas, pruebas locales con PostgreSQL y preparacion de Staging.
+
+## Correccion QB-9.3
+
+Las consultas se alinearon al esquema QB canonico:
+
+- pedidos usan `customer_location_id`;
+- resultados de clasificacion usan `output_type` y `label`.
+
+Las tres referencias responden correctamente por REST local. La validacion integral de `/reportes` y CSV permanece pendiente porque el baseline local QB-9.1 no incluye otras columnas base preexistentes que este modulo consulta, comenzando por `products.sku`.
+
+## Validacion final QB-9.4
+
+- `/reportes` carga inventario, ingresos, pedidos/preparacion, pendientes, recibos, frecuentes y auditoria con datos E2E reales.
+- La entrega obtiene la unidad base desde `qb_order_preparation_items.actual_base_unit_symbol`, no desde una columna inexistente del movimiento.
+- Las clasificaciones usan `output_type` y `label`.
+- El CSV de inventario se genero desde la UI con 4 filas y sin datos financieros legacy.
+- Inventario no recibe exportacion de recibos; administrador conserva sus permisos definidos.
+- La auditoria en `/configuracion` carga con `ip_address` y `user_agent` del baseline activo.

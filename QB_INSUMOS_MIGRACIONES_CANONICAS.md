@@ -46,8 +46,10 @@ Ese baseline debe provenir de migraciones originales verificadas o backup contro
 | 18 | `SUPABASE_MIGRATION_FASE_19_QB5_CUSTOMER_CATALOG_ORDERS.sql` | QB-5 | Canonico QB | QB-3/customer_accounts | `update_qb_customer_profile`, `create_qb_catalog_order`, `get_qb_public_catalog` | Debe ir antes de QB-6; crea `qb_orders`. | Si. |
 | 19 | `SUPABASE_MIGRATION_FASE_20_QB6_ORDER_PREPARATION_DELIVERY.sql` | QB-6 | Canonico QB | QB-5/QB-4 | Redefine `get_qb_public_catalog`, crea preparacion/entrega RPCs | Debe ir despues de QB-5 para excluir merma/loss. | Si. |
 | 20 | `SUPABASE_MIGRATION_FASE_21_QB7_ACCUMULATED_RECEIPTS.sql` | QB-7 | Canonico QB | QB-6 | `qb_compound_unit_price`, `create_qb_receipt_draft`, `update_qb_receipt_draft`, `emit_qb_receipt`, `void_qb_receipt` | Debe ir despues de QB-6 por estados y entregas. | Si. |
-| 21 | Sin migracion | QB-8 | UI/consultas | QB-2 a QB-7 | No | Reportes fallan si tablas QB no existen. | No aplica. |
-| 22 | Sin migracion | QB-9 | Cierre tecnico | QB-8 | No | Documental; no altera DB. | No aplica. |
+| 21 | Sin migracion | QB-8 | UI/consultas | QB-2 a QB-7 | No | Reportes fallan si tablas QB no existen o si sus consultas no coinciden con el esquema. | No aplica. |
+| 22 | `SUPABASE_MIGRATION_FASE_22_QB9_2_SNAPSHOT_ACTOR_FIX.sql` | QB-9.2 | Canonico QB | QB-2/QB-5/QB-6 | `set_qb_conversion_snapshot_actor` | Debe ir despues de todos los creadores actuales de snapshots. | Solo despues de corregir grants/reportes y repetir local. |
+| 23 | `SUPABASE_MIGRATION_FASE_23_QB9_3_GRANTS_REPORT_FIX.sql` | QB-9.3 | Canonico QB | QB-2 a QB-9.2 | No | Debe ir despues de crear todos los objetos QB; fija grants minimos y endurece lectura. | Solo despues de completar baseline local. |
+| 24 | Sin migracion | QB-9 | Cierre tecnico | QB-8/QB-9.3 | No | Documental; no altera DB. | No aplica. |
 
 ## Migraciones que NO deben aplicarse ahora
 
@@ -69,7 +71,20 @@ QB-2 unidades/snapshots
 -> QB-6 preparacion, entrega y stock
 -> QB-7 recibos acumulativos
 -> QB-8 reportes de solo lectura
+-> QB-9.2 actor dual de snapshots
+-> QB-9.3 grants minimos y referencias QB-8
 ```
+
+## Hallazgos QB-9.2 pendientes
+
+- Las migraciones QB crean politicas RLS, pero no conceden los privilegios SQL operativos correspondientes a `authenticated`; en la base local `qb_orders` carece de `SELECT`, por lo que el portal no puede leer pedidos propios aunque la politica RLS sea correcta.
+- `src/lib/reports/data.ts` consulta `qb_orders.location_id`, pero el esquema define `customer_location_id`.
+- El mismo reporte consulta `result_type` y `output_label`, pero QB-4 define `output_type` y `label`.
+- Estos defectos deben corregirse mediante una migracion aditiva de grants y un bugfix QB-8 revisado antes de preparar Staging.
+
+## Resultado QB-9.3
+
+Fase 23 corrige los grants y las referencias `customer_location_id`, `output_type` y `label`. El E2E pasa sin grants temporales. Staging sigue bloqueado porque el baseline local vacio no incluye otras columnas base usadas por la aplicacion (`products.sku`, `stock_min`, `is_catalog_visible` y `product_categories.is_catalog_visible`).
 
 ## Plan para Staging
 
@@ -94,3 +109,36 @@ Staging solo se considera aprobado cuando:
 - recibo no mueve stock ni crea cobro;
 - reportes no mutan datos;
 - modulos legacy permanecen suspendidos.
+
+## Resultado QB-9.4
+
+Se agrega como migracion canonica numero 13:
+
+`20260712091300_qb9_4_baseline_product_access_fix.sql`
+
+La migracion:
+
+- agrega solo campos base verificados de producto y auditoria;
+- no agrega las columnas de visibilidad del catalogo legacy 15B;
+- restringe lectura de productos/categorias/unidades a roles internos mediante RLS;
+- mantiene el catalogo externo exclusivamente en `get_qb_public_catalog()`;
+- no concede mutacion directa de inventario ni toca modulos financieros legacy.
+
+El reset desde base vacia y el E2E completo pasaron. El set local queda listo para preparar el diff de Staging, sujeto a backup e inventario de migraciones aplicadas.
+
+## Resultado QB-9.5
+
+Se agrega como migracion canonica numero 14:
+
+`20260712091400_qb9_5_service_role_contract.sql`
+
+Contrato final:
+
+- `profiles`: service role `SELECT, INSERT`;
+- `audit_logs`: service role `INSERT`;
+- `customer_accounts`: service role `INSERT`;
+- ningun privilegio de tabla service role fuera de esos objetos;
+- RPC legacy de vinculacion publica sin `EXECUTE`;
+- RLS y grants de `anon/authenticated` sin cambios.
+
+`db reset`, E2E y prueba REST/Admin Auth pasaron localmente. El orden canonico queda preparado para comparacion, no para aplicacion ciega sobre Staging.

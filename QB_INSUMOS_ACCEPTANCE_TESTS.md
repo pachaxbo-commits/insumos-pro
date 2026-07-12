@@ -668,6 +668,9 @@ Dado precio base 100 y factores 5%, 7%, 5%, 7%, cuando se recalcula el recibo, e
 Criterios:
 
 - Formula: `100 * 1.05 * 1.07 * 1.05 * 1.07`.
+- Resultado matematico sin redondeo: `126.225225`.
+- Precio unitario SQL a escala 4: `126.2252`; presentado a 2 decimales: `126.23`.
+- El total de linea multiplica cantidad por el precio unitario a escala 4 y redondea al final a 2 decimales.
 - No se suman porcentajes de forma lineal.
 - El total se recalcula en backend.
 
@@ -901,3 +904,71 @@ Dado QB-9, cuando se ejecutan busquedas estaticas, entonces los modulos QB no in
 ### AT-QB9-008 - Verificaciones locales obligatorias
 
 Dado QB-9, cuando se ejecuta cierre local, entonces `npm run lint`, `npx tsc --noEmit` y `npm run build` deben pasar antes de considerar la fase cerrada localmente.
+
+### AT-QB9-009 - Actor dual de snapshot
+
+Dado un snapshot creado por un actor autenticado, entonces `created_by_auth_user_id` conserva el UUID de `auth.users`; `created_by` conserva el UUID solo cuando existe un perfil interno correspondiente.
+
+Criterios:
+
+- Un cliente externo crea un pedido sin fila en `profiles`.
+- El snapshot del pedido tiene `created_by IS NULL` y `created_by_auth_user_id = auth.uid()`.
+- QB-4 y QB-6 conservan ambos campos para actores internos.
+- La eliminacion futura del usuario Auth usa `ON DELETE SET NULL` y no elimina el snapshot.
+- No se crean perfiles internos falsos para clientes.
+
+### AT-QB9-010 - Grants y RLS efectivos
+
+Dado un cliente autenticado, cuando consulta el portal QB, entonces tiene privilegio SQL para leer sus ubicaciones, pedidos e items, y RLS impide leer filas de otro cliente. Las tablas internas de ingreso, preparacion, entrega y recibos permanecen ocultas.
+
+### AT-QB9-011 - Sin grants temporales
+
+Dado el set canonico con Fase 23, cuando se ejecuta el E2E como rol PostgreSQL `authenticated`, entonces cliente, inventario y administrador usan solo privilegios persistentes de la migracion. El archivo de prueba no contiene sentencias `GRANT`.
+
+### AT-QB9-012 - Mutaciones criticas solo por RPC
+
+Dado un cliente autenticado, cuando intenta insertar directamente en `qb_orders` o `qb_order_items`, entonces PostgreSQL responde privilegio insuficiente. Preparacion, entrega y recibos tampoco reciben INSERT/UPDATE/DELETE directo.
+
+### AT-QB9-013 - Referencias canonicas QB-8
+
+Dado el esquema QB, cuando reportes consultan pedidos y clasificacion, entonces usan `customer_location_id`, `output_type` y `label`. No existen referencias runtime a `location_id`, `result_type` ni `output_label` para esos registros.
+
+### AT-QB9-014 - Baseline completo obligatorio
+
+Dado un reset desde base vacia, cuando la aplicacion consulta productos, ingresos y reportes, entonces todas las columnas base esperadas deben existir. Si falta una columna, Staging no puede prepararse aunque lint, TypeScript y build pasen.
+
+### AT-QB9-015 - Productos sin precios para clientes
+
+Dado un cliente externo autenticado, cuando consulta `products`, entonces RLS devuelve cero filas y no expone `purchase_price` ni `sale_price`. El mismo cliente puede ejecutar `get_qb_public_catalog()` y crear pedidos por RPC.
+
+### AT-QB9-016 - Fuente unica de visibilidad QB
+
+Dado un producto activo, cuando se decide su publicacion QB, entonces se usa `qb_product_unit_settings.is_visible_in_qb_catalog`. No se requieren `products.is_catalog_visible`, `product_categories.is_catalog_visible` ni `catalog_availability`.
+
+### AT-QB9-017 - Reportes y CSV reales
+
+Dado el E2E local completado, cuando inventario o administrador abre `/reportes`, entonces todas las secciones cargan datos sin errores de columnas o relaciones. La exportacion CSV genera filas reales y no contiene precios, caja, pagos, QR, CxC ni CxP.
+
+### AT-QB9-018 - Aplicacion por rol
+
+Dado usuarios ficticios locales de cliente, inventario y administrador, cuando recorren las rutas autorizadas, entonces las pantallas cargan datos reales y no estados de error seguro. Las rutas internas siguen ocultas al cliente externo.
+
+### AT-QB9-019 - Contrato minimo de service role
+
+Dado el cliente administrativo server-only, entonces solo puede leer/crear perfiles, insertar auditoria e insertar cuentas cliente. No puede leer productos, mutar stock, pedidos QB o modulos legacy.
+
+### AT-QB9-020 - Admin Auth separado de grants public
+
+Dado `SUPABASE_SERVICE_ROLE_KEY` local, cuando se usa Admin Auth API, entonces listar/crear/consultar/eliminar usuarios funciona sin depender de privilegios sobre tablas `public`. La clave nunca usa prefijo `NEXT_PUBLIC_`.
+
+### AT-QB9-021 - Fixture Auth compatible
+
+Dado el E2E local, los usuarios ficticios insertados en `auth.users` deben ser enumerables por Admin Auth API y no contener tokens nulos incompatibles con GoTrue.
+
+### AT-QB9-022 - Preflight Staging inerte
+
+Dado `scripts/staging-preflight`, todos los archivos SQL contienen exclusivamente consultas `SELECT` de inventario y conteos. QB-9.5 no ejecuta esos scripts ni abre una conexion remota.
+
+### AT-QB9-023 - Autorizaciones independientes
+
+Dado el proceso futuro de Staging, conectarse, inventariar, hacer backup, crear compatibilidad, migrar, probar y desplegar requieren aprobaciones humanas separadas.
