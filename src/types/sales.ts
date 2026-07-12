@@ -37,6 +37,15 @@ export type Sale = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  canceled_reason: string | null;
+  canceled_by: string | null;
+  canceled_at: string | null;
+  reversal_status: "none" | "reversed" | "blocked";
+  origin?: "manual" | "order";
+  order_id?: string | null;
+  paid_amount?: number | null;
+  balance_due?: number | null;
+  payment_status?: "pendiente" | "parcial" | "pagado" | null;
 };
 
 export type SaleItem = {
@@ -64,7 +73,7 @@ export type AccountReceivable = {
   customer_id: string;
   amount: number;
   balance: number;
-  status: "pendiente" | "pagada" | "parcial" | "anulada";
+  status: "pendiente" | "pagada" | "parcial" | "vencida" | "anulada";
   created_at: string;
   updated_at: string;
 };

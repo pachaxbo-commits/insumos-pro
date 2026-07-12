@@ -6,6 +6,11 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/audit/log";
+import {
+  CATALOG_AVAILABILITIES,
+  QB_ALLOWED_UNIT_CONTEXTS,
+  QB_CLASSIFICATION_MODES,
+} from "@/types/products";
 
 type ActionState = {
   success: boolean;
@@ -13,6 +18,10 @@ type ActionState = {
 };
 
 const mutationRoles = new Set(["administrador", "inventario"]);
+const booleanField = z.union([
+  z.boolean(),
+  z.enum(["true", "false"]).transform((value) => value === "true"),
+]);
 
 const optionalText = z.preprocess(
   (value) => {
@@ -23,31 +32,331 @@ const optionalText = z.preprocess(
   z.string().nullable(),
 );
 
-const productSchema = z.object({
-  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
-  sku: optionalText,
-  category_id: z.uuid("Selecciona una categoria."),
-  unit_id: z.uuid("Selecciona una unidad."),
-  stock_current: z.coerce.number().min(0, "El stock actual no puede ser negativo."),
-  stock_min: z.coerce.number().min(0, "El stock minimo no puede ser negativo."),
-  purchase_price: z.coerce.number().min(0, "El precio de compra no puede ser negativo."),
-  sale_price: z.coerce.number().min(0, "El precio de venta no puede ser negativo."),
-  supplier_name: optionalText,
-  image_url: optionalText,
-  is_active: z.coerce.boolean().default(true),
-});
+const optionalUuid = z.preprocess(
+  (value) => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  },
+  z.uuid().nullable(),
+);
+
+const optionalPositiveNumber = z.preprocess(
+  (value) => {
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    if (typeof value === "string" && !value.trim()) return null;
+    return value;
+  },
+  z.coerce.number().finite().positive().nullable(),
+);
+
+const optionalNonNegativeNumber = z.preprocess(
+  (value) => {
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    if (typeof value === "string" && !value.trim()) return null;
+    return value;
+  },
+  z.coerce.number().finite().min(0).nullable(),
+);
+
+const optionalPercentage = z.preprocess(
+  (value) => {
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    if (typeof value === "string" && !value.trim()) return null;
+    return value;
+  },
+  z.coerce.number().finite().min(0).max(100).nullable(),
+);
+
+const qbCodeSchema = z
+  .string()
+  .trim()
+  .min(1, "El codigo es obligatorio.")
+  .regex(/^[a-z0-9_]+$/, "Usa solo minusculas, numeros y guion bajo.");
+
+const productSchema = z
+  .object({
+    name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+    sku: optionalText,
+    category_id: z.uuid("Selecciona una categoria."),
+    unit_id: z.uuid("Selecciona una unidad."),
+    stock_current: z.coerce
+      .number()
+      .finite("El stock actual debe ser valido.")
+      .min(0, "El stock actual no puede ser negativo."),
+    stock_min: z.coerce
+      .number()
+      .finite("El stock minimo debe ser valido.")
+      .min(0, "El stock minimo no puede ser negativo."),
+    purchase_price: z.coerce.number().min(0, "El precio de compra no puede ser negativo."),
+    sale_price: z.coerce.number().min(0, "El precio de venta no puede ser negativo."),
+    supplier_name: optionalText,
+    image_url: optionalText,
+    requires_classification: booleanField,
+    is_sellable: booleanField,
+    is_catalog_visible: booleanField,
+    catalog_description: z.preprocess(
+      (value) => {
+        if (typeof value !== "string") return null;
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
+      },
+      z.string().max(1000, "La descripcion publica no puede superar 1000 caracteres.").nullable(),
+    ),
+    catalog_sort_order: z.coerce
+      .number()
+      .int("El orden publico debe ser un entero.")
+      .min(0, "El orden publico no puede ser negativo."),
+    catalog_min_quantity: z.coerce
+      .number()
+      .finite("La cantidad minima debe ser valida.")
+      .positive("La cantidad minima debe ser mayor a cero."),
+    catalog_quantity_step: z.coerce
+      .number()
+      .finite("El incremento debe ser valido.")
+      .positive("El incremento debe ser mayor a cero."),
+    catalog_availability: z.enum(CATALOG_AVAILABILITIES),
+    is_active: booleanField,
+  })
+  .superRefine((product, context) => {
+    if (!product.is_catalog_visible) return;
+
+    if (product.requires_classification) {
+      context.addIssue({
+        code: "custom",
+        path: ["is_catalog_visible"],
+        message: "Un producto que requiere clasificacion no puede publicarse en el catalogo.",
+      });
+    }
+
+    if (!product.is_sellable) {
+      context.addIssue({
+        code: "custom",
+        path: ["is_catalog_visible"],
+        message: "Un producto solo de compra no puede publicarse en el catalogo.",
+      });
+    }
+
+    if (product.sale_price <= 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["sale_price"],
+        message: "Un producto publicado debe tener un precio de venta mayor a cero.",
+      });
+    }
+  });
 
 const catalogSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
   description: optionalText,
-  is_active: z.coerce.boolean().default(true),
+  is_catalog_visible: booleanField,
+  catalog_slug: optionalText,
+  catalog_sort_order: z.coerce
+    .number()
+    .int("El orden publico debe ser un entero.")
+    .min(0, "El orden publico no puede ser negativo."),
+  is_active: booleanField,
 });
 
 const unitSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
   abbreviation: z.string().trim().min(1, "La abreviatura es obligatoria.").max(12),
-  is_active: z.coerce.boolean().default(true),
+  is_active: booleanField,
 });
+
+const qbUnitDimensionSchema = z.object({
+  code: qbCodeSchema,
+  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+  base_unit_code: qbCodeSchema,
+  is_active: booleanField,
+  sort_order: z.coerce
+    .number()
+    .int("El orden debe ser un entero.")
+    .min(0, "El orden no puede ser negativo."),
+});
+
+const qbUnitSchema = z.object({
+  dimension_id: z.uuid("Selecciona una dimension."),
+  code: qbCodeSchema,
+  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+  symbol: z.string().trim().min(1, "El simbolo es obligatorio.").max(24),
+  conversion_factor_to_base: z.coerce
+    .number()
+    .finite("El factor debe ser valido.")
+    .positive("El factor debe ser mayor a cero."),
+  is_base: booleanField,
+  is_active: booleanField,
+  sort_order: z.coerce
+    .number()
+    .int("El orden debe ser un entero.")
+    .min(0, "El orden no puede ser negativo."),
+});
+
+const qbProductUnitSettingsSchema = z
+  .object({
+    product_id: z.uuid("Selecciona un producto."),
+    base_inventory_unit_id: z.uuid("Selecciona la unidad base de inventario."),
+    base_price_unit_id: z.uuid("Selecciona la unidad base de precio."),
+    base_sale_price: optionalNonNegativeNumber,
+    is_visible_in_qb_catalog: booleanField,
+    is_classifiable: booleanField,
+    classification_mode: z.enum(QB_CLASSIFICATION_MODES),
+    is_qb_active: booleanField,
+    internal_notes: optionalText,
+    notes: optionalText,
+  })
+  .superRefine((settings, context) => {
+    if (settings.is_classifiable || settings.classification_mode === "none") return;
+
+    context.addIssue({
+      code: "custom",
+      path: ["classification_mode"],
+      message: "Un producto no clasificable debe usar modo none.",
+    });
+  });
+
+const qbProductPresentationSchema = z
+  .object({
+    product_id: z.uuid("Selecciona un producto."),
+    name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+    symbol: z.string().trim().min(1, "El simbolo es obligatorio.").max(24),
+    contained_quantity: z.coerce
+      .number()
+      .finite("La cantidad contenida debe ser valida.")
+      .positive("La cantidad contenida debe ser mayor a cero."),
+    contained_unit_id: z.uuid("Selecciona la unidad contenida."),
+    base_quantity: z.coerce
+      .number()
+      .finite("La equivalencia base debe ser valida.")
+      .positive("La equivalencia base debe ser mayor a cero."),
+    base_unit_id: z.uuid("Selecciona la unidad base."),
+    conversion_factor_to_base: z.coerce
+      .number()
+      .finite("El factor debe ser valido.")
+      .positive("El factor debe ser mayor a cero."),
+    allow_purchase: booleanField,
+    allow_order: booleanField,
+    allow_sale: booleanField,
+    allow_inventory: booleanField,
+    is_active: booleanField,
+    sort_order: z.coerce
+      .number()
+      .int("El orden debe ser un entero.")
+      .min(0, "El orden no puede ser negativo."),
+    notes: optionalText,
+  })
+  .superRefine((presentation, context) => {
+    if (
+      presentation.allow_purchase ||
+      presentation.allow_order ||
+      presentation.allow_sale ||
+      presentation.allow_inventory
+    ) {
+      return;
+    }
+
+    context.addIssue({
+      code: "custom",
+      path: ["allow_purchase"],
+      message: "Selecciona al menos un contexto para esta presentacion.",
+    });
+  });
+
+const qbProductAllowedUnitSchema = z
+  .object({
+    product_id: z.uuid("Selecciona un producto."),
+    usage_context: z.enum(QB_ALLOWED_UNIT_CONTEXTS),
+    unit_id: optionalUuid,
+    presentation_id: optionalUuid,
+    is_default: booleanField,
+    quantity_step: optionalPositiveNumber,
+    min_quantity: optionalPositiveNumber,
+    is_active: booleanField,
+    sort_order: z.coerce
+      .number()
+      .int("El orden debe ser un entero.")
+      .min(0, "El orden no puede ser negativo."),
+    notes: optionalText,
+  })
+  .superRefine((allowedUnit, context) => {
+    const selectedTargets = Number(Boolean(allowedUnit.unit_id)) + Number(Boolean(allowedUnit.presentation_id));
+
+    if (selectedTargets === 1) return;
+
+    context.addIssue({
+      code: "custom",
+      path: ["unit_id"],
+      message: "Selecciona una unidad universal o una presentacion, pero no ambas.",
+    });
+  });
+
+const qbProductClassificationOutputSchema = z
+  .object({
+    source_product_id: z.uuid("Selecciona el producto clasificable."),
+    output_type: z.enum(["product", "loss"]),
+    output_product_id: optionalUuid,
+    label: z.string().trim().min(2, "La etiqueta debe tener al menos 2 caracteres."),
+    expected_percentage: optionalPercentage,
+    is_active: booleanField,
+    sort_order: z.coerce
+      .number()
+      .int("El orden debe ser un entero.")
+      .min(0, "El orden no puede ser negativo."),
+    notes: optionalText,
+  })
+  .superRefine((output, context) => {
+    if (output.output_type === "product" && !output.output_product_id) {
+      context.addIssue({
+        code: "custom",
+        path: ["output_product_id"],
+        message: "Selecciona el producto resultado.",
+      });
+    }
+
+    if (output.output_type === "loss" && output.output_product_id) {
+      context.addIssue({
+        code: "custom",
+        path: ["output_product_id"],
+        message: "La merma no debe apuntar a un producto resultado.",
+      });
+    }
+
+    if (output.output_product_id === output.source_product_id) {
+      context.addIssue({
+        code: "custom",
+        path: ["output_product_id"],
+        message: "El producto resultado no puede ser el mismo producto origen.",
+      });
+    }
+  });
+
+function normalizeCatalogSlug(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getCategoryPayload(category: z.infer<typeof catalogSchema>) {
+  const catalogSlug = normalizeCatalogSlug(category.catalog_slug ?? category.name);
+
+  if (category.is_catalog_visible && !catalogSlug) {
+    return {
+      success: false as const,
+      message: "La categoria publica necesita un slug valido.",
+    };
+  }
+
+  return {
+    success: true as const,
+    data: {
+      ...category,
+      catalog_slug: catalogSlug || null,
+    },
+  };
+}
 
 async function assertCanMutateProducts() {
   const auth = await requireAuthenticatedUser();
@@ -78,6 +387,12 @@ function parseId(formData: FormData) {
 
 function revalidateProducts() {
   revalidatePath("/productos");
+  revalidatePath("/catalogo");
+}
+
+function revalidateQbParametrization() {
+  revalidatePath("/productos");
+  revalidatePath("/parametrizacion");
 }
 
 export async function createProductAction(
@@ -111,7 +426,12 @@ export async function createProductAction(
     action: "create_product",
     entityType: "product",
     entityId: data?.id,
-    metadata: { name: parsed.data.name, sku: parsed.data.sku },
+    metadata: {
+      name: parsed.data.name,
+      sku: parsed.data.sku,
+      is_catalog_visible: parsed.data.is_catalog_visible,
+      is_sellable: parsed.data.is_sellable,
+    },
   });
 
   revalidateProducts();
@@ -150,7 +470,12 @@ export async function updateProductAction(
     action: "update_product",
     entityType: "product",
     entityId: id,
-    metadata: { name: parsed.data.name, sku: parsed.data.sku },
+    metadata: {
+      name: parsed.data.name,
+      sku: parsed.data.sku,
+      is_catalog_visible: parsed.data.is_catalog_visible,
+      is_sellable: parsed.data.is_sellable,
+    },
   });
 
   revalidateProducts();
@@ -204,7 +529,11 @@ export async function createCategoryAction(
     };
   }
 
-  const { error } = await access.supabase.from("product_categories").insert(parsed.data);
+  const payload = getCategoryPayload(parsed.data);
+
+  if (!payload.success) return { success: false, message: payload.message };
+
+  const { error } = await access.supabase.from("product_categories").insert(payload.data);
 
   if (error) return { success: false, message: error.message };
 
@@ -234,9 +563,13 @@ export async function updateCategoryAction(
     };
   }
 
+  const payload = getCategoryPayload(parsed.data);
+
+  if (!payload.success) return { success: false, message: payload.message };
+
   const { error } = await access.supabase
     .from("product_categories")
-    .update(parsed.data)
+    .update(payload.data)
     .eq("id", id);
 
   if (error) return { success: false, message: error.message };
@@ -301,4 +634,381 @@ export async function updateUnitAction(
 
   revalidateProducts();
   return { success: true, message: "Unidad actualizada correctamente." };
+}
+
+export async function createQbUnitDimensionAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbUnitDimensionSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
+    };
+  }
+
+  const { error } = await access.supabase.from("qb_unit_dimensions").insert({
+    ...parsed.data,
+    created_by: access.userId,
+    updated_by: access.userId,
+  });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Dimension QB creada correctamente." };
+}
+
+export async function updateQbUnitDimensionAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  const parsed = qbUnitDimensionSchema.safeParse(Object.fromEntries(formData));
+
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Dimension QB invalida." };
+  }
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("qb_unit_dimensions")
+    .update({ ...parsed.data, updated_by: access.userId })
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Dimension QB actualizada correctamente." };
+}
+
+export async function createQbUnitAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbUnitSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
+    };
+  }
+
+  const { error } = await access.supabase.from("qb_units").insert({
+    ...parsed.data,
+    created_by: access.userId,
+    updated_by: access.userId,
+  });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Unidad QB creada correctamente." };
+}
+
+export async function updateQbUnitAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  const parsed = qbUnitSchema.safeParse(Object.fromEntries(formData));
+
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Unidad QB invalida." };
+  }
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("qb_units")
+    .update({ ...parsed.data, updated_by: access.userId })
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Unidad QB actualizada correctamente." };
+}
+
+export async function upsertQbProductUnitSettingsAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductUnitSettingsSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa la unidad base parametrica del producto.",
+    };
+  }
+
+  const { data: existingRow, error: lookupError } = await access.supabase
+    .from("qb_product_unit_settings")
+    .select("product_id")
+    .eq("product_id", parsed.data.product_id)
+    .maybeSingle<{ product_id: string }>();
+
+  if (lookupError) return { success: false, message: lookupError.message };
+
+  const payload = {
+    product_id: parsed.data.product_id,
+    base_unit_id: parsed.data.base_inventory_unit_id,
+    inventory_unit_id: parsed.data.base_inventory_unit_id,
+    base_inventory_unit_id: parsed.data.base_inventory_unit_id,
+    base_price_unit_id: parsed.data.base_price_unit_id,
+    base_sale_price: parsed.data.base_sale_price,
+    is_visible_in_qb_catalog: parsed.data.is_visible_in_qb_catalog,
+    is_classifiable: parsed.data.is_classifiable,
+    classification_mode: parsed.data.is_classifiable ? parsed.data.classification_mode : "none",
+    is_qb_active: parsed.data.is_qb_active,
+    internal_notes: parsed.data.internal_notes,
+    notes: parsed.data.notes,
+    updated_by: access.userId,
+  };
+
+  const { error } = existingRow
+    ? await access.supabase
+        .from("qb_product_unit_settings")
+        .update(payload)
+        .eq("product_id", parsed.data.product_id)
+    : await access.supabase.from("qb_product_unit_settings").insert({
+        ...payload,
+        created_by: access.userId,
+      });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Producto QB guardado correctamente." };
+}
+
+export async function createQbProductPresentationAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductPresentationSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la presentacion.",
+    };
+  }
+
+  const { error } = await access.supabase.from("qb_product_presentations").insert({
+    ...parsed.data,
+    created_by: access.userId,
+    updated_by: access.userId,
+  });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Presentacion QB creada correctamente." };
+}
+
+export async function updateQbProductPresentationAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  const parsed = qbProductPresentationSchema.safeParse(Object.fromEntries(formData));
+
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Presentacion QB invalida." };
+  }
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la presentacion.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("qb_product_presentations")
+    .update({ ...parsed.data, updated_by: access.userId })
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Presentacion QB actualizada correctamente." };
+}
+
+export async function createQbProductAllowedUnitAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductAllowedUnitSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa la unidad permitida del producto.",
+    };
+  }
+
+  const { error } = await access.supabase.from("qb_product_allowed_units").insert({
+    ...parsed.data,
+    created_by: access.userId,
+    updated_by: access.userId,
+  });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Unidad permitida QB creada correctamente." };
+}
+
+export async function updateQbProductAllowedUnitAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  const parsed = qbProductAllowedUnitSchema.safeParse(Object.fromEntries(formData));
+
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Unidad permitida QB invalida." };
+  }
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa la unidad permitida del producto.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("qb_product_allowed_units")
+    .update({ ...parsed.data, updated_by: access.userId })
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Unidad permitida QB actualizada correctamente." };
+}
+
+export async function createQbProductClassificationOutputAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductClassificationOutputSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa la salida de clasificacion del producto.",
+    };
+  }
+
+  const { error } = await access.supabase.from("qb_product_classification_outputs").insert({
+    ...parsed.data,
+    output_product_id:
+      parsed.data.output_type === "loss" ? null : parsed.data.output_product_id,
+    created_by: access.userId,
+    updated_by: access.userId,
+  });
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Salida de clasificacion QB creada correctamente." };
+}
+
+export async function updateQbProductClassificationOutputAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+  const parsed = qbProductClassificationOutputSchema.safeParse(Object.fromEntries(formData));
+
+  if (!z.uuid().safeParse(id).success) {
+    return { success: false, message: "Salida de clasificacion QB invalida." };
+  }
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa la salida de clasificacion del producto.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("qb_product_classification_outputs")
+    .update({
+      ...parsed.data,
+      output_product_id:
+        parsed.data.output_type === "loss" ? null : parsed.data.output_product_id,
+      updated_by: access.userId,
+    })
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateQbParametrization();
+  return { success: true, message: "Salida de clasificacion QB actualizada correctamente." };
 }

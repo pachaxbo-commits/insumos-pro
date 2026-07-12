@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Insumos Pro",
+  title: "QB Insumos",
   description: "Base visual y técnica para la operación mayorista de alimentos e insumos.",
 };
 

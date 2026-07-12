@@ -26,3 +26,9 @@ export type SessionUser = AuthUser & {
   role: UserRole | null;
   isActive: boolean;
 };
+
+export type AdminUser = Profile & {
+  email: string | null;
+  auth_created_at: string | null;
+  last_sign_in_at: string | null;
+};

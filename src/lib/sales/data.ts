@@ -172,7 +172,7 @@ export async function getSalesData(filters: SaleFilters = {}): Promise<SalesData
   let salesQuery = supabase
     .from("sales")
     .select(
-      `id, customer_id, sale_date, subtotal, discount, total, payment_type, status, notes, created_by, created_at,
+      `id, customer_id, sale_date, subtotal, discount, total, payment_type, status, notes, created_by, created_at, canceled_reason, canceled_by, canceled_at, reversal_status,
        customer:customers(${customerSelect}),
        items:sale_items(id, sale_id, product_id, quantity, unit_price, subtotal, product:products(${productSelect})),
        created_by_profile:profiles!sales_created_by_fkey(id, full_name, role)`,

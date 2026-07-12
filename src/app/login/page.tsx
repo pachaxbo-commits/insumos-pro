@@ -1,6 +1,7 @@
 import { ArrowRight, Lock, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
 
+import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { ConfigAlert } from "@/components/auth/config-alert";
 import { LoginForm } from "@/components/auth/login-form";
 import { Badge } from "@/components/ui/badge";
@@ -48,10 +49,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               </Badge>
               <div className="space-y-4">
                 <h1 className="max-w-xl font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-                  Insumos Pro centraliza operaciones, perfiles y permisos.
+                  QB Insumos prepara una operacion mas simple y segura.
                 </h1>
                 <p className="max-w-xl text-base leading-7 text-white/72">
-                  Inicia sesion para entrar al dashboard y ver solo los modulos habilitados para tu rol.
+                  Inicia sesion para entrar al entorno de transicion QB-1 y ver solo los modulos habilitados.
                 </p>
               </div>
             </div>
@@ -72,9 +73,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <CardContent className="space-y-3 p-5">
                   <ShieldCheck className="size-5" />
                   <div>
-                    <p className="font-medium">Roles activos</p>
+                    <p className="font-medium">Roles temporales</p>
                     <p className="mt-1 text-sm leading-6 text-white/65">
-                      Administrador, ventas, inventario y finanzas.
+                      Los roles reales se conservan hasta una fase posterior.
                     </p>
                   </div>
                 </CardContent>
@@ -98,6 +99,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <Card className="w-full rounded-[2rem] border-white/60 bg-white/82 shadow-lg backdrop-blur">
             <CardContent className="space-y-6 p-7 sm:p-8">
               <div className="space-y-2">
+                <QbInsumosBrand showSubtitle />
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Bienvenido
                 </p>

@@ -32,8 +32,13 @@ export type Purchase = {
   total: number;
   notes: string | null;
   created_by: string | null;
+  purchase_batch_id?: string | null;
   created_at: string;
   updated_at: string;
+  canceled_reason: string | null;
+  canceled_by: string | null;
+  canceled_at: string | null;
+  reversal_status: "none" | "reversed" | "blocked";
 };
 
 export type PurchaseItem = {

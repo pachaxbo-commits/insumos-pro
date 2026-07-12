@@ -15,6 +15,7 @@ type ActionState = {
 
 const customerManageRoles = new Set(["administrador", "ventas"]);
 const salesManageRoles = new Set(["administrador", "ventas"]);
+const adminRoles = new Set(["administrador"]);
 
 const optionalText = z.preprocess(
   (value) => {
@@ -53,6 +54,14 @@ const saleSchema = z.object({
   payment_type: z.enum(SALE_PAYMENT_TYPES),
   discount: z.coerce.number().min(0, "El descuento no puede ser negativo."),
   notes: optionalText,
+});
+
+const cancellationSchema = z.object({
+  id: z.uuid("Venta invalida."),
+  reason: z.string().trim().min(10, "El motivo debe tener al menos 10 caracteres."),
+  confirmation: z.literal("ANULAR", {
+    error: "Escribe ANULAR para confirmar la anulacion.",
+  }),
 });
 
 async function assertRole(allowedRoles: Set<string>, deniedMessage: string) {
@@ -96,8 +105,8 @@ function parseSaleItems(formData: FormData) {
     const parsed = z
       .object({
         product_id: z.uuid(),
-        quantity: z.coerce.number().positive(),
-        unit_price: z.coerce.number().min(0),
+        quantity: z.coerce.number().finite().positive(),
+        unit_price: z.coerce.number().finite().min(0),
       })
       .safeParse({
         product_id: productId,
@@ -116,6 +125,8 @@ function revalidateSales() {
   revalidatePath("/clientes");
   revalidatePath("/inventario");
   revalidatePath("/productos");
+  revalidatePath("/finanzas");
+  revalidatePath("/reportes");
   revalidatePath("/");
 }
 
@@ -144,6 +155,18 @@ function getBusinessErrorMessage(message: string | undefined) {
 
   if (message.includes("Solo se pueden anular ventas en borrador")) {
     return "Esta venta ya no esta en borrador y no puede anularse desde este flujo.";
+  }
+
+  if (message.includes("pagos aplicados")) {
+    return "La venta tiene pagos aplicados. Regulariza o reversa esos pagos antes de anular automaticamente.";
+  }
+
+  if (message.includes("ya fue anulada")) {
+    return "La venta ya fue anulada y no puede revertirse nuevamente.";
+  }
+
+  if (message.includes("Solo se pueden anular ventas confirmadas")) {
+    return "Solo se pueden anular ventas confirmadas desde este flujo.";
   }
 
   return message;
@@ -329,4 +352,36 @@ export async function cancelSaleAction(
 
   revalidateSales();
   return { success: true, message: "Venta anulada correctamente." };
+}
+
+export async function cancelConfirmedSaleAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertRole(adminRoles, "Solo un administrador puede anular ventas confirmadas.");
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = cancellationSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa la anulacion.",
+    };
+  }
+
+  const { error } = await access.supabase.rpc("cancel_confirmed_sale", {
+    p_sale_id: parsed.data.id,
+    p_reason: parsed.data.reason,
+  });
+
+  if (error) {
+    return { success: false, message: getBusinessErrorMessage(error.message) };
+  }
+
+  revalidateSales();
+  return {
+    success: true,
+    message: "Venta confirmada anulada. Stock, caja/cartera y auditoria fueron actualizados.",
+  };
 }

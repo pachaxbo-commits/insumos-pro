@@ -20,7 +20,7 @@ type UserMenuProps = {
 };
 
 function getInitials(user: SessionUser) {
-  const source = user.fullName?.trim() || user.email || "IP";
+  const source = user.fullName?.trim() || user.email || "QB";
 
   return source
     .split(" ")

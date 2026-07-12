@@ -14,6 +14,7 @@ type ProfileRow = {
 export type AuditLogsData = {
   logs: AuditLog[];
   users: Array<{ id: string; label: string }>;
+  error?: string;
   summary: {
     total: number;
     today: number;
@@ -23,6 +24,7 @@ export type AuditLogsData = {
 
 const criticalActions = new Set([
   "confirm_purchase",
+  "confirm_order",
   "confirm_sale",
   "register_customer_payment",
   "register_supplier_payment",
@@ -58,7 +60,12 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
   };
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return empty;
+  if (!supabase) {
+    return {
+      ...empty,
+      error: "Faltan variables publicas de Supabase.",
+    };
+  }
 
   let logsQuery = supabase
     .from("audit_logs")
@@ -97,7 +104,12 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
       .lt("created_at", today.end),
   ]);
 
-  if (logsResult.error) return empty;
+  if (logsResult.error) {
+    return {
+      ...empty,
+      error: `No se pudo cargar la bitacora: ${logsResult.error.message}`,
+    };
+  }
 
   const profiles = profilesResult.error ? [] : ((profilesResult.data ?? []) as ProfileRow[]);
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
@@ -110,6 +122,9 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
 
   return {
     logs,
+    error: profilesResult.error
+      ? `La bitacora cargo, pero no se pudieron resolver usuarios: ${profilesResult.error.message}`
+      : undefined,
     users: profiles.map((profile) => ({
       id: profile.id,
       label: profile.full_name || profile.id.slice(0, 8),

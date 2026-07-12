@@ -1,13 +1,12 @@
 import {
-  BarChart3,
-  Boxes,
-  CreditCard,
   LayoutDashboard,
+  BarChart3,
+  ClipboardList,
   Package,
+  PackageCheck,
   ReceiptText,
   Settings,
-  ShoppingBag,
-  Truck,
+  SlidersHorizontal,
   Users,
 } from "lucide-react";
 
@@ -15,63 +14,57 @@ import type { NavItem } from "@/types/dashboard";
 
 export const mainNavigation: NavItem[] = [
   {
-    title: "Dashboard",
+    title: "Inicio QB",
     href: "/",
     icon: LayoutDashboard,
-    description: "Vision general de ventas, inventario y alertas.",
-  },
-  {
-    title: "Ventas",
-    href: "/ventas",
-    icon: ShoppingBag,
-    description: "Seguimiento comercial y cobranzas.",
-  },
-  {
-    title: "Compras",
-    href: "/compras",
-    icon: ReceiptText,
-    description: "Ordenes a proveedores y abastecimiento.",
-  },
-  {
-    title: "Inventario",
-    href: "/inventario",
-    icon: Boxes,
-    description: "Control de stock y movimientos.",
+    description: "Resumen operativo QB.",
   },
   {
     title: "Productos",
     href: "/productos",
     icon: Package,
-    description: "Catalogo, precios y presentaciones.",
+    description: "Catalogo base transitorio.",
+  },
+  {
+    title: "Ingresos",
+    href: "/ingresos",
+    icon: PackageCheck,
+    description: "Recepcion y clasificacion QB.",
+  },
+  {
+    title: "Pedidos",
+    href: "/pedidos",
+    icon: ClipboardList,
+    description: "Preparacion y entrega QB.",
+  },
+  {
+    title: "Recibos",
+    href: "/recibos",
+    icon: ReceiptText,
+    description: "Recibos acumulativos QB.",
+  },
+  {
+    title: "Reportes QB",
+    href: "/reportes",
+    icon: BarChart3,
+    description: "Reportes y auditoria QB.",
+  },
+  {
+    title: "Parametrizacion",
+    href: "/parametrizacion",
+    icon: SlidersHorizontal,
+    description: "Productos, unidades y presentaciones QB.",
   },
   {
     title: "Clientes",
     href: "/clientes",
     icon: Users,
-    description: "Mayoristas, restaurantes y cuentas activas.",
-  },
-  {
-    title: "Proveedores",
-    href: "/proveedores",
-    icon: Truck,
-    description: "Red de abastecimiento y compras.",
-  },
-  {
-    title: "Finanzas",
-    href: "/finanzas",
-    icon: CreditCard,
-    description: "Cuentas por cobrar, pagar y caja.",
-  },
-  {
-    title: "Reportes",
-    href: "/reportes",
-    icon: BarChart3,
-    description: "Indicadores operativos y comerciales.",
+    description: "Datos de contacto sin cobros.",
   },
   {
     title: "Configuracion",
     href: "/configuracion",
     icon: Settings,
-    description: "Parametros del sistema y empresa.",
+    description: "Transicion, permisos y auditoria.",
   },
 ];

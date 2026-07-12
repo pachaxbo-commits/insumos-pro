@@ -2,35 +2,36 @@
 
 ## Reversion de ventas confirmadas
 
-No se implemento una anulacion contable completa de ventas confirmadas en Fase 10.
+Fase 12D implementa anulacion segura de ventas confirmadas para casos compatibles.
 
 Regla operativa temporal:
 
 - Compras y ventas confirmadas no se editan ni eliminan.
 - Las correcciones se realizan mediante movimientos compensatorios autorizados y auditados.
 - Toda correccion debe tener motivo claro, responsable y respaldo documental.
+- Si existen pagos aplicados en ventas a credito, la anulacion automatica se bloquea y requiere regularizacion previa.
 
 Recomendacion:
 
-- Crear una accion especifica `anular_venta_confirmada`.
-- Generar movimientos de inventario tipo `devolucion` por cada item.
-- Si fue venta a credito, ajustar `accounts_receivable` y `customers.current_balance`.
-- Si hubo pago de contado, crear movimiento de caja reverso.
-- Registrar todo en `audit_logs`.
+- Revisar el diseno tecnico en `DISENO_FASE_12D_ANULACIONES.md`.
+- Probar `SUPABASE_MIGRATION_FASE_12D_SAFE_CANCELLATIONS.sql` en staging antes de produccion.
+- Definir procedimiento operativo para ventas a credito con pagos ya aplicados.
 
 Riesgo: anular sin trazabilidad puede descuadrar stock, caja y cartera.
 
 ## Reversion de compras confirmadas
 
-No se implemento anulacion completa de compras confirmadas.
+Fase 12D implementa anulacion segura de compras confirmadas solo cuando no hay pagos ni movimientos posteriores.
 
 Recomendacion:
 
-- Crear accion `anular_compra_confirmada`.
-- Generar movimientos de inventario tipo `salida` o `ajuste` por cada item.
-- Validar stock suficiente antes de reversar.
-- Si genero cuenta por pagar o pago, crear reversos financieros.
-- Registrar auditoria.
+- Revisar el diseno tecnico en `DISENO_FASE_12D_ANULACIONES.md`.
+- Probar `SUPABASE_MIGRATION_FASE_12D_SAFE_CANCELLATIONS.sql` en staging antes de produccion.
+- Mantener procedimiento de devolucion o ajuste controlado cuando ya hubo salidas, ventas, mermas, ajustes o pagos.
+
+Las ventas con `origin = order` quedan bloqueadas para anulacion Fase 12D desde
+Fase 15F-B. El bloqueo se retirara solo cuando Fase 15F-F implemente devolucion
+fisica, reversa individual de pagos y movimientos compensatorios auditados.
 
 Riesgo: si el stock ya fue vendido, una reversion directa puede producir saldos negativos o costo incorrecto.
 

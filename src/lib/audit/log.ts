@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { AuditAction, AuditEntityType } from "@/types/audit";
 
 type AuditInput = {
@@ -17,7 +18,6 @@ function cleanMetadata(metadata: Record<string, unknown> = {}) {
 }
 
 export async function writeAuditLog({
-  supabase,
   userId,
   action,
   entityType,
@@ -25,12 +25,15 @@ export async function writeAuditLog({
   metadata,
 }: AuditInput) {
   try {
+    const adminClient = createSupabaseAdminClient();
+    if (!adminClient) return;
+
     const headerStore = await headers();
     const forwardedFor = headerStore.get("x-forwarded-for");
     const ipAddress = forwardedFor?.split(",")[0]?.trim() || headerStore.get("x-real-ip");
     const userAgent = headerStore.get("user-agent");
 
-    await supabase.from("audit_logs").insert({
+    await adminClient.from("audit_logs").insert({
       user_id: userId,
       action,
       entity_type: entityType,

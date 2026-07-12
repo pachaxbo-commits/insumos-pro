@@ -3,9 +3,10 @@
 import type { ReactNode } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { Ban, CheckCircle2, Eye, PackagePlus, Save, ShoppingCart } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Eye, PackagePlus, Save, ShoppingCart } from "lucide-react";
 
 import {
+  cancelConfirmedPurchaseAction,
   cancelPurchaseAction,
   confirmPurchaseAction,
   createPurchaseAction,
@@ -24,6 +25,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +59,7 @@ type PurchaseManagementProps = {
   summary: PurchasesSummary;
   filters: PurchaseFilters;
   canManage: boolean;
+  canCancelConfirmed: boolean;
 };
 
 const initialState: ActionState = { success: false };
@@ -114,7 +117,18 @@ function FormMessage({ state }: { state: ActionState }) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-BO", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
 function PurchaseForm({
@@ -206,8 +220,8 @@ function PurchaseForm({
               <Input
                 name={`item_quantity_${index}`}
                 type="number"
-                min="0.01"
-                step="0.01"
+                min="0.001"
+                step="0.001"
                 placeholder="Cantidad"
                 className="rounded-xl"
               />
@@ -259,6 +273,52 @@ function PurchaseRowActionForm({
   );
 }
 
+function ConfirmedPurchaseCancellationForm({ purchase }: { purchase: PurchaseWithRelations }) {
+  const [state, formAction, pending] = useActionState(cancelConfirmedPurchaseAction, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction} className="space-y-4">
+      <input type="hidden" name="id" value={purchase.id} />
+      <FormMessage state={state} />
+      <Alert variant="destructive" className="rounded-2xl">
+        <AlertTriangle className="size-4" />
+        <AlertTitle>Anulacion conservadora</AlertTitle>
+        <AlertDescription>
+          Se mantendra la compra original y solo se revertira si no hay pagos ni movimientos
+          posteriores sobre sus productos. Si el stock ya fue usado, debera hacerse una
+          devolucion o ajuste controlado.
+        </AlertDescription>
+      </Alert>
+      <div className="grid gap-3 rounded-2xl border bg-muted/30 p-4 text-sm md:grid-cols-3">
+        <span>Proveedor: <strong>{purchase.supplier?.name ?? "Sin proveedor"}</strong></span>
+        <span>Total: <strong>{formatCurrency(Number(purchase.total))}</strong></span>
+        <span>Pago: <strong>{purchase.payment_status}</strong></span>
+      </div>
+      <div className="space-y-2">
+        <Label>Motivo obligatorio</Label>
+        <Textarea
+          name="reason"
+          required
+          minLength={10}
+          placeholder="Explica por que se anula esta compra confirmada"
+          className="rounded-xl"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Confirmacion fuerte</Label>
+        <Input name="confirmation" required placeholder="Escribe ANULAR" className="rounded-xl" />
+      </div>
+      <DialogFooter>
+        <Button type="submit" variant="destructive" disabled={pending} className="rounded-xl">
+          <Ban className="size-4" />
+          {pending ? "Anulando..." : "Anular compra confirmada"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 function PurchaseDetail({ purchase }: { purchase: PurchaseWithRelations }) {
   return (
     <div className="space-y-5">
@@ -301,6 +361,15 @@ function PurchaseDetail({ purchase }: { purchase: PurchaseWithRelations }) {
       {purchase.notes ? (
         <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">{purchase.notes}</p>
       ) : null}
+      {purchase.reversal_status === "reversed" ? (
+        <Alert className="rounded-2xl border-slate-200 bg-slate-50">
+          <AlertTitle>Compra anulada con reversión aplicada</AlertTitle>
+          <AlertDescription className="space-y-1">
+            <p>Fecha: {purchase.canceled_at ? formatDateTime(purchase.canceled_at) : "N/D"}</p>
+            <p>Motivo: {purchase.canceled_reason ?? "Sin motivo registrado"}</p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }
@@ -312,6 +381,7 @@ export function PurchaseManagement({
   summary,
   filters,
   canManage,
+  canCancelConfirmed,
 }: PurchaseManagementProps) {
   return (
     <div className="space-y-6">
@@ -344,23 +414,31 @@ export function PurchaseManagement({
               </p>
             </div>
             {canManage ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="rounded-xl">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button asChild variant="outline" className="rounded-xl">
+                  <Link href="/compras/multiple">
                     <PackagePlus className="size-4" />
-                    Nueva compra
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
-                  <DialogHeader>
-                    <DialogTitle>Nueva compra</DialogTitle>
-                    <DialogDescription>
-                      Guarda la compra como borrador. La reposicion se aplica al confirmarla.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <PurchaseForm suppliers={suppliers} products={products} />
-                </DialogContent>
-              </Dialog>
+                    Compra multiple
+                  </Link>
+                </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button className="rounded-xl">
+                      <PackagePlus className="size-4" />
+                      Nueva compra
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+                    <DialogHeader>
+                      <DialogTitle>Nueva compra</DialogTitle>
+                      <DialogDescription>
+                        Guarda la compra como borrador. La reposicion se aplica al confirmarla.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <PurchaseForm suppliers={suppliers} products={products} />
+                  </DialogContent>
+                </Dialog>
+              </div>
             ) : (
               <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
                 Solo lectura
@@ -459,6 +537,29 @@ export function PurchaseManagement({
                               icon={<Ban className="size-4" />}
                             />
                           </>
+                        ) : null}
+                        {canCancelConfirmed && purchase.status === "confirmada" ? (
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                              >
+                                <Ban className="size-4" />
+                                <span className="sr-only">Anular compra confirmada</span>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>Anular compra confirmada</DialogTitle>
+                                <DialogDescription>
+                                  Esta accion genera reversas auditadas y no elimina el documento original.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <ConfirmedPurchaseCancellationForm purchase={purchase} />
+                            </DialogContent>
+                          </Dialog>
                         ) : null}
                       </div>
                     </TableCell>

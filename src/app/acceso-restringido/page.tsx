@@ -49,7 +49,7 @@ export default async function RestrictedPage({ searchParams }: RestrictedPagePro
         <PageHeader
           eyebrow="Seguridad"
           title="Acceso restringido"
-          description="Insumos Pro limita los modulos visibles y accesibles segun el rol y el estado activo del usuario autenticado."
+          description="QB Insumos limita los modulos visibles y accesibles segun el rol y el estado activo del usuario autenticado."
         />
 
         <Card className="border-white/60 bg-card/92 shadow-sm">

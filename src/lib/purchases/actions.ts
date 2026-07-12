@@ -41,6 +41,14 @@ const purchaseSchema = z.object({
   notes: optionalText,
 });
 
+const cancellationSchema = z.object({
+  id: z.uuid("Compra invalida."),
+  reason: z.string().trim().min(10, "El motivo debe tener al menos 10 caracteres."),
+  confirmation: z.literal("ANULAR", {
+    error: "Escribe ANULAR para confirmar la anulacion.",
+  }),
+});
+
 async function assertCanManagePurchases() {
   const auth = await requireAuthenticatedUser();
 
@@ -82,8 +90,8 @@ function parsePurchaseItems(formData: FormData) {
     const parsed = z
       .object({
         product_id: z.uuid(),
-        quantity: z.coerce.number().positive(),
-        unit_cost: z.coerce.number().min(0),
+        quantity: z.coerce.number().finite().positive(),
+        unit_cost: z.coerce.number().finite().min(0),
       })
       .safeParse({
         product_id: productId,
@@ -102,6 +110,9 @@ function revalidatePurchases() {
   revalidatePath("/proveedores");
   revalidatePath("/inventario");
   revalidatePath("/productos");
+  revalidatePath("/finanzas");
+  revalidatePath("/reportes");
+  revalidatePath("/");
 }
 
 export async function createSupplierAction(
@@ -241,6 +252,22 @@ function purchaseBusinessMessage(message?: string) {
     return "La compra no tiene productos agregados.";
   }
 
+  if (message.includes("ya fue anulada")) {
+    return "La compra ya fue anulada y no puede revertirse nuevamente.";
+  }
+
+  if (message.includes("movimientos posteriores")) {
+    return "Existen movimientos posteriores sobre productos de esta compra. Requiere devolucion o ajuste controlado antes de anular.";
+  }
+
+  if (message.includes("pagos")) {
+    return "La compra tiene pagos aplicados. Regulariza o reversa esos pagos antes de anular automaticamente.";
+  }
+
+  if (message.includes("Stock insuficiente")) {
+    return "Stock insuficiente para revertir la compra sin dejar inventario negativo.";
+  }
+
   return message;
 }
 
@@ -298,4 +325,39 @@ export async function cancelPurchaseAction(
 
   revalidatePurchases();
   return { success: true, message: "Compra cancelada correctamente." };
+}
+
+export async function cancelConfirmedPurchaseAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanManagePurchases();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const auth = await requireAuthenticatedUser();
+  if (auth.user.role !== "administrador") {
+    return { success: false, message: "Solo un administrador puede anular compras confirmadas." };
+  }
+
+  const parsed = cancellationSchema.safeParse(Object.fromEntries(formData));
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa la anulacion.",
+    };
+  }
+
+  const { error } = await access.supabase.rpc("cancel_confirmed_purchase", {
+    p_purchase_id: parsed.data.id,
+    p_reason: parsed.data.reason,
+  });
+
+  if (error) return { success: false, message: purchaseBusinessMessage(error.message) };
+
+  revalidatePurchases();
+  return {
+    success: true,
+    message: "Compra confirmada anulada. Stock, cuenta por pagar y auditoria fueron actualizados.",
+  };
 }

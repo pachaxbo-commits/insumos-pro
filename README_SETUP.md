@@ -20,9 +20,20 @@ npm install
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+ORDER_RATE_LIMIT_SALT=
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
 Si tu proyecto usa la nueva clave publishable de Supabase, tambien puedes definir `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; la app la toma como fallback del valor anon.
+
+`SUPABASE_SERVICE_ROLE_KEY` es privada y server-only. Nunca debe tener prefijo `NEXT_PUBLIC_`. Se usa para administracion interna de usuarios y escritura controlada de auditoria desde servidor.
+
+`ORDER_RATE_LIMIT_SALT` tambien es privada y server-only. Debe ser distinta por entorno,
+tener al menos 32 caracteres y se usa para anonimizar IP e idempotencia del checkout publico.
+
+`NEXT_PUBLIC_SITE_URL` define el origen permitido para enlaces de confirmacion y
+recuperacion. Usar `http://localhost:3000` localmente y la URL HTTPS exacta en staging/produccion.
 
 Si las variables no estan definidas, la aplicacion sigue compilando y `/login` muestra un mensaje claro indicando que falta configuracion.
 
@@ -35,31 +46,44 @@ Si las variables no estan definidas, la aplicacion sigue compilando y `/login` m
 5. Para Fase 8, confirmar tambien los indices de reportes sobre ventas, items, compras, inventario, pagos y caja. Si ya tienes el esquema anterior aplicado, puedes ejecutar solo el bloque `Fase 8: indices de apoyo para reportes y exportaciones` al final de `SUPABASE_SCHEMA.sql`.
 6. Para Fase 10, confirmar la tabla `public.audit_logs`, sus indices, RLS y la funcion `current_user_role`. Si ya tienes fases previas aplicadas, puedes ejecutar solo el bloque `Fase 10: auditoria, bitacora y seguridad operativa` al final de `SUPABASE_SCHEMA.sql`.
 7. Para una base existente de staging con fases previas, aplicar [`SUPABASE_MIGRATION_FASE_12A_SECURITY.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_12A_SECURITY.sql) despues de backup.
-8. Los datos demo ya no estan dentro del SQL productivo. Si necesitas datos ficticios para demo/staging, ejecutar manualmente [`SUPABASE_SEED_DEMO.sql`](/C:/dev/insumos-pro/SUPABASE_SEED_DEMO.sql). No usar este seed en produccion real.
+8. Para una base existente de staging con Fase 12A aplicada, aplicar despues [`SUPABASE_MIGRATION_FASE_12C_USERS_AUDIT.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_12C_USERS_AUDIT.sql). Esta migracion refuerza administracion de perfiles y bloquea inserts directos a `audit_logs`.
+9. Para habilitar anulacion contable segura, aplicar despues [`SUPABASE_MIGRATION_FASE_12D_SAFE_CANCELLATIONS.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_12D_SAFE_CANCELLATIONS.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_12D.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_12D.md).
+10. Para habilitar pedidos moviles con cantidades reales, aplicar despues [`SUPABASE_MIGRATION_FASE_13_ORDERS.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_13_ORDERS.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_13.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_13.md).
+11. Para habilitar compras multiples en borrador, aplicar despues [`SUPABASE_MIGRATION_FASE_14B_PURCHASE_BATCHES.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_14B_PURCHASE_BATCHES.sql). Esta fase no mueve inventario, caja ni cuentas por pagar.
+12. Para confirmar compras multiples y crear compras hijas normales, aplicar despues [`SUPABASE_MIGRATION_FASE_14C_CONFIRM_PURCHASE_BATCHES.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_14C_CONFIRM_PURCHASE_BATCHES.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_14C.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_14C.md).
+13. Para habilitar clasificacion de ingresos en compras multiples, aplicar despues [`SUPABASE_MIGRATION_FASE_14D_PURCHASE_CLASSIFICATION.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_14D_PURCHASE_CLASSIFICATION.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_14D.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_14D.md).
+14. Para corregir precision de tres decimales e integridad no eludible de clasificacion, aplicar despues [`SUPABASE_MIGRATION_FASE_14D_1_PRECISION_INTEGRITY.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_14D_1_PRECISION_INTEGRITY.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_14D_1.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_14D_1.md).
+15. Para habilitar el catalogo publico seguro, aplicar despues [`SUPABASE_MIGRATION_FASE_15B_PUBLIC_CATALOG.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15B_PUBLIC_CATALOG.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15B.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15B.md). Esta migracion no publica ningun producto existente por defecto.
+16. Para habilitar checkout invitado y pedidos publicos controlados, aplicar despues [`SUPABASE_MIGRATION_FASE_15C_PUBLIC_CHECKOUT.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15C_PUBLIC_CHECKOUT.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15C.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15C.md).
+17. Para habilitar revision, resumen final y confirmacion segura, aplicar despues [`SUPABASE_MIGRATION_FASE_15D_SECURE_ORDER_CONFIRMATION.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15D_SECURE_ORDER_CONFIRMATION.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15D.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15D.md).
+18. Para habilitar cuentas publicas de clientes, aplicar despues [`SUPABASE_MIGRATION_FASE_15E_CUSTOMER_ACCOUNTS.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15E_CUSTOMER_ACCOUNTS.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15E.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15E.md).
+19. Para preparar el cierre comercial seguro, aplicar despues [`SUPABASE_MIGRATION_FASE_15F_B_FULFILLMENT_FOUNDATION.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15F_B_FULFILLMENT_FOUNDATION.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15F_B.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15F_B.md). Esta migracion aun no habilita UI de despacho o cobro.
+20. Para habilitar despacho/recojo y pagos iniciales, aplicar despues [`SUPABASE_MIGRATION_FASE_15F_C_FULFILL_CONFIRMED_ORDER.sql`](/C:/dev/insumos-pro/SUPABASE_MIGRATION_FASE_15F_C_FULFILL_CONFIRMED_ORDER.sql) y validar [`PLAN_PRUEBAS_STAGING_FASE_15F_C.md`](/C:/dev/insumos-pro/PLAN_PRUEBAS_STAGING_FASE_15F_C.md).
+21. Los datos demo ya no estan dentro del SQL productivo. Si necesitas datos ficticios para demo/staging, ejecutar manualmente [`SUPABASE_SEED_DEMO.sql`](/C:/dev/insumos-pro/SUPABASE_SEED_DEMO.sql). No usar este seed en produccion real.
+
+En Supabase Auth configurar como Redirect URLs:
+
+```text
+http://localhost:3000/mi-cuenta/auth/callback
+https://URL-STAGING/mi-cuenta/auth/callback
+https://URL-PRODUCCION/mi-cuenta/auth/callback
+```
 
 ## Primer usuario administrador
 
 1. Crear un usuario en Supabase Auth:
    Dashboard > Authentication > Users > Add user
-2. El trigger creara automaticamente su fila en `public.profiles` con rol `ventas`.
-3. Cambiar el rol a `administrador` con SQL:
+2. El trigger no crea perfiles internos automaticamente. Esto evita que un registro
+   publico pueda recibir un rol de personal.
+3. Solo para el primer administrador de un proyecto nuevo, insertar el perfil explicitamente:
 
 ```sql
-update public.profiles
-set role = 'administrador'
-where id = 'UUID_DEL_USUARIO';
+insert into public.profiles (id, full_name, role, is_active)
+values ('UUID_DEL_USUARIO', 'Administrador', 'administrador', true);
 ```
 
-Para cambios posteriores de perfil en staging/produccion, preferir la RPC protegida:
-
-```sql
-select public.admin_update_profile(
-  'UUID_DEL_USUARIO',
-  'Nombre Apellido',
-  'administrador',
-  true
-);
-```
+Despues de ese bootstrap, crear y administrar todo el personal desde
+`/configuracion`. Ese flujo usa `SUPABASE_SERVICE_ROLE_KEY` solo en servidor.
 
 ## Desarrollo
 
@@ -85,6 +109,7 @@ npm run build
 ## Flujo de autenticacion
 
 - `/login`: ingreso real con Supabase Auth
+- `/mi-cuenta`: registro, login, recuperacion e historial para clientes
 - `src/app/(private)`: rutas protegidas por sesion
 - `/acceso-restringido`: mensaje profesional para usuarios sin permiso o perfil incompleto
 - Header: nombre, rol y logout
@@ -93,10 +118,19 @@ npm run build
 ## Catalogo de productos
 
 - `/productos`: productos, categorias y unidades de medida conectados a Supabase
+- `/catalogo`: escaparate publico de solo lectura con carrito guardado localmente en el navegador
 - `administrador` e `inventario`: pueden crear, editar y desactivar
 - `ventas`: acceso de solo lectura
 - `finanzas`: sin acceso directo al modulo
 - El stock actual se actualiza desde movimientos de inventario
+- Para publicar un producto se debe activar primero su categoria para catalogo y luego marcar el producto como vendible y visible
+- El catalogo publico solo recibe nombre, descripcion publica, imagen, precio referencial, unidad, categoria, cantidad minima, incremento, disponibilidad y orden
+- El catalogo no expone costo, stock exacto, proveedor, margen, SKU ni otros campos internos
+- `/catalogo/checkout`: checkout invitado que envia una solicitud aproximada para revision
+- Con sesion de cliente, el checkout prellena datos y vincula el pedido a su cuenta
+- "Pedir nuevamente" copia productos/cantidades al carrito y usa disponibilidad/precios actuales
+- El checkout crea un pedido `catalogo_invitado` en `pendiente_revision`, sin venta ni reserva de stock
+- El carrito solo se limpia despues de recibir una referencia de pedido confirmada
 
 ## Inventario
 
@@ -112,6 +146,11 @@ npm run build
 
 - `/proveedores`: gestion de proveedores activos/inactivos conectada a Supabase
 - `/compras`: compras con estado `borrador`, `confirmada` o `cancelada`
+- `/compras/multiple`: planilla de compra multiple en borrador con proveedor y metodo de pago por linea
+- Al confirmar una compra multiple, se crean compras hijas normales agrupadas por proveedor y metodo de pago
+- Las compras hijas reutilizan `confirm_purchase`, por lo que inventario, caja, cuentas por pagar y reportes se actualizan por el flujo existente
+- Las lineas con productos que requieren clasificacion permiten registrar productos resultantes, merma y costo asignado antes de confirmar
+- El producto base para clasificar no ingresa a stock; solo ingresan los productos resultantes vendibles
 - Una compra en borrador no modifica stock
 - Al confirmar una compra se generan movimientos de inventario tipo `entrada` por cada item
 - La confirmacion usa la funcion SQL `confirm_purchase` para evitar duplicar entradas
@@ -122,7 +161,16 @@ npm run build
 ## Clientes y ventas
 
 - `/clientes`: clientes de contado o credito con limite y saldo actual
+- `/pedidos`: preparacion mobile-first de pedidos con cantidades solicitadas y reales
+- Los pedidos del catalogo muestran snapshot de contacto, entrega, pago esperado y referencia publica
+- Administrador o ventas debe vincular un cliente interno antes de preparar un pedido invitado
+- La preparacion registra cantidades reales y deja el pedido `listo_para_confirmar`
+- Ventas puede ajustar precio final solo con motivo obligatorio y auditoria
+- El resumen se comparte mediante `/pedido/confirmar#TOKEN`; el fragmento no llega a logs HTTP
+- La confirmacion del cliente cambia a `confirmado_cliente`, sin crear venta ni descontar stock
 - `/ventas`: ventas con estado `borrador`, `confirmada` o `anulada`
+- Un pedido no modifica stock ni finanzas hasta confirmarse como venta real
+- Al confirmar un pedido, se crea una venta y se descuenta inventario usando la cantidad real preparada
 - Una venta en borrador no modifica stock ni deuda
 - Al confirmar una venta se generan movimientos de inventario tipo `salida`
 - La confirmacion bloquea stock negativo y ventas a credito por encima del limite
@@ -160,11 +208,13 @@ npm run build
 
 ## Entrega y auditoria
 
-- `/configuracion`: incluye modulos activos, roles y bitacora de actividad
-- `audit_logs`: registra acciones criticas de productos, inventario, compras, ventas y finanzas
+- `/configuracion`: incluye modulos activos, roles, administracion interna de usuarios y bitacora de actividad
+- `audit_logs`: registra acciones criticas desde servidor con `SUPABASE_SERVICE_ROLE_KEY`; usuarios autenticados no deben insertar eventos arbitrarios
 - Documentos finales: `GUIA_USUARIO.md`, `GUIA_ADMIN.md`, `CHECKLIST_ENTREGA.md`, `SEGURIDAD_PERMISOS.md`, `PENDIENTES_CONTROLADOS.md`, `USUARIOS_DEMO.md`
 - Documentos de produccion: `PLAN_PUESTA_EN_PRODUCCION.md`, `LIMPIEZA_DATOS_DEMO.md`, `PLANTILLA_CARGA_DATOS.md`, `CREACION_USUARIOS_REALES.md`, `CHECKLIST_PRUEBAS_CLIENTE.md`, `CONFIGURACION_PRODUCCION.md`
 - Fase 12A: `SUPABASE_SCHEMA.sql` queda sin seeds demo y con RLS endurecida para perfiles y tablas operativas criticas
+- Fase 12C: administracion interna de usuarios, auditoria server-only y plan de anulación segura futura en `DISENO_FASE_12D_ANULACIONES.md`
+- Fase 12D: anulacion contable segura de ventas/compras confirmadas solo para administradores, con reversas auditadas y bloqueos conservadores
 
 ## Estructura principal
 

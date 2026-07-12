@@ -164,10 +164,24 @@ function FormMessage({ state }: { state: ActionState }) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es-BO", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Fecha invalida";
+
+  const datePart = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
+
+  return `${datePart} ${timePart}`;
 }
 
 function MovementForm({ products }: { products: ProductWithRelations[] }) {
@@ -211,8 +225,8 @@ function MovementForm({ products }: { products: ProductWithRelations[] }) {
             id="quantity"
             name="quantity"
             type="number"
-            min="0.01"
-            step="0.01"
+            min="0.001"
+            step="0.001"
             placeholder="10"
             required
             className="rounded-xl"

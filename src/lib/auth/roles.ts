@@ -15,11 +15,14 @@ export function getRoleLabel(role: UserRole | null | undefined) {
 
 const roleRouteAccess: Record<UserRole, string[]> = {
   administrador: ["*"],
-  ventas: ["/", "/ventas", "/clientes", "/productos", "/inventario", "/reportes"],
+  ventas: ["/", "/ventas", "/clientes", "/productos", "/inventario"],
   inventario: [
     "/",
     "/ventas",
     "/productos",
+    "/parametrizacion",
+    "/ingresos",
+    "/pedidos",
     "/inventario",
     "/compras",
     "/proveedores",
@@ -31,7 +34,6 @@ const roleRouteAccess: Record<UserRole, string[]> = {
     "/compras",
     "/finanzas",
     "/clientes",
-    "/reportes",
     "/finanzas/cuentas-por-cobrar",
     "/finanzas/cuentas-por-pagar",
   ],

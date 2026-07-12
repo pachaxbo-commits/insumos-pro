@@ -83,6 +83,7 @@ const statusStyles: Record<FinanceStatus, string> = {
   parcial: "border-sky-200 bg-sky-50 text-sky-700",
   pagada: "border-emerald-200 bg-emerald-50 text-emerald-700",
   vencida: "border-rose-200 bg-rose-50 text-rose-700",
+  anulada: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
 const paymentMethods: Array<{ value: FinancePaymentMethod; label: string }> = [
@@ -126,7 +127,10 @@ function StatusBadge({ status }: { status: FinanceStatus }) {
 
 function formatDate(value: string | null) {
   if (!value) return "Sin fecha";
-  return new Intl.DateTimeFormat("es-BO", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function useActionToast(state: ActionState) {
@@ -334,6 +338,7 @@ function ReceivablesTable({
             <option value="parcial">Parcial</option>
             <option value="pagada">Pagada</option>
             <option value="vencida">Vencida</option>
+            <option value="anulada">Anulada</option>
           </NativeSelect>
           <Input name="arDate" type="date" defaultValue={filters.arDate ?? ""} className="h-10 rounded-xl" />
           <Button type="submit" variant="outline" className="rounded-xl">
@@ -436,6 +441,7 @@ function PayablesTable({
             <option value="parcial">Parcial</option>
             <option value="pagada">Pagada</option>
             <option value="vencida">Vencida</option>
+            <option value="anulada">Anulada</option>
           </NativeSelect>
           <Input name="apDate" type="date" defaultValue={filters.apDate ?? ""} className="h-10 rounded-xl" />
           <Button type="submit" variant="outline" className="rounded-xl">

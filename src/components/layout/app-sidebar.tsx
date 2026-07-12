@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PlusCircle } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { Separator } from "@/components/ui/separator";
-import { canAccessPath, filterNavigationByRole, getRoleLabel } from "@/lib/auth/roles";
+import { filterNavigationByRole, getRoleLabel } from "@/lib/auth/roles";
 import { mainNavigation } from "@/lib/navigation";
+import { getActiveTransitionalModules } from "@/lib/qb-insumos/transition-policy";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types/auth";
 
@@ -19,8 +19,14 @@ type AppSidebarProps = {
 
 export function AppSidebar({ onNavigate, mobile = false, user }: AppSidebarProps) {
   const pathname = usePathname();
-  const visibleNavigation = filterNavigationByRole(mainNavigation, user.role);
-  const canCreateSale = canAccessPath(user.role, "/ventas");
+  const activeHrefs = new Set(
+    getActiveTransitionalModules()
+      .map((module) => module.href)
+      .filter(Boolean),
+  );
+  const visibleNavigation = filterNavigationByRole(mainNavigation, user.role).filter((item) =>
+    activeHrefs.has(item.href),
+  );
 
   return (
     <aside
@@ -33,25 +39,12 @@ export function AppSidebar({ onNavigate, mobile = false, user }: AppSidebarProps
     >
       <div className="px-5 py-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-sidebar-primary font-heading text-lg font-semibold text-sidebar-primary-foreground">
-            IP
-          </div>
-          <div>
-            <p className="font-heading text-lg font-semibold">Insumos Pro</p>
-            <p className="text-sm text-sidebar-foreground/70">{getRoleLabel(user.role)}</p>
-          </div>
+          <QbInsumosBrand
+            variant="compact"
+            textClassName="text-sidebar-foreground"
+          />
         </div>
-        {canCreateSale ? (
-          <Button
-            asChild
-            className="mt-6 h-11 w-full justify-start rounded-xl bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
-          >
-            <Link href="/ventas" onClick={onNavigate}>
-              <PlusCircle className="size-4" />
-              Nueva venta
-            </Link>
-          </Button>
-        ) : null}
+        <p className="mt-3 text-sm text-sidebar-foreground/70">{getRoleLabel(user.role)}</p>
       </div>
 
       <Separator className="bg-white/10" />
@@ -93,9 +86,9 @@ export function AppSidebar({ onNavigate, mobile = false, user }: AppSidebarProps
       </nav>
 
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-sm font-medium">Permisos activos</p>
+        <p className="text-sm font-medium">Transicion QB-1</p>
         <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
-          El menu muestra solo los modulos habilitados para el rol actual y protege el resto del sistema.
+          El menu muestra solo modulos seguros durante el congelamiento visual.
         </p>
       </div>
     </aside>

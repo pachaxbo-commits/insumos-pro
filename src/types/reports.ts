@@ -1,248 +1,177 @@
 import type { UserRole } from "@/types/auth";
-import type { FinancePaymentMethod, FinanceStatus } from "@/types/finance";
-import type { InventoryMovementType } from "@/types/inventory";
-import type { PaymentMethod, PaymentStatus, PurchaseStatus } from "@/types/purchases";
-import type { CustomerType, SalePaymentType, SaleStatus } from "@/types/sales";
 
-export type ReportTab =
-  | "ventas"
+export type QbReportTab =
+  | "resumen"
   | "inventario"
-  | "clientes"
-  | "compras"
-  | "finanzas"
+  | "ingresos"
+  | "pedidos"
+  | "pendientes_recibo"
+  | "recibos"
+  | "frecuentes"
+  | "auditoria"
   | "exportaciones";
 
-export type ReportFilters = {
+export type QbReportExportKey =
+  | "inventario"
+  | "pedidos"
+  | "pendientes_recibo"
+  | "recibos";
+
+export type QbReportFilters = {
   startDate?: string;
   endDate?: string;
-  customer?: string;
-  salePaymentMethod?: SalePaymentType | "all";
-  saleStatus?: SaleStatus | "all";
+  q?: string;
   category?: string;
+  customer?: string;
   product?: string;
-  movementType?: InventoryMovementType | "all";
-  customerType?: CustomerType | "all";
-  customerStatus?: "all" | "active" | "inactive";
-  debtStatus?: "all" | "with_debt" | "without_debt";
-  supplier?: string;
-  purchaseStatus?: PurchaseStatus | "all";
-  purchasePaymentMethod?: PaymentMethod | "all";
-  financePaymentMethod?: FinancePaymentMethod | "all";
-  financeStatus?: FinanceStatus | PaymentStatus | "all";
+  orderStatus?: string;
+  receiptStatus?: string;
+  inventoryStatus?: "all" | "low" | "out";
+  qbCatalog?: "all" | "visible" | "hidden";
+  qbActive?: "all" | "active" | "inactive";
 };
 
-export type ReportsPermissions = {
-  role: UserRole;
-  tabs: ReportTab[];
-  exports: ReportExportKey[];
-};
-
-export type ReportOption = {
+export type QbReportOption = {
   id: string;
   label: string;
 };
 
-export type ReportsLookups = {
-  customers: ReportOption[];
-  suppliers: ReportOption[];
-  products: ReportOption[];
-  categories: ReportOption[];
+export type QbReportsPermissions = {
+  role: UserRole;
+  tabs: QbReportTab[];
+  exports: QbReportExportKey[];
 };
 
-export type SalesReportSummary = {
-  totalSold: number;
-  salesCount: number;
-  averageTicket: number;
-  confirmedCount: number;
-  draftCount: number;
-  canceledCount: number;
+export type QbReportsLookups = {
+  categories: QbReportOption[];
+  customers: QbReportOption[];
+  products: QbReportOption[];
 };
 
-export type SalesReportRow = {
-  id: string;
-  date: string;
-  customer: string;
-  total: number;
-  paymentType: string;
-  status: SaleStatus;
-};
-
-export type RankingRow = {
-  id: string;
-  name: string;
-  quantity?: number;
-  amount: number;
-  extra?: string;
-};
-
-export type SalesReportData = {
-  summary: SalesReportSummary;
-  rows: SalesReportRow[];
-  byPaymentMethod: RankingRow[];
-  byStatus: RankingRow[];
-  topProducts: RankingRow[];
-  topCustomers: RankingRow[];
-};
-
-export type InventoryReportSummary = {
-  totalProducts: number;
+export type QbReportsSummary = {
+  pendingPreparation: number;
+  inPreparation: number;
+  prepared: number;
+  deliveredPendingReceipt: number;
+  draftReceipts: number;
+  issuedReceiptsInPeriod: number;
+  issuedReceiptTotalInPeriod: number;
   lowStockProducts: number;
   outOfStockProducts: number;
-  purchaseValue: number;
-  saleValue: number;
-  entries: number;
-  outputs: number;
-  shrinkage: number;
-  returns: number;
-  adjustments: number;
+  recentMerchandiseReceipts: number;
+  recentOrders: number;
 };
 
-export type InventoryProductRow = {
+export type QbInventoryReportRow = {
   id: string;
-  name: string;
+  product: string;
   sku: string;
   category: string;
-  unit: string;
   stockCurrent: number;
   stockMin: number;
-  purchaseValue: number;
-  saleValue: number;
-  status: "ok" | "stock_bajo" | "sin_stock";
+  baseUnit: string;
+  qbStatus: "activo" | "inactivo" | "sin_configuracion";
+  catalogVisible: boolean;
+  stockStatus: "ok" | "stock_bajo" | "sin_stock";
+  isClassifiable: boolean;
+  isClassificationResult: boolean;
+  isLossProduct: boolean;
+  lastMovementAt: string | null;
 };
 
-export type InventoryMovementReportRow = {
+export type QbMerchandiseReceiptReportRow = {
   id: string;
   date: string;
+  reference: string;
+  supplierOrOrigin: string;
   product: string;
-  type: InventoryMovementType;
-  quantity: number;
-  stockBefore: number;
-  stockAfter: number;
-  reason: string;
+  sourceQuantity: number;
+  sourceLabel: string;
+  baseQuantity: number;
+  baseUnit: string;
+  isClassified: boolean;
+  resultProducts: string;
+  lossQuantity: number;
+  status: string;
+  confirmedBy: string;
+  confirmedAt: string | null;
+  informativeCost: number;
 };
 
-export type InventoryReportData = {
-  summary: InventoryReportSummary;
-  products: InventoryProductRow[];
-  movements: InventoryMovementReportRow[];
-  highestOutputProducts: RankingRow[];
+export type QbOrderReportRow = {
+  id: string;
+  reference: string;
+  date: string;
+  customer: string;
+  phone: string;
+  location: string;
+  status: string;
+  requestedProducts: string;
+  preparedProducts: string;
+  preparationStatus: string;
+  preparedAt: string | null;
+  deliveredAt: string | null;
 };
 
-export type CustomersReportSummary = {
-  activeCustomers: number;
-  customersWithDebt: number;
-  totalDebt: number;
-  availableCredit: number;
+export type QbPendingReceiptReportRow = {
+  customerId: string;
+  customer: string;
+  phone: string;
+  pendingOrders: number;
+  lastDeliveredAt: string | null;
+  deliveredProducts: string;
+  location: string;
 };
 
-export type CustomerReportRow = {
+export type QbReceiptReportRow = {
+  id: string;
+  number: string;
+  customer: string;
+  status: string;
+  issuedAt: string | null;
+  totalAmount: number;
+  factors: string;
+  includedOrders: number;
+  issuedBy: string;
+  voidReason: string;
+};
+
+export type QbRankingRow = {
   id: string;
   name: string;
-  type: CustomerType;
-  status: "activo" | "inactivo";
-  purchasedAmount: number;
-  currentBalance: number;
-  creditLimit: number;
-  availableCredit: number;
+  quantity: number;
+  detail?: string;
 };
 
-export type CustomersReportData = {
-  summary: CustomersReportSummary;
-  rows: CustomerReportRow[];
-  topBuyers: RankingRow[];
-  topDebtors: RankingRow[];
-};
-
-export type PurchasesReportSummary = {
-  totalPurchased: number;
-  purchasesCount: number;
-  pendingCount: number;
-  confirmedCount: number;
-};
-
-export type PurchaseReportRow = {
+export type QbAuditReportRow = {
   id: string;
   date: string;
-  supplier: string;
-  total: number;
-  status: PurchaseStatus;
-  paymentStatus: PaymentStatus;
-  paymentMethod: PaymentMethod;
+  event: string;
+  entity: string;
+  detail: string;
+  actor: string;
 };
-
-export type PurchasesReportData = {
-  summary: PurchasesReportSummary;
-  rows: PurchaseReportRow[];
-  bySupplier: RankingRow[];
-  topProducts: RankingRow[];
-  averageCostByProduct: RankingRow[];
-};
-
-export type FinanceReportSummary = {
-  salesIncome: number;
-  customerPayments: number;
-  supplierPayments: number;
-  manualExpenses: number;
-  netCash: number;
-  pendingReceivable: number;
-  pendingPayable: number;
-  overdueReceivable: number;
-  overduePayable: number;
-  estimatedProfit: number;
-};
-
-export type FinanceReportData = {
-  summary: FinanceReportSummary;
-  cashRows: Array<{
-    id: string;
-    date: string;
-    type: string;
-    source: string;
-    method: string;
-    amount: number;
-    notes: string;
-  }>;
-  receivableRows: Array<{
-    id: string;
-    customer: string;
-    amount: number;
-    paidAmount: number;
-    balance: number;
-    dueDate: string;
-    status: FinanceStatus;
-  }>;
-  payableRows: Array<{
-    id: string;
-    supplier: string;
-    amount: number;
-    paidAmount: number;
-    balance: number;
-    dueDate: string;
-    status: FinanceStatus;
-  }>;
-};
-
-export type ReportExportKey =
-  | "ventas"
-  | "productos"
-  | "inventario"
-  | "clientes"
-  | "compras"
-  | "cuentas_por_cobrar"
-  | "cuentas_por_pagar"
-  | "caja";
 
 export type CsvRecord = Record<string, string | number | boolean | null>;
 
-export type ReportsExportData = Record<ReportExportKey, CsvRecord[]>;
+export type QbReportsExportData = Record<QbReportExportKey, CsvRecord[]>;
 
-export type ReportsData = {
-  permissions: ReportsPermissions;
-  lookups: ReportsLookups;
-  sales: SalesReportData;
-  inventory: InventoryReportData;
-  customers: CustomersReportData;
-  purchases: PurchasesReportData;
-  finance: FinanceReportData;
-  exports: ReportsExportData;
+export type QbReportsData = {
+  permissions: QbReportsPermissions;
+  lookups: QbReportsLookups;
+  summary: QbReportsSummary;
+  inventory: QbInventoryReportRow[];
+  merchandiseReceipts: QbMerchandiseReceiptReportRow[];
+  orders: QbOrderReportRow[];
+  pendingReceipts: QbPendingReceiptReportRow[];
+  receipts: QbReceiptReportRow[];
+  frequentCustomers: QbRankingRow[];
+  customersPendingReceipt: QbRankingRow[];
+  mostRequestedProducts: QbRankingRow[];
+  mostDeliveredProducts: QbRankingRow[];
+  mostMissingProducts: QbRankingRow[];
+  mostUsedUnits: QbRankingRow[];
+  auditEvents: QbAuditReportRow[];
+  exports: QbReportsExportData;
+  error?: string;
 };

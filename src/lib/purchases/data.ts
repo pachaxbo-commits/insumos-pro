@@ -127,7 +127,7 @@ export async function getPurchasesData(filters: PurchaseFilters = {}): Promise<P
   let purchasesQuery = supabase
     .from("purchases")
     .select(
-      `id, supplier_id, purchase_date, status, payment_status, payment_method, subtotal, total, notes, created_by, created_at, updated_at,
+      `id, supplier_id, purchase_date, status, payment_status, payment_method, subtotal, total, notes, created_by, created_at, updated_at, canceled_reason, canceled_by, canceled_at, reversal_status,
        supplier:suppliers(id, name, contact_name, phone, address, notes, is_active, created_at, updated_at),
        items:purchase_items(id, purchase_id, product_id, quantity, unit_cost, subtotal, created_at, product:products(${productSelect})),
        created_by_profile:profiles!purchases_created_by_fkey(id, full_name, role)`,

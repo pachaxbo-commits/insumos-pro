@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Menu, PlusCircle, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 
+import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { UserMenu } from "@/components/auth/user-menu";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { canAccessPath, getRoleLabel } from "@/lib/auth/roles";
+import { getRoleLabel } from "@/lib/auth/roles";
 import type { SessionUser } from "@/types/auth";
 
 type AppHeaderProps = {
@@ -24,7 +24,6 @@ type AppHeaderProps = {
 
 export function AppHeader({ user }: AppHeaderProps) {
   const [open, setOpen] = useState(false);
-  const canCreateSale = canAccessPath(user.role, "/ventas");
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-[1.5rem] border border-white/60 bg-white/78 px-4 py-3 shadow-sm backdrop-blur lg:px-5">
@@ -44,11 +43,11 @@ export function AppHeader({ user }: AppHeaderProps) {
           </SheetContent>
         </Sheet>
 
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-            Operacion
-          </p>
-          <h2 className="font-heading text-lg font-semibold tracking-tight">Dashboard ejecutivo</h2>
+        <div className="flex min-w-0 items-center gap-3">
+          <QbInsumosBrand variant="compact" />
+          <h2 className="hidden font-heading text-lg font-semibold tracking-tight sm:block">
+            Transicion visual segura
+          </h2>
         </div>
       </div>
 
@@ -57,7 +56,7 @@ export function AppHeader({ user }: AppHeaderProps) {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             readOnly
-            value="Accesos rapidos: ventas, productos o clientes"
+            value="QB-1: modulos legado suspendidos por ruta"
             className="border-white bg-muted/70 pl-9 text-muted-foreground"
           />
         </div>
@@ -70,14 +69,6 @@ export function AppHeader({ user }: AppHeaderProps) {
           </p>
           <p className="text-xs text-muted-foreground">{getRoleLabel(user.role)}</p>
         </div>
-        {canCreateSale ? (
-          <Button asChild className="rounded-xl">
-            <Link href="/ventas">
-              <PlusCircle className="size-4" />
-              <span className="hidden sm:inline">Nueva venta</span>
-            </Link>
-          </Button>
-        ) : null}
         <UserMenu user={user} />
       </div>
     </header>

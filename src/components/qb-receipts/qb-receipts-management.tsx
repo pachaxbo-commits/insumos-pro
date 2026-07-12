@@ -1,0 +1,550 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState, useMemo, useState } from "react";
+import {
+  Ban,
+  CheckCircle2,
+  FileText,
+  Percent,
+  Printer,
+  ReceiptText,
+  Save,
+} from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  createQbReceiptDraftAction,
+  emitQbReceiptAction,
+  updateQbReceiptDraftAction,
+  voidQbReceiptAction,
+} from "@/lib/qb-receipts/actions";
+import type {
+  QbReceipt,
+  QbReceiptActionState,
+  QbReceiptCustomerGroup,
+  QbReceiptLine,
+  QbReceiptStatus,
+} from "@/types/qb-receipts";
+
+const initialState: QbReceiptActionState = { success: false };
+
+const statusLabels: Record<QbReceiptStatus, string> = {
+  borrador: "Borrador",
+  emitido: "Emitido",
+  anulado: "Anulado",
+};
+
+function money(value: number) {
+  return new Intl.NumberFormat("es-BO", {
+    style: "currency",
+    currency: "BOB",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function quantity(value: number) {
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+}
+
+function shortDate(value: string | null) {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function statusClass(status: QbReceiptStatus) {
+  if (status === "emitido") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "anulado") return "border-slate-200 bg-slate-50 text-slate-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function actionMessage(state: QbReceiptActionState) {
+  if (!state.message) return null;
+
+  return (
+    <p className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
+      {state.message}
+      {state.receiptId ? (
+        <Link className="ml-2 underline" href={`/recibos/${state.receiptId}`}>
+          Ver recibo
+        </Link>
+      ) : null}
+    </p>
+  );
+}
+
+type LineDraft = {
+  basePriceUsed: string;
+  saveAsNewBasePrice: boolean;
+  notes: string;
+};
+
+function buildLineDraft(line: QbReceiptLine): LineDraft {
+  return {
+    basePriceUsed: String(line.basePriceUsed),
+    saveAsNewBasePrice: line.saveAsNewBasePrice,
+    notes: line.notes ?? "",
+  };
+}
+
+function CreateReceiptPanel({
+  groups,
+  action,
+  pending,
+}: {
+  groups: QbReceiptCustomerGroup[];
+  action: (formData: FormData) => void;
+  pending: boolean;
+}) {
+  const [customerId, setCustomerId] = useState(groups[0]?.customerId ?? "");
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const selectedGroup = groups.find((group) => group.customerId === customerId) ?? null;
+
+  function toggleOrder(orderId: string) {
+    setSelectedOrders((current) =>
+      current.includes(orderId)
+        ? current.filter((id) => id !== orderId)
+        : [...current, orderId],
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ReceiptText className="size-4 text-emerald-700" />
+          Nuevo recibo
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {!groups.length ? (
+          <p className="text-sm text-muted-foreground">
+            No hay pedidos entregados pendientes de recibo.
+          </p>
+        ) : (
+          <form action={action} className="space-y-4">
+            <input type="hidden" name="customer_id" value={customerId} />
+            <input type="hidden" name="order_ids" value={JSON.stringify(selectedOrders)} />
+
+            <div className="space-y-2">
+              <Label>Cliente</Label>
+              <Select
+                value={customerId}
+                onValueChange={(value) => {
+                  setCustomerId(value);
+                  setSelectedOrders([]);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {groups.map((group) => (
+                    <SelectItem key={group.customerId} value={group.customerId}>
+                      {group.customerName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Pedidos entregados</Label>
+              <div className="space-y-2">
+                {(selectedGroup?.orders ?? []).map((order) => (
+                  <label
+                    key={order.id}
+                    className="flex items-start gap-3 rounded-md border p-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedOrders.includes(order.id)}
+                      onChange={() => toggleOrder(order.id)}
+                      className="mt-1 size-4"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-mono font-medium">{order.reference}</span>
+                      <span className="block text-muted-foreground">
+                        {shortDate(order.deliveredAt)} · {order.deliveredLineCount} lineas entregadas
+                      </span>
+                      {order.locationLabel ? (
+                        <span className="block text-muted-foreground">{order.locationLabel}</span>
+                      ) : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <Button type="submit" disabled={pending || selectedOrders.length === 0}>
+              <FileText className="size-4" />
+              {pending ? "Creando..." : "Crear borrador"}
+            </Button>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DraftEditor({
+  receipt,
+  updateAction,
+  updatePending,
+  emitAction,
+  emitPending,
+  voidAction,
+  voidPending,
+}: {
+  receipt: QbReceipt;
+  updateAction: (formData: FormData) => void;
+  updatePending: boolean;
+  emitAction: (formData: FormData) => void;
+  emitPending: boolean;
+  voidAction: (formData: FormData) => void;
+  voidPending: boolean;
+}) {
+  const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
+    Object.fromEntries(receipt.lines.map((line) => [line.id, buildLineDraft(line)])),
+  );
+  const linesPayload = useMemo(
+    () =>
+      JSON.stringify(
+        receipt.lines.map((line) => {
+          const draft = lines[line.id] ?? buildLineDraft(line);
+          return {
+            lineId: line.id,
+            basePriceUsed: Number(draft.basePriceUsed || 0),
+            saveAsNewBasePrice: draft.saveAsNewBasePrice,
+            notes: draft.notes,
+          };
+        }),
+      ),
+    [lines, receipt.lines],
+  );
+
+  function updateLine(lineId: string, patch: Partial<LineDraft>) {
+    setLines((current) => ({
+      ...current,
+      [lineId]: { ...(current[lineId] ?? buildLineDraft(receipt.lines.find((line) => line.id === lineId)!)), ...patch },
+    }));
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <form action={updateAction} className="space-y-4">
+        <input type="hidden" name="receipt_id" value={receipt.id} />
+        <input type="hidden" name="lines" value={linesPayload} />
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-2">
+            <Label>Distancia %</Label>
+            <Input name="distance_factor_percent" type="number" step="0.001" defaultValue={receipt.distanceFactorPercent} />
+          </div>
+          <div className="space-y-2">
+            <Label>Exigencia %</Label>
+            <Input name="exigency_factor_percent" type="number" step="0.001" defaultValue={receipt.exigencyFactorPercent} />
+          </div>
+          <div className="space-y-2">
+            <Label>Clima %</Label>
+            <Input name="weather_factor_percent" type="number" step="0.001" defaultValue={receipt.weatherFactorPercent} />
+          </div>
+          <div className="space-y-2">
+            <Label>Extraordinario %</Label>
+            <Input name="extraordinary_factor_percent" type="number" step="0.001" defaultValue={receipt.extraordinaryFactorPercent} />
+          </div>
+        </div>
+
+        <div className="rounded-md border bg-background">
+          <div className="grid gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground md:grid-cols-[1fr_120px_130px_110px_110px]">
+            <span>Producto</span>
+            <span>Cantidad</span>
+            <span>Precio base</span>
+            <span>Guardar base</span>
+            <span>Total</span>
+          </div>
+          <div className="divide-y">
+            {receipt.lines.map((line) => {
+              const draft = lines[line.id] ?? buildLineDraft(line);
+              return (
+                <div key={line.id} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[1fr_120px_130px_110px_110px]">
+                  <div className="min-w-0">
+                    <p className="font-medium">{line.productName}</p>
+                    <p className="text-xs text-muted-foreground">{line.orderReference}</p>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
+                  </p>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={draft.basePriceUsed}
+                    onChange={(event) => updateLine(line.id, { basePriceUsed: event.target.value })}
+                  />
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={draft.saveAsNewBasePrice}
+                      onChange={(event) => updateLine(line.id, { saveAsNewBasePrice: event.target.checked })}
+                      className="size-4"
+                    />
+                    Futuro
+                  </label>
+                  <p className="font-medium">{money(line.lineTotal)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Nota visible</Label>
+            <Textarea name="visible_note" defaultValue={receipt.visibleNote ?? ""} rows={2} />
+          </div>
+          <div className="space-y-2">
+            <Label>Notas internas</Label>
+            <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} />
+          </div>
+        </div>
+
+        <Button type="submit" disabled={updatePending}>
+          <Save className="size-4" />
+          {updatePending ? "Guardando..." : "Guardar borrador"}
+        </Button>
+      </form>
+
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        <form action={emitAction}>
+          <input type="hidden" name="receipt_id" value={receipt.id} />
+          <Button type="submit" disabled={emitPending}>
+            <CheckCircle2 className="size-4" />
+            {emitPending ? "Emitiendo..." : "Emitir recibo"}
+          </Button>
+        </form>
+        <form action={voidAction} className="flex flex-wrap gap-2">
+          <input type="hidden" name="receipt_id" value={receipt.id} />
+          <Input name="reason" placeholder="Motivo opcional en borrador" className="h-9 w-60" />
+          <Button type="submit" variant="outline" disabled={voidPending}>
+            <Ban className="size-4" />
+            Anular
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptCard({
+  receipt,
+  updateAction,
+  updatePending,
+  emitAction,
+  emitPending,
+  voidAction,
+  voidPending,
+}: {
+  receipt: QbReceipt;
+  updateAction: (formData: FormData) => void;
+  updatePending: boolean;
+  emitAction: (formData: FormData) => void;
+  emitPending: boolean;
+  voidAction: (formData: FormData) => void;
+  voidPending: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="font-mono text-base">{receipt.number}</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">{receipt.customerName}</p>
+          <p className="text-xs text-muted-foreground">
+            {shortDate(receipt.periodStart)} - {shortDate(receipt.periodEnd)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className={`rounded-full ${statusClass(receipt.status)}`}>
+            {statusLabels[receipt.status]}
+          </Badge>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/recibos/${receipt.id}`}>
+              <Printer className="size-4" />
+              Vista
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-md border p-3">
+            <p className="text-xs text-muted-foreground">Pedidos</p>
+            <p className="text-xl font-semibold">{receipt.orders.length}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs text-muted-foreground">Lineas</p>
+            <p className="text-xl font-semibold">{receipt.lines.length}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs text-muted-foreground">Subtotal</p>
+            <p className="text-xl font-semibold">{money(receipt.subtotalAmount)}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-xl font-semibold">{money(receipt.totalAmount)}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1">
+            <Percent className="size-3" />
+            Distancia {receipt.distanceFactorPercent}%
+          </span>
+          <span className="rounded-full border px-2 py-1">Exigencia {receipt.exigencyFactorPercent}%</span>
+          <span className="rounded-full border px-2 py-1">Clima {receipt.weatherFactorPercent}%</span>
+          <span className="rounded-full border px-2 py-1">Extraordinario {receipt.extraordinaryFactorPercent}%</span>
+        </div>
+
+        {receipt.status === "borrador" ? (
+          <DraftEditor
+            receipt={receipt}
+            updateAction={updateAction}
+            updatePending={updatePending}
+            emitAction={emitAction}
+            emitPending={emitPending}
+            voidAction={voidAction}
+            voidPending={voidPending}
+          />
+        ) : receipt.status === "emitido" ? (
+          <form action={voidAction} className="flex flex-wrap gap-2">
+            <input type="hidden" name="receipt_id" value={receipt.id} />
+            <Input name="reason" required placeholder="Motivo de anulacion" className="h-9 w-72" />
+            <Button type="submit" variant="outline" disabled={voidPending}>
+              <Ban className="size-4" />
+              Anular emitido
+            </Button>
+          </form>
+        ) : (
+          <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+            Anulado: {receipt.voidReason ?? "Sin motivo visible"}
+          </p>
+        )}
+
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          No constituye factura fiscal ni comprobante de pago.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function QbReceiptsManagement({
+  receipts,
+  pendingGroups,
+  error,
+}: {
+  receipts: QbReceipt[];
+  pendingGroups: QbReceiptCustomerGroup[];
+  error?: string;
+}) {
+  const [createState, createAction, createPending] = useActionState(
+    createQbReceiptDraftAction,
+    initialState,
+  );
+  const [updateState, updateAction, updatePending] = useActionState(
+    updateQbReceiptDraftAction,
+    initialState,
+  );
+  const [emitState, emitAction, emitPending] = useActionState(
+    emitQbReceiptAction,
+    initialState,
+  );
+  const [voidState, voidAction, voidPending] = useActionState(
+    voidQbReceiptAction,
+    initialState,
+  );
+  const draftCount = receipts.filter((receipt) => receipt.status === "borrador").length;
+  const issuedCount = receipts.filter((receipt) => receipt.status === "emitido").length;
+
+  return (
+    <div className="space-y-5">
+      {error ? (
+        <Alert variant="destructive">
+          <AlertTitle>No se pudo cargar recibos QB</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pendientes</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">
+            {pendingGroups.reduce((total, group) => total + group.orders.length, 0)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Borradores</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">{draftCount}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Emitidos</CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-semibold">{issuedCount}</CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-2">
+        {actionMessage(createState)}
+        {actionMessage(updateState)}
+        {actionMessage(emitState)}
+        {actionMessage(voidState)}
+      </div>
+
+      <CreateReceiptPanel groups={pendingGroups} action={createAction} pending={createPending} />
+
+      <div className="space-y-4">
+        {receipts.length ? (
+          receipts.map((receipt) => (
+            <ReceiptCard
+              key={receipt.id}
+              receipt={receipt}
+              updateAction={updateAction}
+              updatePending={updatePending}
+              emitAction={emitAction}
+              emitPending={emitPending}
+              voidAction={voidAction}
+              voidPending={voidPending}
+            />
+          ))
+        ) : (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              No hay recibos QB creados.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}

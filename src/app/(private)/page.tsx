@@ -1,10 +1,15 @@
-import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
+import { QbTransitionHome } from "@/components/qb-insumos/qb-transition-home";
 import { requireRoleAccess } from "@/lib/auth/session";
-import { getDashboardData } from "@/lib/dashboard/data";
+import { canAccessPath } from "@/lib/auth/roles";
+import { getActiveTransitionalModules } from "@/lib/qb-insumos/transition-policy";
+import { getQbReportsData } from "@/lib/reports/data";
 
 export default async function DashboardPage() {
-  await requireRoleAccess("/");
-  const data = await getDashboardData();
+  const auth = await requireRoleAccess("/");
+  const activeModules = getActiveTransitionalModules().filter((module) =>
+    module.href ? canAccessPath(auth.user.role, module.href) : false,
+  );
+  const reportsData = await getQbReportsData(auth.user.role!, {});
 
-  return <DashboardOverview data={data} />;
+  return <QbTransitionHome activeModules={activeModules} reportsData={reportsData} />;
 }

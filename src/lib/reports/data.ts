@@ -1,263 +1,164 @@
 import { unstable_noStore as noStore } from "next/cache";
 
-import { calculateMarginPercentage, getStockStatus } from "@/lib/products/utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/auth";
 import type {
-  AccountPayable,
-  AccountReceivableFinance,
-  CashMovement,
-  Payment,
-} from "@/types/finance";
-import type { InventoryMovement } from "@/types/inventory";
-import type { Product, ProductCategory, ProductWithRelations, UnitOfMeasure } from "@/types/products";
-import type { Purchase, PurchaseItem, Supplier } from "@/types/purchases";
-import type { Customer, Sale, SaleItem } from "@/types/sales";
-import type {
   CsvRecord,
-  InventoryMovementReportRow,
-  InventoryProductRow,
-  RankingRow,
-  ReportExportKey,
-  ReportFilters,
-  ReportOption,
-  ReportsData,
-  ReportsExportData,
-  ReportsPermissions,
-  SalesReportRow,
+  QbAuditReportRow,
+  QbInventoryReportRow,
+  QbMerchandiseReceiptReportRow,
+  QbOrderReportRow,
+  QbPendingReceiptReportRow,
+  QbRankingRow,
+  QbReceiptReportRow,
+  QbReportExportKey,
+  QbReportFilters,
+  QbReportsData,
+  QbReportsPermissions,
+  QbReportsSummary,
 } from "@/types/reports";
 
-const customerSelect =
-  "id, name, business_name, nit, phone, email, address, customer_type, credit_limit, current_balance, is_active, created_at, updated_at";
-const supplierSelect =
-  "id, name, contact_name, phone, address, notes, is_active, created_at, updated_at";
-const productSelect =
-  "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, is_active, created_at, updated_at, category:product_categories(id, name, description, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)";
+type Row = Record<string, unknown>;
 
-type ProductQueryRow = Product & {
-  category: ProductCategory | ProductCategory[] | null;
-  unit: UnitOfMeasure | UnitOfMeasure[] | null;
+type Bundle = {
+  products: Row[];
+  categories: Row[];
+  qbUnits: Row[];
+  productSettings: Row[];
+  classificationOutputs: Row[];
+  inventoryMovements: Row[];
+  customers: Row[];
+  locations: Row[];
+  merchandiseReceipts: Row[];
+  merchandiseLines: Row[];
+  classificationResults: Row[];
+  orders: Row[];
+  orderItems: Row[];
+  preparations: Row[];
+  preparationItems: Row[];
+  deliveryMovements: Row[];
+  receipts: Row[];
+  receiptOrders: Row[];
+  receiptLines: Row[];
+  receiptEvents: Row[];
+  profiles: Row[];
 };
 
-type QueryBundle = {
-  customers: Customer[];
-  suppliers: Supplier[];
-  products: ProductWithRelations[];
-  categories: ProductCategory[];
-  sales: Sale[];
-  saleItems: SaleItem[];
-  purchases: Purchase[];
-  purchaseItems: PurchaseItem[];
-  movements: InventoryMovement[];
-  receivables: AccountReceivableFinance[];
-  payables: AccountPayable[];
-  payments: Payment[];
-  cashMovements: CashMovement[];
+const emptySummary: QbReportsSummary = {
+  pendingPreparation: 0,
+  inPreparation: 0,
+  prepared: 0,
+  deliveredPendingReceipt: 0,
+  draftReceipts: 0,
+  issuedReceiptsInPeriod: 0,
+  issuedReceiptTotalInPeriod: 0,
+  lowStockProducts: 0,
+  outOfStockProducts: 0,
+  recentMerchandiseReceipts: 0,
+  recentOrders: 0,
 };
 
-const emptyPermissions: ReportsPermissions = {
-  role: "ventas",
-  tabs: ["ventas", "clientes", "inventario", "exportaciones"],
-  exports: ["ventas", "clientes", "inventario", "productos"],
+const emptyExports: Record<QbReportExportKey, CsvRecord[]> = {
+  inventario: [],
+  pedidos: [],
+  pendientes_recibo: [],
+  recibos: [],
 };
 
-const emptyReports: ReportsData = {
-  permissions: emptyPermissions,
-  lookups: {
-    customers: [],
-    suppliers: [],
-    products: [],
-    categories: [],
-  },
-  sales: {
-    summary: {
-      totalSold: 0,
-      salesCount: 0,
-      averageTicket: 0,
-      confirmedCount: 0,
-      draftCount: 0,
-      canceledCount: 0,
-    },
-    rows: [],
-    byPaymentMethod: [],
-    byStatus: [],
-    topProducts: [],
-    topCustomers: [],
-  },
-  inventory: {
-    summary: {
-      totalProducts: 0,
-      lowStockProducts: 0,
-      outOfStockProducts: 0,
-      purchaseValue: 0,
-      saleValue: 0,
-      entries: 0,
-      outputs: 0,
-      shrinkage: 0,
-      returns: 0,
-      adjustments: 0,
-    },
-    products: [],
-    movements: [],
-    highestOutputProducts: [],
-  },
-  customers: {
-    summary: {
-      activeCustomers: 0,
-      customersWithDebt: 0,
-      totalDebt: 0,
-      availableCredit: 0,
-    },
-    rows: [],
-    topBuyers: [],
-    topDebtors: [],
-  },
-  purchases: {
-    summary: {
-      totalPurchased: 0,
-      purchasesCount: 0,
-      pendingCount: 0,
-      confirmedCount: 0,
-    },
-    rows: [],
-    bySupplier: [],
-    topProducts: [],
-    averageCostByProduct: [],
-  },
-  finance: {
-    summary: {
-      salesIncome: 0,
-      customerPayments: 0,
-      supplierPayments: 0,
-      manualExpenses: 0,
-      netCash: 0,
-      pendingReceivable: 0,
-      pendingPayable: 0,
-      overdueReceivable: 0,
-      overduePayable: 0,
-      estimatedProfit: 0,
-    },
-    cashRows: [],
-    receivableRows: [],
-    payableRows: [],
-  },
-  exports: {
-    ventas: [],
-    productos: [],
-    inventario: [],
-    clientes: [],
-    compras: [],
-    cuentas_por_cobrar: [],
-    cuentas_por_pagar: [],
-    caja: [],
-  },
-};
-
-function getReportsPermissions(role: UserRole): ReportsPermissions {
-  if (role === "administrador" || role === "finanzas") {
+function getReportsPermissions(role: UserRole): QbReportsPermissions {
+  if (role === "administrador") {
     return {
       role,
-      tabs: ["ventas", "inventario", "clientes", "compras", "finanzas", "exportaciones"],
-      exports: [
-        "ventas",
-        "productos",
+      tabs: [
+        "resumen",
         "inventario",
-        "clientes",
-        "compras",
-        "cuentas_por_cobrar",
-        "cuentas_por_pagar",
-        "caja",
+        "ingresos",
+        "pedidos",
+        "pendientes_recibo",
+        "recibos",
+        "frecuentes",
+        "auditoria",
+        "exportaciones",
       ],
+      exports: ["inventario", "pedidos", "pendientes_recibo", "recibos"],
     };
   }
 
   if (role === "inventario") {
     return {
       role,
-      tabs: ["inventario", "compras", "exportaciones"],
-      exports: ["productos", "inventario", "compras"],
+      tabs: [
+        "resumen",
+        "inventario",
+        "ingresos",
+        "pedidos",
+        "pendientes_recibo",
+        "frecuentes",
+        "auditoria",
+        "exportaciones",
+      ],
+      exports: ["inventario", "pedidos", "pendientes_recibo"],
     };
   }
 
-  return {
-    role,
-    tabs: ["ventas", "inventario", "clientes", "exportaciones"],
-    exports: ["ventas", "productos", "inventario", "clientes"],
-  };
+  return { role, tabs: [], exports: [] };
 }
 
-function cloneEmptyData(permissions: ReportsPermissions): ReportsData {
+function emptyData(permissions: QbReportsPermissions, error?: string): QbReportsData {
   return {
-    ...emptyReports,
     permissions,
-    lookups: { customers: [], suppliers: [], products: [], categories: [] },
-    sales: { ...emptyReports.sales, rows: [], byPaymentMethod: [], byStatus: [], topProducts: [], topCustomers: [] },
-    inventory: { ...emptyReports.inventory, products: [], movements: [], highestOutputProducts: [] },
-    customers: { ...emptyReports.customers, rows: [], topBuyers: [], topDebtors: [] },
-    purchases: { ...emptyReports.purchases, rows: [], bySupplier: [], topProducts: [], averageCostByProduct: [] },
-    finance: { ...emptyReports.finance, cashRows: [], receivableRows: [], payableRows: [] },
-    exports: {
-      ventas: [],
-      productos: [],
-      inventario: [],
-      clientes: [],
-      compras: [],
-      cuentas_por_cobrar: [],
-      cuentas_por_pagar: [],
-      caja: [],
-    },
+    lookups: { categories: [], customers: [], products: [] },
+    summary: emptySummary,
+    inventory: [],
+    merchandiseReceipts: [],
+    orders: [],
+    pendingReceipts: [],
+    receipts: [],
+    frequentCustomers: [],
+    customersPendingReceipt: [],
+    mostRequestedProducts: [],
+    mostDeliveredProducts: [],
+    mostMissingProducts: [],
+    mostUsedUnits: [],
+    auditEvents: [],
+    exports: emptyExports,
+    error,
   };
 }
 
-function normalizeProduct(product: ProductQueryRow): ProductWithRelations {
-  const category = Array.isArray(product.category) ? product.category[0] ?? null : product.category;
-  const unit = Array.isArray(product.unit) ? product.unit[0] ?? null : product.unit;
-
-  return {
-    ...product,
-    category,
-    unit,
-    margin_percentage: calculateMarginPercentage(
-      Number(product.purchase_price),
-      Number(product.sale_price),
-    ),
-    stock_status: getStockStatus(product),
-  };
+function str(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-function toOptions<T extends { id: string; name: string }>(items: T[]): ReportOption[] {
-  return items.map((item) => ({ id: item.id, label: item.name }));
+function nullableStr(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
-function byId<T extends { id: string }>(items: T[]) {
-  return new Map(items.map((item) => [item.id, item]));
+function num(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function groupByKey<T>(items: T[], getKey: (item: T) => string) {
-  const groups = new Map<string, T[]>();
-
-  for (const item of items) {
-    const key = getKey(item);
-    groups.set(key, [...(groups.get(key) ?? []), item]);
-  }
-
-  return groups;
+function bool(value: unknown) {
+  return value === true;
 }
 
-function inDateRange(value: string | null | undefined, filters: ReportFilters) {
-  if (!value) return false;
-  const date = value.slice(0, 10);
+function getId(value: unknown) {
+  return str(value);
+}
 
+function inDateRange(value: unknown, filters: QbReportFilters) {
+  const date = nullableStr(value)?.slice(0, 10);
+  if (!date) return false;
   if (filters.startDate && date < filters.startDate) return false;
   if (filters.endDate && date > filters.endDate) return false;
-
   return true;
 }
 
 function applyDateRange<T>(
   query: T,
   column: string,
-  filters: ReportFilters,
+  filters: QbReportFilters,
 ): T {
   const withRange = query as T & {
     gte: (field: string, value: string) => T;
@@ -270,674 +171,737 @@ function applyDateRange<T>(
   return next;
 }
 
+function firstById(rows: Row[]) {
+  return new Map(rows.map((row) => [getId(row.id), row]));
+}
+
+function groupBy(rows: Row[], key: string) {
+  const groups = new Map<string, Row[]>();
+
+  for (const row of rows) {
+    const id = getId(row[key]);
+    if (!id) continue;
+    groups.set(id, [...(groups.get(id) ?? []), row]);
+  }
+
+  return groups;
+}
+
 function addRanking(
-  map: Map<string, RankingRow>,
-  key: string,
+  rows: Map<string, QbRankingRow>,
+  id: string,
   name: string,
-  amount: number,
-  quantity = 0,
-  extra?: string,
+  quantity = 1,
+  detail?: string,
 ) {
-  const current = map.get(key);
+  if (!id) return;
+  const current = rows.get(id);
 
   if (current) {
-    current.amount += amount;
-    current.quantity = (current.quantity ?? 0) + quantity;
+    current.quantity += quantity;
     return;
   }
 
-  map.set(key, { id: key, name, amount, quantity, extra });
+  rows.set(id, { id, name, quantity, detail });
 }
 
-function topRows(rows: Map<string, RankingRow>, limit = 8) {
+function topRows(rows: Map<string, QbRankingRow>, limit = 8) {
   return Array.from(rows.values())
-    .sort((a, b) => b.amount - a.amount)
+    .sort((a, b) => b.quantity - a.quantity)
     .slice(0, limit);
 }
 
-async function fetchReportBundle(filters: ReportFilters): Promise<QueryBundle | null> {
+function includesText(value: string, search?: string) {
+  if (!search?.trim()) return true;
+  return value.toLowerCase().includes(search.trim().toLowerCase());
+}
+
+function userName(profiles: Map<string, Row>, id: unknown) {
+  const profile = profiles.get(getId(id));
+  return str(profile?.full_name, str(profile?.email, "No registrado"));
+}
+
+async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
-  const [customersResult, suppliersResult, categoriesResult, productsResult] = await Promise.all([
-    supabase.from("customers").select(customerSelect).order("name", { ascending: true }),
-    supabase.from("suppliers").select(supplierSelect).order("name", { ascending: true }),
+  const productsQuery = supabase
+    .from("products")
+    .select("id, name, sku, category_id, unit_id, stock_current, stock_min, is_active, requires_classification, is_sellable, is_catalog_visible, is_qb_loss_product, created_at, updated_at")
+    .order("name", { ascending: true });
+
+  const [
+    productsResult,
+    categoriesResult,
+    qbUnitsResult,
+    productSettingsResult,
+    classificationOutputsResult,
+    inventoryMovementsResult,
+    customersResult,
+    locationsResult,
+  ] = await Promise.all([
+    productsQuery,
+    supabase.from("product_categories").select("id, name, is_active").order("name", { ascending: true }),
+    supabase.from("qb_units").select("id, symbol, name").order("sort_order", { ascending: true }),
     supabase
-      .from("product_categories")
-      .select("id, name, description, is_active, created_at, updated_at")
-      .order("name", { ascending: true }),
-    supabase.from("products").select(productSelect).order("name", { ascending: true }),
+      .from("qb_product_unit_settings")
+      .select("product_id, base_unit_id, base_inventory_unit_id, base_price_unit_id, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active"),
+    supabase
+      .from("qb_product_classification_outputs")
+      .select("id, source_product_id, output_product_id, output_type, label, is_active"),
+    supabase
+      .from("inventory_movements")
+      .select("id, product_id, movement_type, quantity, reason, created_by, created_at")
+      .order("created_at", { ascending: false })
+      .limit(1500),
+    supabase
+      .from("customer_accounts")
+      .select("id, email, full_name, phone, is_active, created_at")
+      .order("created_at", { ascending: false })
+      .limit(800),
+    supabase
+      .from("qb_customer_locations")
+      .select("id, customer_account_id, label, address, reference, is_primary, is_active")
+      .limit(1200),
   ]);
 
   if (
-    customersResult.error ||
-    suppliersResult.error ||
+    productsResult.error ||
     categoriesResult.error ||
-    productsResult.error
+    qbUnitsResult.error ||
+    productSettingsResult.error ||
+    classificationOutputsResult.error ||
+    inventoryMovementsResult.error ||
+    customersResult.error ||
+    locationsResult.error
   ) {
     return null;
   }
 
-  let salesQuery = supabase
-    .from("sales")
-    .select("id, customer_id, sale_date, subtotal, discount, total, payment_type, status, notes, created_by, created_at")
-    .order("sale_date", { ascending: false })
-    .limit(400);
+  let merchandiseReceiptsQuery = supabase
+    .from("qb_merchandise_receipts")
+    .select("id, receipt_date, reference_code, supplier_name, status, confirmed_by, confirmed_at, created_by, created_at")
+    .order("receipt_date", { ascending: false })
+    .limit(500);
+  merchandiseReceiptsQuery = applyDateRange(merchandiseReceiptsQuery, "receipt_date", filters);
 
-  salesQuery = applyDateRange(salesQuery, "sale_date", filters);
-  if (filters.customer && filters.customer !== "all") salesQuery = salesQuery.eq("customer_id", filters.customer);
-  if (filters.salePaymentMethod && filters.salePaymentMethod !== "all") {
-    salesQuery = salesQuery.eq("payment_type", filters.salePaymentMethod);
-  }
-  if (filters.saleStatus && filters.saleStatus !== "all") salesQuery = salesQuery.eq("status", filters.saleStatus);
+  let ordersQuery = supabase
+    .from("qb_orders")
+    .select("id, public_reference, customer_account_id, location_id, status, submitted_at, delivered_at, customer_snapshot, location_snapshot, customer_notes, preparation_started_by, preparation_started_at, prepared_by, prepared_at, delivered_by")
+    .order("submitted_at", { ascending: false })
+    .limit(700);
+  ordersQuery = applyDateRange(ordersQuery, "submitted_at", filters);
 
-  let purchasesQuery = supabase
-    .from("purchases")
-    .select("id, supplier_id, purchase_date, status, payment_status, payment_method, subtotal, total, notes, created_by, created_at, updated_at")
-    .order("purchase_date", { ascending: false })
-    .limit(400);
-
-  purchasesQuery = applyDateRange(purchasesQuery, "purchase_date", filters);
-  if (filters.supplier && filters.supplier !== "all") purchasesQuery = purchasesQuery.eq("supplier_id", filters.supplier);
-  if (filters.purchaseStatus && filters.purchaseStatus !== "all") {
-    purchasesQuery = purchasesQuery.eq("status", filters.purchaseStatus);
-  }
-  if (filters.purchasePaymentMethod && filters.purchasePaymentMethod !== "all") {
-    purchasesQuery = purchasesQuery.eq("payment_method", filters.purchasePaymentMethod);
-  }
-
-  let movementsQuery = supabase
-    .from("inventory_movements")
-    .select("id, product_id, movement_type, quantity, stock_before, stock_after, reason, notes, created_by, created_at")
+  let receiptsQuery = supabase
+    .from("qb_receipts")
+    .select("id, receipt_number, customer_account_id, status, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, total_amount, issued_by, issued_at, voided_by, voided_at, void_reason, created_by, created_at")
     .order("created_at", { ascending: false })
     .limit(500);
+  receiptsQuery = applyDateRange(receiptsQuery, "created_at", filters);
 
-  movementsQuery = applyDateRange(movementsQuery, "created_at", filters);
-  if (filters.product && filters.product !== "all") movementsQuery = movementsQuery.eq("product_id", filters.product);
-  if (filters.movementType && filters.movementType !== "all") {
-    movementsQuery = movementsQuery.eq("movement_type", filters.movementType);
-  }
-
-  const [salesResult, purchasesResult, movementsResult, receivablesResult, payablesResult, paymentsResult, cashResult] =
-    await Promise.all([
-      salesQuery,
-      purchasesQuery,
-      movementsQuery,
-      supabase
-        .from("accounts_receivable")
-        .select("id, customer_id, sale_id, amount, paid_amount, balance, due_date, status, notes, created_at, updated_at")
-        .order("created_at", { ascending: false })
-        .limit(400),
-      supabase
-        .from("accounts_payable")
-        .select("id, supplier_id, purchase_id, amount, paid_amount, balance, due_date, status, notes, created_at, updated_at")
-        .order("created_at", { ascending: false })
-        .limit(400),
-      supabase
-        .from("payments")
-        .select("id, payment_type, customer_id, supplier_id, sale_id, purchase_id, accounts_receivable_id, accounts_payable_id, amount, payment_method, payment_date, notes, created_by, created_at")
-        .order("payment_date", { ascending: false })
-        .limit(500),
-      supabase
-        .from("cash_movements")
-        .select("id, movement_type, source_type, source_id, amount, payment_method, movement_date, notes, created_by, created_at")
-        .order("movement_date", { ascending: false })
-        .limit(500),
-    ]);
+  const [merchandiseReceiptsResult, ordersResult, receiptsResult, profilesResult] = await Promise.all([
+    merchandiseReceiptsQuery,
+    ordersQuery,
+    receiptsQuery,
+    supabase.from("profiles").select("id, full_name, email").limit(1000),
+  ]);
 
   if (
-    salesResult.error ||
-    purchasesResult.error ||
-    movementsResult.error ||
-    receivablesResult.error ||
-    payablesResult.error ||
-    paymentsResult.error ||
-    cashResult.error
+    merchandiseReceiptsResult.error ||
+    ordersResult.error ||
+    receiptsResult.error ||
+    profilesResult.error
   ) {
     return null;
   }
 
-  const saleIds = (salesResult.data ?? []).map((sale) => sale.id);
-  const purchaseIds = (purchasesResult.data ?? []).map((purchase) => purchase.id);
+  const merchandiseReceiptIds = (merchandiseReceiptsResult.data ?? []).map((row) => getId(row.id));
+  const orderIds = (ordersResult.data ?? []).map((row) => getId(row.id));
+  const receiptIds = (receiptsResult.data ?? []).map((row) => getId(row.id));
 
-  const [saleItemsResult, purchaseItemsResult] = await Promise.all([
-    saleIds.length
+  const [
+    merchandiseLinesResult,
+    classificationResultsResult,
+    orderItemsResult,
+    preparationsResult,
+    deliveryMovementsResult,
+    receiptOrdersResult,
+    receiptLinesResult,
+    receiptEventsResult,
+  ] = await Promise.all([
+    merchandiseReceiptIds.length
       ? supabase
-          .from("sale_items")
-          .select("id, sale_id, product_id, quantity, unit_price, subtotal")
-          .in("sale_id", saleIds)
-          .limit(2000)
+          .from("qb_merchandise_receipt_lines")
+          .select("id, receipt_id, product_id, source_label, source_quantity, base_quantity, base_unit_symbol, total_cost")
+          .in("receipt_id", merchandiseReceiptIds)
+          .limit(1500)
       : Promise.resolve({ data: [], error: null }),
-    purchaseIds.length
+    merchandiseReceiptIds.length
       ? supabase
-          .from("purchase_items")
-          .select("id, purchase_id, product_id, quantity, unit_cost, subtotal, created_at")
-          .in("purchase_id", purchaseIds)
-          .limit(2000)
+          .from("qb_merchandise_receipt_classification_results")
+          .select("id, line_id, result_type, output_product_id, output_label, base_quantity, assigned_cost")
+          .limit(1500)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("qb_order_items")
+          .select("id, order_id, product_id, source_label, requested_quantity, base_quantity, base_unit_symbol, customer_notes")
+          .in("order_id", orderIds)
+          .limit(2500)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("qb_order_preparations")
+          .select("id, order_id, status, started_at, prepared_at, started_by, prepared_by, internal_notes")
+          .in("order_id", orderIds)
+          .limit(900)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase
+          .from("qb_order_delivery_movements")
+          .select("id, order_id, preparation_id, preparation_item_id, product_id, delivered_base_quantity, base_unit_symbol, delivered_by, delivered_at")
+          .in("order_id", orderIds)
+          .limit(2500)
+      : Promise.resolve({ data: [], error: null }),
+    receiptIds.length
+      ? supabase
+          .from("qb_receipt_orders")
+          .select("id, receipt_id, order_id, customer_account_id, inclusion_status, included_at")
+          .in("receipt_id", receiptIds)
+          .limit(1500)
+      : Promise.resolve({ data: [], error: null }),
+    receiptIds.length
+      ? supabase
+          .from("qb_receipt_lines")
+          .select("id, receipt_id, order_id, product_id, product_name_snapshot, delivered_base_quantity, base_unit_symbol, visible_unit_label, base_price_used, final_unit_price, line_total")
+          .in("receipt_id", receiptIds)
+          .limit(2500)
+      : Promise.resolve({ data: [], error: null }),
+    receiptIds.length
+      ? supabase
+          .from("qb_receipt_events")
+          .select("id, receipt_id, event_type, metadata, created_by, created_at")
+          .in("receipt_id", receiptIds)
+          .limit(1500)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (saleItemsResult.error || purchaseItemsResult.error) return null;
+  if (
+    merchandiseLinesResult.error ||
+    classificationResultsResult.error ||
+    orderItemsResult.error ||
+    preparationsResult.error ||
+    deliveryMovementsResult.error ||
+    receiptOrdersResult.error ||
+    receiptLinesResult.error ||
+    receiptEventsResult.error
+  ) {
+    return null;
+  }
 
-  const customers = (customersResult.data ?? []) as Customer[];
-  const suppliers = (suppliersResult.data ?? []) as Supplier[];
-  const products = ((productsResult.data ?? []) as unknown as ProductQueryRow[]).map(normalizeProduct);
+  const preparationIds = ((preparationsResult.data ?? []) as Row[]).map((row) => getId(row.id));
+  const preparationItemsResult = preparationIds.length
+    ? await supabase
+        .from("qb_order_preparation_items")
+        .select("id, preparation_id, order_item_id, product_id, status, requested_quantity, requested_source_label, actual_quantity, actual_source_label, actual_base_quantity, actual_base_unit_symbol, notes")
+        .in("preparation_id", preparationIds)
+        .limit(2500)
+    : { data: [], error: null };
+
+  if (preparationItemsResult.error) return null;
 
   return {
-    customers,
-    suppliers,
-    products,
-    categories: (categoriesResult.data ?? []) as ProductCategory[],
-    sales: (salesResult.data ?? []) as Sale[],
-    saleItems: (saleItemsResult.data ?? []) as SaleItem[],
-    purchases: (purchasesResult.data ?? []) as Purchase[],
-    purchaseItems: (purchaseItemsResult.data ?? []) as PurchaseItem[],
-    movements: (movementsResult.data ?? []) as InventoryMovement[],
-    receivables: (receivablesResult.data ?? []) as AccountReceivableFinance[],
-    payables: (payablesResult.data ?? []) as AccountPayable[],
-    payments: (paymentsResult.data ?? []) as Payment[],
-    cashMovements: (cashResult.data ?? []) as CashMovement[],
+    products: (productsResult.data ?? []) as Row[],
+    categories: (categoriesResult.data ?? []) as Row[],
+    qbUnits: (qbUnitsResult.data ?? []) as Row[],
+    productSettings: (productSettingsResult.data ?? []) as Row[],
+    classificationOutputs: (classificationOutputsResult.data ?? []) as Row[],
+    inventoryMovements: (inventoryMovementsResult.data ?? []) as Row[],
+    customers: (customersResult.data ?? []) as Row[],
+    locations: (locationsResult.data ?? []) as Row[],
+    merchandiseReceipts: (merchandiseReceiptsResult.data ?? []) as Row[],
+    merchandiseLines: (merchandiseLinesResult.data ?? []) as Row[],
+    classificationResults: (classificationResultsResult.data ?? []) as Row[],
+    orders: (ordersResult.data ?? []) as Row[],
+    orderItems: (orderItemsResult.data ?? []) as Row[],
+    preparations: (preparationsResult.data ?? []) as Row[],
+    preparationItems: (preparationItemsResult.data ?? []) as Row[],
+    deliveryMovements: (deliveryMovementsResult.data ?? []) as Row[],
+    receipts: (receiptsResult.data ?? []) as Row[],
+    receiptOrders: (receiptOrdersResult.data ?? []) as Row[],
+    receiptLines: (receiptLinesResult.data ?? []) as Row[],
+    receiptEvents: (receiptEventsResult.data ?? []) as Row[],
+    profiles: (profilesResult.data ?? []) as Row[],
   };
 }
 
-function buildSalesReport(bundle: QueryBundle) {
-  const customersById = byId(bundle.customers);
-  const productsById = byId(bundle.products);
-  const topProducts = new Map<string, RankingRow>();
-  const topCustomers = new Map<string, RankingRow>();
-  const byPaymentMethod = new Map<string, RankingRow>();
-  const byStatus = new Map<string, RankingRow>();
-  const confirmedSales = bundle.sales.filter((sale) => sale.status === "confirmada");
-  const saleItemsBySale = groupByKey(bundle.saleItems, (item) => item.sale_id);
-
-  for (const sale of bundle.sales) {
-    addRanking(byStatus, sale.status, sale.status, 1, 1);
-    addRanking(byPaymentMethod, sale.payment_type, sale.payment_type, Number(sale.total), 1);
-  }
-
-  for (const sale of confirmedSales) {
-    const customer = customersById.get(sale.customer_id);
-    addRanking(topCustomers, sale.customer_id, customer?.name ?? "Cliente no disponible", Number(sale.total), 1);
-
-    for (const item of saleItemsBySale.get(sale.id) ?? []) {
-      const product = productsById.get(item.product_id);
-      addRanking(
-        topProducts,
-        item.product_id,
-        product?.name ?? "Producto no disponible",
-        Number(item.subtotal),
-        Number(item.quantity),
-        product?.sku ?? undefined,
-      );
-    }
-  }
-
-  const totalSold = confirmedSales.reduce((sum, sale) => sum + Number(sale.total), 0);
-  const rows: SalesReportRow[] = bundle.sales.map((sale) => ({
-    id: sale.id,
-    date: sale.sale_date,
-    customer: customersById.get(sale.customer_id)?.name ?? "Cliente no disponible",
-    total: Number(sale.total),
-    paymentType: sale.payment_type,
-    status: sale.status,
-  }));
-
-  return {
-    summary: {
-      totalSold,
-      salesCount: bundle.sales.length,
-      averageTicket: confirmedSales.length ? totalSold / confirmedSales.length : 0,
-      confirmedCount: confirmedSales.length,
-      draftCount: bundle.sales.filter((sale) => sale.status === "borrador").length,
-      canceledCount: bundle.sales.filter((sale) => sale.status === "anulada").length,
-    },
-    rows,
-    byPaymentMethod: topRows(byPaymentMethod),
-    byStatus: topRows(byStatus),
-    topProducts: topRows(topProducts),
-    topCustomers: topRows(topCustomers),
-  };
-}
-
-function buildInventoryReport(bundle: QueryBundle, filters: ReportFilters) {
-  const productsById = byId(bundle.products);
-  const products = bundle.products
-    .filter((product) => (filters.category && filters.category !== "all" ? product.category_id === filters.category : true))
-    .filter((product) => (filters.product && filters.product !== "all" ? product.id === filters.product : true));
-  const productIds = new Set(products.map((product) => product.id));
-  const movements = bundle.movements.filter((movement) => productIds.has(movement.product_id));
-  const outputProducts = new Map<string, RankingRow>();
-
-  for (const movement of movements) {
-    if (movement.movement_type !== "salida" && movement.movement_type !== "merma") continue;
-    const product = productsById.get(movement.product_id);
-    addRanking(
-      outputProducts,
-      movement.product_id,
-      product?.name ?? "Producto no disponible",
-      Number(movement.quantity),
-      Number(movement.quantity),
-      movement.movement_type,
-    );
-  }
-
-  const productRows: InventoryProductRow[] = products.map((product) => ({
-    id: product.id,
-    name: product.name,
-    sku: product.sku ?? "Sin SKU",
-    category: product.category?.name ?? "Sin categoria",
-    unit: product.unit?.abbreviation ?? product.unit?.name ?? "N/A",
-    stockCurrent: Number(product.stock_current),
-    stockMin: Number(product.stock_min),
-    purchaseValue: Number(product.stock_current) * Number(product.purchase_price),
-    saleValue: Number(product.stock_current) * Number(product.sale_price),
-    status: product.stock_status,
-  }));
-
-  const movementRows: InventoryMovementReportRow[] = movements.map((movement) => ({
-    id: movement.id,
-    date: movement.created_at,
-    product: productsById.get(movement.product_id)?.name ?? "Producto no disponible",
-    type: movement.movement_type,
-    quantity: Number(movement.quantity),
-    stockBefore: Number(movement.stock_before),
-    stockAfter: Number(movement.stock_after),
-    reason: movement.reason,
-  }));
-
-  return {
-    summary: {
-      totalProducts: products.length,
-      lowStockProducts: products.filter((product) => product.stock_status === "stock_bajo").length,
-      outOfStockProducts: products.filter((product) => product.stock_status === "sin_stock").length,
-      purchaseValue: productRows.reduce((sum, product) => sum + product.purchaseValue, 0),
-      saleValue: productRows.reduce((sum, product) => sum + product.saleValue, 0),
-      entries: movements.filter((movement) => movement.movement_type === "entrada").length,
-      outputs: movements.filter((movement) => movement.movement_type === "salida").length,
-      shrinkage: movements.filter((movement) => movement.movement_type === "merma").length,
-      returns: movements.filter((movement) => movement.movement_type === "devolucion").length,
-      adjustments: movements.filter((movement) => movement.movement_type === "ajuste").length,
-    },
-    products: productRows,
-    movements: movementRows,
-    highestOutputProducts: topRows(outputProducts),
-  };
-}
-
-function buildCustomersReport(bundle: QueryBundle, filters: ReportFilters) {
-  const confirmedSales = bundle.sales.filter((sale) => sale.status === "confirmada");
-  const salesByCustomer = new Map<string, number>();
-
-  for (const sale of confirmedSales) {
-    salesByCustomer.set(sale.customer_id, (salesByCustomer.get(sale.customer_id) ?? 0) + Number(sale.total));
-  }
-
-  const rows = bundle.customers
-    .filter((customer) => (filters.customerType && filters.customerType !== "all" ? customer.customer_type === filters.customerType : true))
-    .filter((customer) => {
-      if (filters.customerStatus === "active") return customer.is_active;
-      if (filters.customerStatus === "inactive") return !customer.is_active;
-      return true;
-    })
-    .filter((customer) => {
-      if (filters.debtStatus === "with_debt") return Number(customer.current_balance) > 0;
-      if (filters.debtStatus === "without_debt") return Number(customer.current_balance) <= 0;
-      return true;
-    })
-    .map((customer) => ({
-      id: customer.id,
-      name: customer.name,
-      type: customer.customer_type,
-      status: customer.is_active ? ("activo" as const) : ("inactivo" as const),
-      purchasedAmount: salesByCustomer.get(customer.id) ?? 0,
-      currentBalance: Number(customer.current_balance),
-      creditLimit: Number(customer.credit_limit),
-      availableCredit: Math.max(Number(customer.credit_limit) - Number(customer.current_balance), 0),
-    }));
-
-  return {
-    summary: {
-      activeCustomers: rows.filter((customer) => customer.status === "activo").length,
-      customersWithDebt: rows.filter((customer) => customer.currentBalance > 0).length,
-      totalDebt: rows.reduce((sum, customer) => sum + customer.currentBalance, 0),
-      availableCredit: rows.reduce((sum, customer) => sum + customer.availableCredit, 0),
-    },
-    rows,
-    topBuyers: rows
-      .map((customer) => ({ id: customer.id, name: customer.name, amount: customer.purchasedAmount }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 8),
-    topDebtors: rows
-      .map((customer) => ({ id: customer.id, name: customer.name, amount: customer.currentBalance }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 8),
-  };
-}
-
-function buildPurchasesReport(bundle: QueryBundle) {
-  const suppliersById = byId(bundle.suppliers);
-  const productsById = byId(bundle.products);
-  const confirmedPurchases = bundle.purchases.filter((purchase) => purchase.status === "confirmada");
-  const bySupplier = new Map<string, RankingRow>();
-  const topProducts = new Map<string, RankingRow>();
-  const averageCost = new Map<string, { id: string; name: string; totalCost: number; quantity: number }>();
-  const purchaseItemsByPurchase = groupByKey(bundle.purchaseItems, (item) => item.purchase_id);
-
-  for (const purchase of confirmedPurchases) {
-    const supplier = purchase.supplier_id ? suppliersById.get(purchase.supplier_id) : null;
-    addRanking(bySupplier, purchase.supplier_id ?? "sin-proveedor", supplier?.name ?? "Sin proveedor", Number(purchase.total), 1);
-
-    for (const item of purchaseItemsByPurchase.get(purchase.id) ?? []) {
-      const product = productsById.get(item.product_id);
-      addRanking(
-        topProducts,
-        item.product_id,
-        product?.name ?? "Producto no disponible",
-        Number(item.subtotal),
-        Number(item.quantity),
-      );
-      const current = averageCost.get(item.product_id);
-      if (current) {
-        current.totalCost += Number(item.subtotal);
-        current.quantity += Number(item.quantity);
-      } else {
-        averageCost.set(item.product_id, {
-          id: item.product_id,
-          name: product?.name ?? "Producto no disponible",
-          totalCost: Number(item.subtotal),
-          quantity: Number(item.quantity),
-        });
-      }
-    }
-  }
-
-  return {
-    summary: {
-      totalPurchased: confirmedPurchases.reduce((sum, purchase) => sum + Number(purchase.total), 0),
-      purchasesCount: bundle.purchases.length,
-      pendingCount: bundle.purchases.filter((purchase) => purchase.payment_status !== "pagada").length,
-      confirmedCount: confirmedPurchases.length,
-    },
-    rows: bundle.purchases.map((purchase) => ({
-      id: purchase.id,
-      date: purchase.purchase_date,
-      supplier: purchase.supplier_id ? suppliersById.get(purchase.supplier_id)?.name ?? "Sin proveedor" : "Sin proveedor",
-      total: Number(purchase.total),
-      status: purchase.status,
-      paymentStatus: purchase.payment_status,
-      paymentMethod: purchase.payment_method,
-    })),
-    bySupplier: topRows(bySupplier),
-    topProducts: topRows(topProducts),
-    averageCostByProduct: Array.from(averageCost.values())
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        amount: item.quantity ? item.totalCost / item.quantity : 0,
-        quantity: item.quantity,
-      }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 8),
-  };
-}
-
-function buildFinanceReport(bundle: QueryBundle, filters: ReportFilters) {
-  const customersById = byId(bundle.customers);
-  const suppliersById = byId(bundle.suppliers);
-  const productsById = byId(bundle.products);
-  const saleItemsBySale = groupByKey(bundle.saleItems, (item) => item.sale_id);
-  const confirmedSales = bundle.sales.filter((sale) => sale.status === "confirmada");
-  const filteredPayments = bundle.payments.filter((payment) => {
-    if (!inDateRange(payment.payment_date, filters)) return false;
-    if (filters.financePaymentMethod && filters.financePaymentMethod !== "all") {
-      return payment.payment_method === filters.financePaymentMethod;
-    }
-    return true;
-  });
-  const filteredCash = bundle.cashMovements.filter((movement) => {
-    if (!inDateRange(movement.movement_date, filters)) return false;
-    if (filters.financePaymentMethod && filters.financePaymentMethod !== "all") {
-      return movement.payment_method === filters.financePaymentMethod;
-    }
-    return true;
-  });
-  const receivables = bundle.receivables.filter((item) =>
-    filters.financeStatus && filters.financeStatus !== "all" ? item.status === filters.financeStatus : true,
+function buildInventory(bundle: Bundle, filters: QbReportFilters): QbInventoryReportRow[] {
+  const categories = firstById(bundle.categories);
+  const units = firstById(bundle.qbUnits);
+  const settingsByProduct = firstById(
+    bundle.productSettings.map((settings) => ({ ...settings, id: settings.product_id })),
   );
-  const payables = bundle.payables.filter((item) =>
-    filters.financeStatus && filters.financeStatus !== "all" ? item.status === filters.financeStatus : true,
+  const outputProducts = new Set(
+    bundle.classificationOutputs
+      .filter((row) => getId(row.output_product_id))
+      .map((row) => getId(row.output_product_id)),
   );
-  const estimatedCost = confirmedSales.reduce((sum, sale) => {
-    const items = saleItemsBySale.get(sale.id) ?? [];
-    return (
-      sum +
-      items.reduce((itemsSum, item) => {
-        const product = productsById.get(item.product_id);
-        return itemsSum + Number(item.quantity) * Number(product?.purchase_price ?? 0);
-      }, 0)
-    );
-  }, 0);
-  const salesIncome = confirmedSales.reduce((sum, sale) => sum + Number(sale.total), 0);
+  const movementsByProduct = groupBy(bundle.inventoryMovements, "product_id");
+
+  return bundle.products
+    .map((product) => {
+      const settings = settingsByProduct.get(getId(product.id));
+      const stockCurrent = num(product.stock_current);
+      const stockMin = num(product.stock_min);
+      const stockStatus =
+        stockCurrent <= 0 ? "sin_stock" : stockCurrent <= stockMin ? "stock_bajo" : "ok";
+      const baseUnitId = getId(settings?.base_inventory_unit_id) || getId(settings?.base_unit_id);
+      const row: QbInventoryReportRow = {
+        id: getId(product.id),
+        product: str(product.name, "Producto sin nombre"),
+        sku: str(product.sku, "Sin SKU"),
+        category: str(categories.get(getId(product.category_id))?.name, "Sin categoria"),
+        stockCurrent,
+        stockMin,
+        baseUnit: str(units.get(baseUnitId)?.symbol, "N/A"),
+        qbStatus: !settings ? "sin_configuracion" : bool(settings.is_qb_active) ? "activo" : "inactivo",
+        catalogVisible: bool(settings?.is_visible_in_qb_catalog),
+        stockStatus,
+        isClassifiable: bool(settings?.is_classifiable) || bool(product.requires_classification),
+        isClassificationResult: outputProducts.has(getId(product.id)),
+        isLossProduct: bool(product.is_qb_loss_product),
+        lastMovementAt: nullableStr(movementsByProduct.get(getId(product.id))?.[0]?.created_at),
+      };
+
+      return row;
+    })
+    .filter((row) => (filters.category && filters.category !== "all" ? row.category === str(categories.get(filters.category)?.name) : true))
+    .filter((row) => (filters.product && filters.product !== "all" ? row.id === filters.product : true))
+    .filter((row) => includesText(`${row.product} ${row.sku}`, filters.q))
+    .filter((row) => (filters.inventoryStatus === "low" ? row.stockStatus === "stock_bajo" : true))
+    .filter((row) => (filters.inventoryStatus === "out" ? row.stockStatus === "sin_stock" : true))
+    .filter((row) => (filters.qbCatalog === "visible" ? row.catalogVisible : true))
+    .filter((row) => (filters.qbCatalog === "hidden" ? !row.catalogVisible : true))
+    .filter((row) => (filters.qbActive === "active" ? row.qbStatus === "activo" : true))
+    .filter((row) => (filters.qbActive === "inactive" ? row.qbStatus !== "activo" : true));
+}
+
+function buildMerchandiseReceipts(bundle: Bundle, filters: QbReportFilters): QbMerchandiseReceiptReportRow[] {
+  const products = firstById(bundle.products);
+  const profiles = firstById(bundle.profiles);
+  const linesByReceipt = groupBy(bundle.merchandiseLines, "receipt_id");
+  const resultsByLine = groupBy(bundle.classificationResults, "line_id");
+
+  return bundle.merchandiseReceipts
+    .map((receipt) => {
+      const lines = linesByReceipt.get(getId(receipt.id)) ?? [];
+      const firstLine = lines[0];
+      const lineResults = lines.flatMap((line) => resultsByLine.get(getId(line.id)) ?? []);
+      const resultProducts = lineResults
+        .filter((row) => str(row.result_type) === "product")
+        .map((row) => str(row.output_label, str(products.get(getId(row.output_product_id))?.name, "Resultado")))
+        .join(", ");
+
+      return {
+        id: getId(receipt.id),
+        date: str(receipt.receipt_date, str(receipt.created_at)),
+        reference: str(receipt.reference_code, getId(receipt.id).slice(0, 8)),
+        supplierOrOrigin: str(receipt.supplier_name, "Sin origen"),
+        product: firstLine ? str(products.get(getId(firstLine.product_id))?.name, "Producto no disponible") : "Sin lineas",
+        sourceQuantity: num(firstLine?.source_quantity),
+        sourceLabel: str(firstLine?.source_label, "N/A"),
+        baseQuantity: lines.reduce((sum, line) => sum + num(line.base_quantity), 0),
+        baseUnit: str(firstLine?.base_unit_symbol, "N/A"),
+        isClassified: lineResults.length > 0,
+        resultProducts: resultProducts || "Sin clasificacion",
+        lossQuantity: lineResults
+          .filter((row) => str(row.result_type) === "loss")
+          .reduce((sum, row) => sum + num(row.base_quantity), 0),
+        status: str(receipt.status, "sin_estado"),
+        confirmedBy: userName(profiles, receipt.confirmed_by),
+        confirmedAt: nullableStr(receipt.confirmed_at),
+        informativeCost: lines.reduce((sum, line) => sum + num(line.total_cost), 0),
+      } satisfies QbMerchandiseReceiptReportRow;
+    })
+    .filter((row) => (filters.product && filters.product !== "all" ? linesByReceipt.get(row.id)?.some((line) => getId(line.product_id) === filters.product) : true))
+    .filter((row) => includesText(`${row.reference} ${row.supplierOrOrigin} ${row.product}`, filters.q));
+}
+
+function locationLabel(order: Row, locations: Map<string, Row>) {
+  const location = locations.get(getId(order.location_id));
+  const snapshot = order.location_snapshot as Row | null;
+  return str(location?.label, str(snapshot?.label, str(snapshot?.address, "Sin ubicacion")));
+}
+
+function customerLabel(customer: Row | undefined) {
+  return str(customer?.full_name, str(customer?.email, "Cliente no disponible"));
+}
+
+function buildOrders(bundle: Bundle, filters: QbReportFilters): QbOrderReportRow[] {
+  const customers = firstById(bundle.customers);
+  const locations = firstById(bundle.locations);
+  const products = firstById(bundle.products);
+  const itemsByOrder = groupBy(bundle.orderItems, "order_id");
+  const preparationsByOrder = groupBy(bundle.preparations, "order_id");
+  const preparationItemsByPreparation = groupBy(bundle.preparationItems, "preparation_id");
+
+  return bundle.orders
+    .map((order) => {
+      const customer = customers.get(getId(order.customer_account_id));
+      const preparation = preparationsByOrder.get(getId(order.id))?.[0];
+      const prepItems = preparation ? preparationItemsByPreparation.get(getId(preparation.id)) ?? [] : [];
+      const requestedProducts = (itemsByOrder.get(getId(order.id)) ?? [])
+        .map((item) => {
+          const product = products.get(getId(item.product_id));
+          return `${str(product?.name, "Producto")} ${num(item.requested_quantity)} ${str(item.source_label)}`;
+        })
+        .join(", ");
+      const preparedProducts = prepItems
+        .map((item) => {
+          const product = products.get(getId(item.product_id));
+          return `${str(product?.name, "Producto")} ${num(item.actual_quantity)} ${str(item.actual_source_label, str(item.actual_base_unit_symbol))} (${str(item.status)})`;
+        })
+        .join(", ");
+
+      return {
+        id: getId(order.id),
+        reference: str(order.public_reference, getId(order.id).slice(0, 8)),
+        date: str(order.submitted_at),
+        customer: customerLabel(customer),
+        phone: str(customer?.phone, "Sin telefono"),
+        location: locationLabel(order, locations),
+        status: str(order.status, "sin_estado"),
+        requestedProducts,
+        preparedProducts: preparedProducts || "Sin preparacion",
+        preparationStatus: str(preparation?.status, "sin_preparacion"),
+        preparedAt: nullableStr(preparation?.prepared_at) ?? nullableStr(order.prepared_at),
+        deliveredAt: nullableStr(order.delivered_at),
+      } satisfies QbOrderReportRow;
+    })
+    .filter((row) => (filters.customer && filters.customer !== "all" ? bundle.orders.find((order) => getId(order.id) === row.id)?.customer_account_id === filters.customer : true))
+    .filter((row) => (filters.orderStatus && filters.orderStatus !== "all" ? row.status === filters.orderStatus : true))
+    .filter((row) => includesText(`${row.reference} ${row.customer} ${row.requestedProducts}`, filters.q));
+}
+
+function buildPendingReceipts(bundle: Bundle, filters: QbReportFilters): QbPendingReceiptReportRow[] {
+  const customers = firstById(bundle.customers);
+  const locations = firstById(bundle.locations);
+  const products = firstById(bundle.products);
+  const deliveryByOrder = groupBy(bundle.deliveryMovements, "order_id");
+  const pendingOrders = bundle.orders.filter((order) => str(order.status) === "entregado_pendiente_recibo");
+  const groups = new Map<string, Row[]>();
+
+  for (const order of pendingOrders) {
+    const customerId = getId(order.customer_account_id);
+    groups.set(customerId, [...(groups.get(customerId) ?? []), order]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([customerId, orders]) => {
+      const customer = customers.get(customerId);
+      const deliveredProducts = orders
+        .flatMap((order) => deliveryByOrder.get(getId(order.id)) ?? [])
+        .map((movement) => `${str(products.get(getId(movement.product_id))?.name, "Producto")} ${num(movement.delivered_base_quantity)} ${str(movement.base_unit_symbol)}`)
+        .join(", ");
+      const lastOrder = orders
+        .slice()
+        .sort((a, b) => str(b.delivered_at).localeCompare(str(a.delivered_at)))[0];
+
+      return {
+        customerId,
+        customer: customerLabel(customer),
+        phone: str(customer?.phone, "Sin telefono"),
+        pendingOrders: orders.length,
+        lastDeliveredAt: nullableStr(lastOrder?.delivered_at),
+        deliveredProducts: deliveredProducts || "Sin movimientos enlazados",
+        location: lastOrder ? locationLabel(lastOrder, locations) : "Sin ubicacion",
+      } satisfies QbPendingReceiptReportRow;
+    })
+    .filter((row) => (filters.customer && filters.customer !== "all" ? row.customerId === filters.customer : true))
+    .filter((row) => includesText(`${row.customer} ${row.deliveredProducts}`, filters.q));
+}
+
+function buildReceipts(bundle: Bundle, filters: QbReportFilters): QbReceiptReportRow[] {
+  const customers = firstById(bundle.customers);
+  const profiles = firstById(bundle.profiles);
+  const ordersByReceipt = groupBy(bundle.receiptOrders, "receipt_id");
+
+  return bundle.receipts
+    .map((receipt) => ({
+      id: getId(receipt.id),
+      number: str(receipt.receipt_number, getId(receipt.id).slice(0, 8)),
+      customer: customerLabel(customers.get(getId(receipt.customer_account_id))),
+      status: str(receipt.status, "sin_estado"),
+      issuedAt: nullableStr(receipt.issued_at),
+      totalAmount: num(receipt.total_amount),
+      factors: `Dist. ${num(receipt.distance_factor_percent)}% / Exig. ${num(receipt.exigency_factor_percent)}% / Clima ${num(receipt.weather_factor_percent)}% / Ext. ${num(receipt.extraordinary_factor_percent)}%`,
+      includedOrders: ordersByReceipt.get(getId(receipt.id))?.length ?? 0,
+      issuedBy: userName(profiles, receipt.issued_by),
+      voidReason: str(receipt.void_reason, "N/A"),
+    }))
+    .filter((row) => (filters.customer && filters.customer !== "all" ? bundle.receipts.find((receipt) => getId(receipt.id) === row.id)?.customer_account_id === filters.customer : true))
+    .filter((row) => (filters.receiptStatus && filters.receiptStatus !== "all" ? row.status === filters.receiptStatus : true))
+    .filter((row) => includesText(`${row.number} ${row.customer}`, filters.q));
+}
+
+function buildFrequencies(bundle: Bundle) {
+  const customers = firstById(bundle.customers);
+  const products = firstById(bundle.products);
+  const frequentCustomers = new Map<string, QbRankingRow>();
+  const customersPendingReceipt = new Map<string, QbRankingRow>();
+  const requestedProducts = new Map<string, QbRankingRow>();
+  const deliveredProducts = new Map<string, QbRankingRow>();
+  const missingProducts = new Map<string, QbRankingRow>();
+  const usedUnits = new Map<string, QbRankingRow>();
+
+  for (const order of bundle.orders) {
+    const customerId = getId(order.customer_account_id);
+    addRanking(frequentCustomers, customerId, customerLabel(customers.get(customerId)), 1, "pedidos");
+    if (str(order.status) === "entregado_pendiente_recibo") {
+      addRanking(customersPendingReceipt, customerId, customerLabel(customers.get(customerId)), 1, "pedidos pendientes");
+    }
+  }
+
+  for (const item of bundle.orderItems) {
+    const productId = getId(item.product_id);
+    addRanking(requestedProducts, productId, str(products.get(productId)?.name, "Producto"), num(item.requested_quantity), str(item.source_label));
+    addRanking(usedUnits, str(item.source_label), str(item.source_label, "Unidad"), 1, "solicitudes");
+  }
+
+  for (const movement of bundle.deliveryMovements) {
+    const productId = getId(movement.product_id);
+    addRanking(deliveredProducts, productId, str(products.get(productId)?.name, "Producto"), num(movement.delivered_base_quantity), str(movement.base_unit_symbol));
+  }
+
+  for (const item of bundle.preparationItems) {
+    if (str(item.status) !== "no_disponible") continue;
+    const productId = getId(item.product_id);
+    addRanking(missingProducts, productId, str(products.get(productId)?.name, "Producto"), 1, "faltantes");
+  }
 
   return {
-    summary: {
-      salesIncome,
-      customerPayments: filteredPayments
-        .filter((payment) => payment.payment_type === "cobro_cliente")
-        .reduce((sum, payment) => sum + Number(payment.amount), 0),
-      supplierPayments: filteredPayments
-        .filter((payment) => payment.payment_type === "pago_proveedor")
-        .reduce((sum, payment) => sum + Number(payment.amount), 0),
-      manualExpenses: filteredCash
-        .filter((movement) => movement.source_type === "gasto_manual")
-        .reduce((sum, movement) => sum + Number(movement.amount), 0),
-      netCash:
-        filteredCash
-          .filter((movement) => movement.movement_type === "ingreso")
-          .reduce((sum, movement) => sum + Number(movement.amount), 0) -
-        filteredCash
-          .filter((movement) => movement.movement_type === "egreso")
-          .reduce((sum, movement) => sum + Number(movement.amount), 0),
-      pendingReceivable: receivables.reduce((sum, item) => sum + Number(item.balance), 0),
-      pendingPayable: payables.reduce((sum, item) => sum + Number(item.balance), 0),
-      overdueReceivable: receivables.filter((item) => item.status === "vencida").length,
-      overduePayable: payables.filter((item) => item.status === "vencida").length,
-      estimatedProfit: salesIncome - estimatedCost,
-    },
-    cashRows: filteredCash.map((movement) => ({
-      id: movement.id,
-      date: movement.movement_date,
-      type: movement.movement_type,
-      source: movement.source_type,
-      method: movement.payment_method,
-      amount: Number(movement.amount),
-      notes: movement.notes ?? "",
-    })),
-    receivableRows: receivables.map((item) => ({
-      id: item.id,
-      customer: customersById.get(item.customer_id)?.name ?? "Cliente no disponible",
-      amount: Number(item.amount),
-      paidAmount: Number(item.paid_amount),
-      balance: Number(item.balance),
-      dueDate: item.due_date ?? "",
-      status: item.status,
-    })),
-    payableRows: payables.map((item) => ({
-      id: item.id,
-      supplier: item.supplier_id ? suppliersById.get(item.supplier_id)?.name ?? "Proveedor no disponible" : "Sin proveedor",
-      amount: Number(item.amount),
-      paidAmount: Number(item.paid_amount),
-      balance: Number(item.balance),
-      dueDate: item.due_date ?? "",
-      status: item.status,
-    })),
+    frequentCustomers: topRows(frequentCustomers),
+    customersPendingReceipt: topRows(customersPendingReceipt),
+    mostRequestedProducts: topRows(requestedProducts),
+    mostDeliveredProducts: topRows(deliveredProducts),
+    mostMissingProducts: topRows(missingProducts),
+    mostUsedUnits: topRows(usedUnits),
+  };
+}
+
+function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[] {
+  const profiles = firstById(bundle.profiles);
+  const receiptById = firstById(bundle.receipts);
+  const events: QbAuditReportRow[] = [];
+
+  for (const receipt of bundle.merchandiseReceipts) {
+    events.push({
+      id: `ingreso-${getId(receipt.id)}`,
+      date: str(receipt.created_at, str(receipt.receipt_date)),
+      event: "ingreso_creado",
+      entity: str(receipt.reference_code, getId(receipt.id).slice(0, 8)),
+      detail: str(receipt.supplier_name, "Ingreso QB"),
+      actor: userName(profiles, receipt.created_by),
+    });
+    if (receipt.confirmed_at) {
+      events.push({
+        id: `ingreso-confirmado-${getId(receipt.id)}`,
+        date: str(receipt.confirmed_at),
+        event: "ingreso_confirmado",
+        entity: str(receipt.reference_code, getId(receipt.id).slice(0, 8)),
+        detail: "Ingreso confirmado con movimiento QB-4",
+        actor: userName(profiles, receipt.confirmed_by),
+      });
+    }
+  }
+
+  for (const order of bundle.orders) {
+    events.push({
+      id: `pedido-${getId(order.id)}`,
+      date: str(order.submitted_at),
+      event: "pedido_recibido",
+      entity: str(order.public_reference, getId(order.id).slice(0, 8)),
+      detail: str(order.status),
+      actor: "Cliente QB",
+    });
+    if (order.delivered_at) {
+      events.push({
+        id: `pedido-entregado-${getId(order.id)}`,
+        date: str(order.delivered_at),
+        event: "pedido_entregado",
+        entity: str(order.public_reference, getId(order.id).slice(0, 8)),
+        detail: "Entrega fisica QB-6 confirmada",
+        actor: userName(profiles, order.delivered_by),
+      });
+    }
+  }
+
+  for (const preparation of bundle.preparations) {
+    events.push({
+      id: `preparacion-${getId(preparation.id)}`,
+      date: str(preparation.prepared_at, str(preparation.started_at)),
+      event: "preparacion_guardada",
+      entity: getId(preparation.order_id).slice(0, 8),
+      detail: str(preparation.status),
+      actor: userName(profiles, preparation.prepared_by),
+    });
+  }
+
+  for (const event of bundle.receiptEvents) {
+    const receipt = receiptById.get(getId(event.receipt_id));
+    events.push({
+      id: getId(event.id),
+      date: str(event.created_at),
+      event: str(event.event_type),
+      entity: str(receipt?.receipt_number, getId(event.receipt_id).slice(0, 8)),
+      detail: "Evento de recibo acumulativo QB-7",
+      actor: userName(profiles, event.created_by),
+    });
+  }
+
+  return events
+    .filter((event) => inDateRange(event.date, filters))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 120);
+}
+
+function buildSummary(bundle: Bundle, inventory: QbInventoryReportRow[], filters: QbReportFilters): QbReportsSummary {
+  const receiptPeriodRows = bundle.receipts.filter(
+    (receipt) => str(receipt.status) === "emitido" && inDateRange(str(receipt.issued_at, str(receipt.created_at)), filters),
+  );
+
+  return {
+    pendingPreparation: bundle.orders.filter((order) => str(order.status) === "pendiente_preparacion").length,
+    inPreparation: bundle.orders.filter((order) => str(order.status) === "en_preparacion").length,
+    prepared: bundle.orders.filter((order) => str(order.status) === "preparado").length,
+    deliveredPendingReceipt: bundle.orders.filter((order) => str(order.status) === "entregado_pendiente_recibo").length,
+    draftReceipts: bundle.receipts.filter((receipt) => str(receipt.status) === "borrador").length,
+    issuedReceiptsInPeriod: receiptPeriodRows.length,
+    issuedReceiptTotalInPeriod: receiptPeriodRows.reduce((sum, receipt) => sum + num(receipt.total_amount), 0),
+    lowStockProducts: inventory.filter((row) => row.stockStatus === "stock_bajo").length,
+    outOfStockProducts: inventory.filter((row) => row.stockStatus === "sin_stock").length,
+    recentMerchandiseReceipts: bundle.merchandiseReceipts.length,
+    recentOrders: bundle.orders.length,
   };
 }
 
 function buildExports(
-  bundle: QueryBundle,
-  salesRows: SalesReportRow[],
-  inventoryRows: InventoryProductRow[],
-  movementRows: InventoryMovementReportRow[],
-  purchaseRows: ReturnType<typeof buildPurchasesReport>["rows"],
-  customerRows: ReturnType<typeof buildCustomersReport>["rows"],
-  finance: ReportsData["finance"],
-): ReportsExportData {
-  const exports: ReportsExportData = {
-    ventas: salesRows.map((sale) => ({
-      id: sale.id,
-      fecha: sale.date,
-      cliente: sale.customer,
-      total: sale.total,
-      metodo_pago: sale.paymentType,
-      estado: sale.status,
+  inventory: QbInventoryReportRow[],
+  orders: QbOrderReportRow[],
+  pendingReceipts: QbPendingReceiptReportRow[],
+  receipts: QbReceiptReportRow[],
+  permissions: QbReportsPermissions,
+): Record<QbReportExportKey, CsvRecord[]> {
+  const allExports = {
+    inventario: inventory.map((row) => ({
+      producto: row.product,
+      sku: row.sku,
+      categoria: row.category,
+      stock_actual: row.stockCurrent,
+      unidad_base: row.baseUnit,
+      estado_qb: row.qbStatus,
+      visible_catalogo_qb: row.catalogVisible,
+      estado_stock: row.stockStatus,
+      clasificable: row.isClassifiable,
+      resultado_clasificacion: row.isClassificationResult,
+      merma_loss: row.isLossProduct,
+      ultimo_movimiento: row.lastMovementAt,
     })),
-    productos: bundle.products.map((product) => ({
-      id: product.id,
-      nombre: product.name,
-      sku: product.sku ?? "",
-      categoria: product.category?.name ?? "",
-      unidad: product.unit?.abbreviation ?? product.unit?.name ?? "",
-      stock_actual: Number(product.stock_current),
-      stock_minimo: Number(product.stock_min),
-      precio_compra: Number(product.purchase_price),
-      precio_venta: Number(product.sale_price),
-      margen_porcentaje: Number(product.margin_percentage),
-      estado: product.is_active ? "activo" : "inactivo",
+    pedidos: orders.map((row) => ({
+      referencia: row.reference,
+      fecha: row.date,
+      cliente: row.customer,
+      telefono: row.phone,
+      ubicacion: row.location,
+      estado: row.status,
+      productos_solicitados: row.requestedProducts,
+      productos_preparados: row.preparedProducts,
+      estado_preparacion: row.preparationStatus,
+      preparado_en: row.preparedAt,
+      entregado_en: row.deliveredAt,
     })),
-    inventario: [
-      ...inventoryRows.map((product) => ({
-        tipo_registro: "producto",
-        id: product.id,
-        fecha: "",
-        producto: product.name,
-        categoria: product.category,
-        stock_actual: product.stockCurrent,
-        stock_minimo: product.stockMin,
-        movimiento: "",
-        cantidad: "",
-        motivo: "",
-      })),
-      ...movementRows.map((movement) => ({
-        tipo_registro: "movimiento",
-        id: movement.id,
-        fecha: movement.date,
-        producto: movement.product,
-        categoria: "",
-        stock_actual: movement.stockAfter,
-        stock_minimo: "",
-        movimiento: movement.type,
-        cantidad: movement.quantity,
-        motivo: movement.reason,
-      })),
-    ] as CsvRecord[],
-    clientes: customerRows.map((customer) => ({
-      id: customer.id,
-      nombre: customer.name,
-      tipo: customer.type,
-      estado: customer.status,
-      monto_comprado: customer.purchasedAmount,
-      saldo_actual: customer.currentBalance,
-      limite_credito: customer.creditLimit,
-      credito_disponible: customer.availableCredit,
+    pendientes_recibo: pendingReceipts.map((row) => ({
+      cliente: row.customer,
+      telefono: row.phone,
+      pedidos_pendientes: row.pendingOrders,
+      ultima_entrega: row.lastDeliveredAt,
+      productos_entregados: row.deliveredProducts,
+      ubicacion: row.location,
     })),
-    compras: purchaseRows.map((purchase) => ({
-      id: purchase.id,
-      fecha: purchase.date,
-      proveedor: purchase.supplier,
-      total: purchase.total,
-      estado: purchase.status,
-      estado_pago: purchase.paymentStatus,
-      metodo_pago: purchase.paymentMethod,
-    })),
-    cuentas_por_cobrar: finance.receivableRows.map((item) => ({
-      id: item.id,
-      cliente: item.customer,
-      monto: item.amount,
-      pagado: item.paidAmount,
-      saldo: item.balance,
-      vencimiento: item.dueDate,
-      estado: item.status,
-    })),
-    cuentas_por_pagar: finance.payableRows.map((item) => ({
-      id: item.id,
-      proveedor: item.supplier,
-      monto: item.amount,
-      pagado: item.paidAmount,
-      saldo: item.balance,
-      vencimiento: item.dueDate,
-      estado: item.status,
-    })),
-    caja: finance.cashRows.map((item) => ({
-      id: item.id,
-      fecha: item.date,
-      tipo: item.type,
-      origen: item.source,
-      metodo: item.method,
-      monto: item.amount,
-      notas: item.notes,
+    recibos: receipts.map((row) => ({
+      numero: row.number,
+      cliente: row.customer,
+      estado: row.status,
+      fecha_emision: row.issuedAt,
+      total_recibo: row.totalAmount,
+      factores: row.factors,
+      pedidos_incluidos: row.includedOrders,
+      emisor: row.issuedBy,
+      motivo_anulacion: row.voidReason,
     })),
   };
 
-  return exports;
+  return {
+    inventario: permissions.exports.includes("inventario") ? allExports.inventario : [],
+    pedidos: permissions.exports.includes("pedidos") ? allExports.pedidos : [],
+    pendientes_recibo: permissions.exports.includes("pendientes_recibo") ? allExports.pendientes_recibo : [],
+    recibos: permissions.exports.includes("recibos") ? allExports.recibos : [],
+  };
 }
 
-export async function getReportsData(
+export async function getQbReportsData(
   role: UserRole,
-  filters: ReportFilters = {},
-): Promise<ReportsData> {
+  filters: QbReportFilters = {},
+): Promise<QbReportsData> {
   noStore();
 
   const permissions = getReportsPermissions(role);
-  const empty = cloneEmptyData(permissions);
-  const bundle = await fetchReportBundle(filters);
-  if (!bundle) return empty;
+  if (!permissions.tabs.length) {
+    return emptyData(permissions, "El rol actual no tiene acceso a reportes QB.");
+  }
 
-  const sales = permissions.tabs.includes("ventas") || permissions.tabs.includes("finanzas")
-    ? buildSalesReport(bundle)
-    : empty.sales;
-  const inventory = permissions.tabs.includes("inventario")
-    ? buildInventoryReport(bundle, filters)
-    : empty.inventory;
-  const customers = permissions.tabs.includes("clientes")
-    ? buildCustomersReport(bundle, filters)
-    : empty.customers;
-  const purchases = permissions.tabs.includes("compras")
-    ? buildPurchasesReport(bundle)
-    : empty.purchases;
-  const finance = permissions.tabs.includes("finanzas")
-    ? buildFinanceReport(bundle, filters)
-    : empty.finance;
-  const exports = buildExports(
-    bundle,
-    sales.rows,
-    inventory.products,
-    inventory.movements,
-    purchases.rows,
-    customers.rows,
-    finance,
-  );
+  const bundle = await fetchBundle(filters);
+  if (!bundle) {
+    return emptyData(
+      permissions,
+      "No se pudieron cargar reportes QB. Revisa que las migraciones QB-2 a QB-7 existan en la base local conectada y que RLS permita lectura.",
+    );
+  }
 
-  const filteredExports = Object.fromEntries(
-    Object.entries(exports).map(([key, value]) => [
-      key,
-      permissions.exports.includes(key as ReportExportKey) ? value : [],
-    ]),
-  ) as ReportsExportData;
+  const inventory = buildInventory(bundle, filters);
+  const merchandiseReceipts = buildMerchandiseReceipts(bundle, filters);
+  const orders = buildOrders(bundle, filters);
+  const pendingReceipts = buildPendingReceipts(bundle, filters);
+  const receipts = buildReceipts(bundle, filters);
+  const frequencies = buildFrequencies(bundle);
+  const auditEvents = buildAudit(bundle, filters);
+  const summary = buildSummary(bundle, inventory, filters);
+  const exports = buildExports(inventory, orders, pendingReceipts, receipts, permissions);
 
   return {
     permissions,
     lookups: {
-      customers: toOptions(bundle.customers),
-      suppliers: toOptions(bundle.suppliers),
-      products: toOptions(bundle.products),
-      categories: toOptions(bundle.categories),
+      categories: bundle.categories.map((category) => ({
+        id: getId(category.id),
+        label: str(category.name, "Sin categoria"),
+      })),
+      customers: bundle.customers.map((customer) => ({
+        id: getId(customer.id),
+        label: customerLabel(customer),
+      })),
+      products: bundle.products.map((product) => ({
+        id: getId(product.id),
+        label: str(product.name, "Producto"),
+      })),
     },
-    sales,
+    summary,
     inventory,
-    customers,
-    purchases,
-    finance,
-    exports: filteredExports,
+    merchandiseReceipts,
+    orders,
+    pendingReceipts,
+    receipts: permissions.tabs.includes("recibos") ? receipts : [],
+    ...frequencies,
+    auditEvents,
+    exports,
   };
 }

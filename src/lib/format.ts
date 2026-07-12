@@ -2,7 +2,8 @@ export function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-BO", {
     style: "currency",
     currency: "BOB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 

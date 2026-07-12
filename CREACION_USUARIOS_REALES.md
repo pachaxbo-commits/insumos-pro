@@ -9,16 +9,32 @@
 
 ## Crear usuario en Supabase Auth
 
+Opcion recomendada despues de Fase 12C:
+
+1. Ingresar a la app con un usuario `administrador`.
+2. Abrir `/configuracion`.
+3. Usar "Nuevo usuario".
+4. Elegir nombre, email y rol.
+5. Confirmar que el usuario recibe invitacion o restablecimiento segun configuracion SMTP/Auth de Supabase.
+
+Esta opcion requiere `SUPABASE_SERVICE_ROLE_KEY` configurada como variable privada del servidor.
+
+## Crear primer usuario administrador en Supabase Auth
+
 1. Entrar a Supabase Dashboard.
 2. Ir a Authentication > Users.
 3. Seleccionar Add user.
 4. Ingresar email real del usuario.
 5. Definir contrasena temporal segura o enviar invitacion si el flujo esta habilitado.
-6. Confirmar que se crea el registro en `public.profiles`.
+6. Insertar una unica vez su perfil `administrador` con el SQL de bootstrap documentado en `README_SETUP.md`.
 
 ## Asignar rol
 
-El trigger crea el perfil por defecto. En staging/produccion, ajustar el rol con la RPC protegida ejecutada por un administrador:
+El trigger no crea perfiles internos ni asigna roles. Esto es intencional: evita que
+el registro publico de clientes pueda escalar a personal. Para usuarios posteriores,
+usar exclusivamente `/configuracion`, que crea Auth y `profiles` desde servidor.
+
+La RPC protegida se usa para administrar perfiles internos ya existentes:
 
 ```sql
 select public.admin_update_profile(
@@ -30,6 +46,9 @@ select public.admin_update_profile(
 ```
 
 Cambiar `role` por `administrador`, `ventas`, `inventario` o `finanzas`.
+
+Las cuentas creadas desde `/mi-cuenta` viven en `customer_accounts`, no tienen rol
+interno y no deben administrarse como personal.
 
 ## Desactivar usuario operativo
 
@@ -45,6 +64,8 @@ select public.admin_update_profile(
 ```
 
 Tambien se recomienda deshabilitar o eliminar el usuario en Supabase Auth si ya no debe ingresar.
+
+Desde Fase 12C, la app bloquea que un administrador se desactive a si mismo o deje el sistema sin al menos un administrador activo.
 
 ## Buenas practicas
 

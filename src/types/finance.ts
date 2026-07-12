@@ -1,7 +1,7 @@
 import type { Customer } from "@/types/sales";
 import type { Supplier } from "@/types/purchases";
 
-export const FINANCE_STATUSES = ["pendiente", "parcial", "pagada", "vencida"] as const;
+export const FINANCE_STATUSES = ["pendiente", "parcial", "pagada", "vencida", "anulada"] as const;
 export const PAYMENT_METHODS_FINANCE = ["efectivo", "transferencia", "qr", "tarjeta", "otro"] as const;
 export const PAYMENT_TYPES = ["cobro_cliente", "pago_proveedor", "ingreso_manual", "gasto_manual"] as const;
 export const CASH_MOVEMENT_TYPES = ["ingreso", "egreso"] as const;
@@ -65,6 +65,11 @@ export type Payment = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  fulfillment_id?: string | null;
+  idempotency_key?: string | null;
+  external_reference?: string | null;
+  status?: "activo" | "revertido";
+  reversal_of_payment_id?: string | null;
   customer: Pick<Customer, "id" | "name"> | null;
   supplier: Pick<Supplier, "id" | "name"> | null;
 };

@@ -18,7 +18,10 @@ const mutationRoles = new Set(["administrador", "inventario"]);
 const movementSchema = z.object({
   product_id: z.uuid("Selecciona un producto."),
   movement_type: z.enum(INVENTORY_MOVEMENT_TYPES),
-  quantity: z.coerce.number().positive("La cantidad debe ser mayor a cero."),
+  quantity: z.coerce
+    .number()
+    .finite("La cantidad debe ser valida.")
+    .positive("La cantidad debe ser mayor a cero."),
   reason: z.string().trim().min(3, "El motivo debe tener al menos 3 caracteres."),
   notes: z.preprocess(
     (value) => {

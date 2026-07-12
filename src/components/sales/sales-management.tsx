@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   Ban,
   CheckCircle2,
   Eye,
@@ -14,7 +15,12 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { cancelSaleAction, confirmSaleAction, createSaleAction } from "@/lib/sales/actions";
+import {
+  cancelConfirmedSaleAction,
+  cancelSaleAction,
+  confirmSaleAction,
+  createSaleAction,
+} from "@/lib/sales/actions";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -30,7 +36,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +71,7 @@ type SalesManagementProps = {
   topProducts: TopSoldProduct[];
   filters: SaleFilters;
   canManage: boolean;
+  canCancelConfirmed: boolean;
 };
 
 type SaleLine = {
@@ -175,8 +182,65 @@ function SaleRowActionForm({
   );
 }
 
+function ConfirmedSaleCancellationForm({ sale }: { sale: SaleWithRelations }) {
+  const [state, formAction, pending] = useActionState(cancelConfirmedSaleAction, initialState);
+  useActionToast(state);
+
+  return (
+    <form action={formAction} className="space-y-4">
+      <input type="hidden" name="id" value={sale.id} />
+      <FormMessage state={state} />
+      <Alert variant="destructive" className="rounded-2xl">
+        <AlertTriangle className="size-4" />
+        <AlertTitle>Anulacion contable irreversible</AlertTitle>
+        <AlertDescription>
+          Se mantiene la venta original, se genera devolucion de stock y se registra la
+          reversion financiera permitida. Si existen pagos incompatibles, el servidor
+          bloqueara esta accion.
+        </AlertDescription>
+      </Alert>
+      <div className="grid gap-3 rounded-2xl border bg-muted/30 p-4 text-sm md:grid-cols-3">
+        <span>Cliente: <strong>{sale.customer?.name ?? "Sin cliente"}</strong></span>
+        <span>Total: <strong>{formatCurrency(Number(sale.total))}</strong></span>
+        <span>Pago: <strong>{sale.payment_type}</strong></span>
+      </div>
+      <div className="space-y-2">
+        <Label>Motivo obligatorio</Label>
+        <Textarea
+          name="reason"
+          required
+          minLength={10}
+          placeholder="Explica por que se anula esta venta confirmada"
+          className="rounded-xl"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Confirmacion fuerte</Label>
+        <Input name="confirmation" required placeholder="Escribe ANULAR" className="rounded-xl" />
+      </div>
+      <DialogFooter>
+        <Button type="submit" variant="destructive" disabled={pending} className="rounded-xl">
+          <Ban className="size-4" />
+          {pending ? "Anulando..." : "Anular venta confirmada"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("es-BO", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
 function SaleForm({
@@ -368,8 +432,8 @@ function SaleForm({
                 <Input
                   name={`item_quantity_${index}`}
                   type="number"
-                  min="0.01"
-                  step="0.01"
+                  min="0.001"
+                  step="0.001"
                   placeholder="Cantidad"
                   value={line.quantity}
                   onChange={(event) => updateLine(index, { quantity: event.target.value })}
@@ -455,6 +519,15 @@ function SaleDetail({ sale }: { sale: SaleWithRelations }) {
       {sale.notes ? (
         <p className="rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">{sale.notes}</p>
       ) : null}
+      {sale.reversal_status === "reversed" ? (
+        <Alert className="rounded-2xl border-slate-200 bg-slate-50">
+          <AlertTitle>Venta anulada con reversión aplicada</AlertTitle>
+          <AlertDescription className="space-y-1">
+            <p>Fecha: {sale.canceled_at ? formatDateTime(sale.canceled_at) : "N/D"}</p>
+            <p>Motivo: {sale.canceled_reason ?? "Sin motivo registrado"}</p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }
@@ -467,6 +540,7 @@ export function SalesManagement({
   topProducts,
   filters,
   canManage,
+  canCancelConfirmed,
 }: SalesManagementProps) {
   return (
     <div className="space-y-6">
@@ -610,6 +684,29 @@ export function SalesManagement({
                                 icon={<Ban className="size-4" />}
                               />
                             </>
+                          ) : null}
+                          {canCancelConfirmed && sale.status === "confirmada" ? (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon-sm"
+                                  className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                                >
+                                  <Ban className="size-4" />
+                                  <span className="sr-only">Anular venta confirmada</span>
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>Anular venta confirmada</DialogTitle>
+                                  <DialogDescription>
+                                    Esta accion genera reversas auditadas y no elimina el documento original.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <ConfirmedSaleCancellationForm sale={sale} />
+                              </DialogContent>
+                            </Dialog>
                           ) : null}
                         </div>
                       </TableCell>

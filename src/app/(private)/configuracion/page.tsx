@@ -2,13 +2,14 @@ import type { ReactNode } from "react";
 import {
   Activity,
   CheckCircle2,
+  FileText,
   LockKeyhole,
   Settings,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,11 @@ import {
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getRoleLabel } from "@/lib/auth/roles";
 import { getAuditLogsData } from "@/lib/audit/data";
+import {
+  getActiveTransitionalModules,
+  getFutureQbModules,
+  getSuspendedLegacyModules,
+} from "@/lib/qb-insumos/transition-policy";
 import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, type AuditFilters } from "@/types/audit";
 import { USER_ROLES } from "@/types/auth";
 
@@ -35,44 +41,30 @@ type ConfiguracionPageProps = {
   }>;
 };
 
-const modules = [
-  "Dashboard",
-  "Productos",
-  "Inventario",
-  "Proveedores",
-  "Compras",
-  "Clientes",
-  "Ventas",
-  "Finanzas",
-  "Reportes",
-  "Exportaciones CSV",
-  "Bitacora",
-];
-
 const settings = [
   {
-    title: "Empresa",
-    description: "Datos comerciales y parametros generales preparados para configuracion avanzada.",
-    status: "Preparado",
+    title: "Marca visual",
+    description: "La aplicacion se presenta como QB Insumos durante la transicion local.",
+    status: "QB-1",
     icon: Settings,
   },
   {
-    title: "Usuarios y roles",
-    description: "Gestion inicial desde Supabase Auth y `public.profiles`.",
-    status: "Activo",
-    icon: Users,
-  },
-  {
-    title: "Seguridad",
-    description: "Rutas privadas, RLS, Server Actions y permisos por rol.",
-    status: "Activo",
+    title: "Roles actuales",
+    description: "Los roles reales de Supabase siguen intactos hasta una fase posterior.",
+    status: "Sin cambios",
     icon: ShieldCheck,
   },
   {
-    title: "Auditoria",
-    description: "Acciones criticas registradas en `audit_logs`.",
-    status: "Activo",
+    title: "Modulos legado",
+    description: "Las rutas incompatibles muestran pantalla de transicion y no montan formularios operativos.",
+    status: "Suspendidos",
     icon: LockKeyhole,
+  },
+  {
+    title: "Auditoria",
+    description: "Consulta de bitacora en modo lectura para trazabilidad historica.",
+    status: "Lectura",
+    icon: FileText,
   },
 ];
 
@@ -84,25 +76,49 @@ const actionLabels: Record<string, string> = {
   create_purchase: "Crear compra",
   confirm_purchase: "Confirmar compra",
   cancel_purchase: "Cancelar compra",
+  cancel_confirmed_purchase: "Anular compra confirmada",
+  create_purchase_batch: "Crear compra multiple",
+  update_purchase_batch: "Editar compra multiple",
+  create_purchase_batch_line: "Agregar linea de compra multiple",
+  update_purchase_batch_line: "Editar linea de compra multiple",
+  delete_purchase_batch_line: "Eliminar linea de compra multiple",
+  confirm_purchase_batch: "Confirmar compra multiple",
+  save_purchase_batch_line_classification: "Guardar clasificacion de ingreso",
+  create_order: "Crear pedido",
+  confirm_order: "Confirmar pedido",
+  cancel_order: "Cancelar pedido",
   create_sale: "Crear venta",
   confirm_sale: "Confirmar venta",
   cancel_sale: "Cancelar venta",
+  cancel_confirmed_sale: "Anular venta confirmada",
   register_customer_payment: "Registrar cobro",
   register_supplier_payment: "Registrar pago",
   register_manual_cash_movement: "Ingreso/gasto manual",
   deactivate_customer: "Desactivar cliente",
   deactivate_supplier: "Desactivar proveedor",
+  create_user: "Crear usuario",
+  update_user: "Editar usuario",
+  change_user_role: "Cambiar rol",
+  activate_user: "Activar usuario",
+  deactivate_user: "Desactivar usuario",
+  reset_user_access: "Restablecer acceso",
+  update_configuration: "Cambiar configuracion",
 };
 
 const entityLabels: Record<string, string> = {
   product: "Producto",
   inventory_movement: "Inventario",
   purchase: "Compra",
+  purchase_batch: "Compra multiple",
+  purchase_classification: "Clasificacion de ingreso",
+  order: "Pedido",
   sale: "Venta",
   payment: "Pago",
   cash_movement: "Caja",
   customer: "Cliente",
   supplier: "Proveedor",
+  user: "Usuario",
+  configuration: "Configuracion",
 };
 
 function NativeSelect({
@@ -147,6 +163,7 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("es-BO", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
 
@@ -164,13 +181,16 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
   await requireRoleAccess("/configuracion");
   const filters = normalizeFilters(await searchParams);
   const audit = await getAuditLogsData(filters);
+  const activeModules = getActiveTransitionalModules();
+  const suspendedModules = getSuspendedLegacyModules();
+  const futureModules = getFutureQbModules();
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Configuracion"
-        title="Parametros, seguridad y bitacora"
-        description="Estado operativo del sistema, roles disponibles, modulos activos y auditoria de acciones criticas."
+        title="Transicion QB-1"
+        description="Estado visual de modulos, roles actuales y auditoria sin modificar Auth, RLS ni permisos reales."
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -203,13 +223,13 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="size-5 text-emerald-700" />
-              Modulos activos
+              Modulos visibles temporales
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {modules.map((module) => (
-              <Badge key={module} variant="outline" className="rounded-full border-slate-200 bg-white/80">
-                {module}
+            {activeModules.map((module) => (
+              <Badge key={module.id} variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800">
+                {module.title}
               </Badge>
             ))}
           </CardContent>
@@ -217,7 +237,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
 
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Roles disponibles</CardTitle>
+            <CardTitle>Roles actuales y destino QB</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-4">
             {USER_ROLES.map((role) => (
@@ -225,13 +245,43 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                 <p className="font-medium">{getRoleLabel(role)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {role === "administrador"
-                    ? "Acceso completo"
+                    ? "Destino: Administrador"
                     : role === "ventas"
-                      ? "Ventas y clientes"
+                      ? "Destino: transitorio hasta Preparacion/Inventario o Administrador"
                       : role === "inventario"
-                        ? "Stock, compras y productos"
-                        : "Pagos, cuentas y reportes"}
+                        ? "Destino: Preparacion/Inventario"
+                        : "Destino: legado suspendido"}
                 </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="border-white/60 bg-card/92 shadow-sm">
+          <CardHeader>
+            <CardTitle>Rutas suspendidas</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {suspendedModules.map((module) => (
+              <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
+                <p className="font-medium">{module.href ?? module.title}</p>
+                <p className="mt-1 text-muted-foreground">{module.reason}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/60 bg-card/92 shadow-sm">
+          <CardHeader>
+            <CardTitle>Modulos futuros</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {futureModules.map((module) => (
+              <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
+                <p className="font-medium">{module.title}</p>
+                <p className="mt-1 text-muted-foreground">{module.reason}</p>
               </div>
             ))}
           </CardContent>
@@ -294,6 +344,13 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           </form>
         </CardHeader>
         <CardContent>
+          {audit.error ? (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>No se pudo cargar la bitacora correctamente</AlertTitle>
+              <AlertDescription>{audit.error}</AlertDescription>
+            </Alert>
+          ) : null}
+
           <div className="overflow-hidden rounded-2xl border border-border/70">
             <Table>
               <TableHeader>

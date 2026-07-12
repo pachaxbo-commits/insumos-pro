@@ -6,37 +6,173 @@ import type {
   ProductCategory,
   ProductFilters,
   ProductWithRelations,
+  QbProductAllowedUnit,
+  QbProductClassificationOutput,
+  QbProductPresentation,
+  QbProductUnitSettings,
+  QbUnit,
+  QbUnitDimension,
   UnitOfMeasure,
 } from "@/types/products";
 
 type ProductRow = Omit<ProductWithRelations, "margin_percentage" | "stock_status">;
+type SupabaseServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
 
 type ProductQueryRow = Omit<ProductRow, "category" | "unit"> & {
   category: ProductCategory | ProductCategory[] | null;
   unit: UnitOfMeasure | UnitOfMeasure[] | null;
 };
 
+type QbParametrizationData = {
+  qbUnitDimensions: QbUnitDimension[];
+  qbUnits: QbUnit[];
+  qbProductUnitSettings: QbProductUnitSettings[];
+  qbProductPresentations: QbProductPresentation[];
+  qbProductAllowedUnits: QbProductAllowedUnit[];
+  qbProductClassificationOutputs: QbProductClassificationOutput[];
+  qbParametrizationWarning?: string;
+};
+
 export type ProductsCatalogData = {
   products: ProductWithRelations[];
   categories: ProductCategory[];
   units: UnitOfMeasure[];
+  error?: string;
+} & QbParametrizationData;
+
+type ProductsCatalogOptions = {
+  includeQbParametrization?: boolean;
 };
+
+function getEmptyQbParametrizationData(): QbParametrizationData {
+  return {
+    qbUnitDimensions: [],
+    qbUnits: [],
+    qbProductUnitSettings: [],
+    qbProductPresentations: [],
+    qbProductAllowedUnits: [],
+    qbProductClassificationOutputs: [],
+  };
+}
+
+function getQbParametrizationWarning(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("does not exist") ||
+    normalizedMessage.includes("could not find") ||
+    normalizedMessage.includes("relation")
+  ) {
+    return "La migracion local QB-2/QB-3 de unidades, productos QB y presentaciones todavia no esta aplicada.";
+  }
+
+  return `No se pudo cargar la parametrizacion QB: ${message}`;
+}
+
+async function loadQbParametrizationData(
+  supabase: SupabaseServerClient,
+): Promise<QbParametrizationData> {
+  const [
+    dimensionsResult,
+    qbUnitsResult,
+    settingsResult,
+    presentationsResult,
+    allowedUnitsResult,
+    classificationOutputsResult,
+  ] = await Promise.all([
+      supabase
+        .from("qb_unit_dimensions")
+        .select(
+          "id, code, name, base_unit_code, is_active, sort_order, created_by, updated_by, created_at, updated_at",
+        )
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("qb_units")
+        .select(
+          "id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active, sort_order, created_by, updated_by, created_at, updated_at",
+        )
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("qb_product_unit_settings")
+        .select(
+          "product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, internal_notes, notes, created_by, updated_by, created_at, updated_at",
+        )
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("qb_product_presentations")
+        .select(
+          "id, product_id, name, symbol, contained_quantity, contained_unit_id, base_quantity, base_unit_id, conversion_factor_to_base, allow_purchase, allow_order, allow_sale, allow_inventory, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+        )
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("qb_product_allowed_units")
+        .select(
+          "id, product_id, usage_context, unit_id, presentation_id, is_default, quantity_step, min_quantity, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+        )
+        .order("usage_context", { ascending: true })
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("qb_product_classification_outputs")
+        .select(
+          "id, source_product_id, output_type, output_product_id, label, expected_percentage, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+        )
+        .order("sort_order", { ascending: true })
+        .order("label", { ascending: true }),
+    ]);
+
+  const qbError =
+    dimensionsResult.error ??
+    qbUnitsResult.error ??
+    settingsResult.error ??
+    presentationsResult.error ??
+    allowedUnitsResult.error ??
+    classificationOutputsResult.error;
+
+  if (qbError) {
+    return {
+      ...getEmptyQbParametrizationData(),
+      qbParametrizationWarning: getQbParametrizationWarning(qbError.message),
+    };
+  }
+
+  return {
+    qbUnitDimensions: (dimensionsResult.data ?? []) as QbUnitDimension[],
+    qbUnits: (qbUnitsResult.data ?? []) as QbUnit[],
+    qbProductUnitSettings: (settingsResult.data ?? []) as QbProductUnitSettings[],
+    qbProductPresentations: (presentationsResult.data ?? []) as QbProductPresentation[],
+    qbProductAllowedUnits: (allowedUnitsResult.data ?? []) as QbProductAllowedUnit[],
+    qbProductClassificationOutputs: (classificationOutputsResult.data ??
+      []) as QbProductClassificationOutput[],
+  };
+}
 
 export async function getProductsCatalogData(
   filters: ProductFilters = {},
+  options: ProductsCatalogOptions = {},
 ): Promise<ProductsCatalogData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
 
   if (!supabase) {
-    return { products: [], categories: [], units: [] };
+    return {
+      products: [],
+      categories: [],
+      units: [],
+      ...getEmptyQbParametrizationData(),
+      error: "Faltan variables publicas de Supabase.",
+    };
   }
 
   const [categoriesResult, unitsResult] = await Promise.all([
     supabase
       .from("product_categories")
-      .select("id, name, description, is_active, created_at, updated_at")
+      .select(
+        "id, name, description, is_catalog_visible, catalog_slug, catalog_sort_order, is_active, created_at, updated_at",
+      )
       .order("name", { ascending: true }),
     supabase
       .from("units_of_measure")
@@ -47,7 +183,7 @@ export async function getProductsCatalogData(
   let productsQuery = supabase
     .from("products")
     .select(
-      "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, is_active, created_at, updated_at, category:product_categories(id, name, description, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
+      "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, requires_classification, is_sellable, is_catalog_visible, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, catalog_availability, is_active, created_at, updated_at, category:product_categories(id, name, description, is_catalog_visible, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
     )
     .order("created_at", { ascending: false });
 
@@ -71,13 +207,36 @@ export async function getProductsCatalogData(
   const productsResult = await productsQuery;
 
   if (categoriesResult.error || unitsResult.error || productsResult.error) {
-    return { products: [], categories: [], units: [] };
+    const message =
+      categoriesResult.error?.message ??
+      unitsResult.error?.message ??
+      productsResult.error?.message ??
+      "Error desconocido.";
+
+    return {
+      products: [],
+      categories: [],
+      units: [],
+      ...getEmptyQbParametrizationData(),
+      error: `No se pudo cargar el catalogo: ${message}`,
+    };
   }
 
+  const qbParametrizationData = options.includeQbParametrization
+    ? await loadQbParametrizationData(supabase)
+    : getEmptyQbParametrizationData();
   const rows = (productsResult.data ?? []) as unknown as ProductQueryRow[];
 
   const products = rows.map((product) => ({
     ...product,
+    requires_classification: Boolean(product.requires_classification),
+    is_sellable: product.is_sellable !== false,
+    is_catalog_visible: Boolean(product.is_catalog_visible),
+    catalog_description: product.catalog_description ?? null,
+    catalog_sort_order: Number(product.catalog_sort_order ?? 0),
+    catalog_min_quantity: Number(product.catalog_min_quantity ?? 1),
+    catalog_quantity_step: Number(product.catalog_quantity_step ?? 1),
+    catalog_availability: product.catalog_availability ?? "consultar",
     category: Array.isArray(product.category) ? product.category[0] ?? null : product.category,
     unit: Array.isArray(product.unit) ? product.unit[0] ?? null : product.unit,
     margin_percentage: calculateMarginPercentage(
@@ -90,6 +249,7 @@ export async function getProductsCatalogData(
   return {
     categories: (categoriesResult.data ?? []) as ProductCategory[],
     units: (unitsResult.data ?? []) as UnitOfMeasure[],
+    ...qbParametrizationData,
     products:
       filters.stock === "low"
         ? products.filter((product) => product.stock_status !== "ok")

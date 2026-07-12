@@ -7,6 +7,8 @@ import {
   Archive,
   Boxes,
   Edit3,
+  Eye,
+  EyeOff,
   PackagePlus,
   Plus,
   Ruler,
@@ -24,6 +26,7 @@ import {
   updateProductAction,
   updateUnitAction,
 } from "@/lib/products/actions";
+import { QbProductConfigPanel } from "@/components/products/qb-product-config-panel";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -31,6 +34,12 @@ import type {
   ProductCategory,
   ProductFilters,
   ProductWithRelations,
+  QbProductAllowedUnit,
+  QbProductClassificationOutput,
+  QbProductPresentation,
+  QbProductUnitSettings,
+  QbUnit,
+  QbUnitDimension,
   UnitOfMeasure,
 } from "@/types/products";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +76,13 @@ type ProductManagementProps = {
   categories: ProductCategory[];
   units: UnitOfMeasure[];
   filters: ProductFilters;
+  qbUnitDimensions: QbUnitDimension[];
+  qbUnits: QbUnit[];
+  qbProductUnitSettings: QbProductUnitSettings[];
+  qbProductPresentations: QbProductPresentation[];
+  qbProductAllowedUnits: QbProductAllowedUnit[];
+  qbProductClassificationOutputs: QbProductClassificationOutput[];
+  qbParametrizationWarning?: string;
   canManage: boolean;
 };
 
@@ -205,6 +221,20 @@ function ProductForm({
           </NativeSelect>
         </div>
 
+        <div className="space-y-2 md:col-span-2">
+          <Label>Clasificacion de ingreso</Label>
+          <NativeSelect
+            name="requires_classification"
+            defaultValue={String(product?.requires_classification ?? false)}
+          >
+            <option value="false">No requiere clasificacion</option>
+            <option value="true">Requiere clasificacion antes de ingresar a inventario</option>
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">
+            Los productos que requieren clasificacion son solo de compra y no pueden publicarse.
+          </p>
+        </div>
+
         <div className="space-y-2">
           <Label>Categoria</Label>
           <NativeSelect name="category_id" defaultValue={product?.category_id ?? ""}>
@@ -240,7 +270,7 @@ function ProductForm({
             name="stock_current"
             type="number"
             min="0"
-            step="0.01"
+            step="0.001"
             defaultValue={product?.stock_current ?? 0}
             required
             className="rounded-xl"
@@ -254,7 +284,7 @@ function ProductForm({
             name="stock_min"
             type="number"
             min="0"
-            step="0.01"
+            step="0.001"
             defaultValue={product?.stock_min ?? 0}
             required
             className="rounded-xl"
@@ -310,6 +340,99 @@ function ProductForm({
             className="rounded-xl"
           />
         </div>
+
+        <div className="space-y-2">
+          <Label>Uso comercial</Label>
+          <NativeSelect
+            name="is_sellable"
+            defaultValue={String(product?.is_sellable ?? true)}
+          >
+            <option value="true">Producto vendible</option>
+            <option value="false">Solo compra / uso interno</option>
+          </NativeSelect>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Catalogo publico</Label>
+          <NativeSelect
+            name="is_catalog_visible"
+            defaultValue={String(product?.is_catalog_visible ?? false)}
+          >
+            <option value="false">Oculto</option>
+            <option value="true">Visible en /catalogo</option>
+          </NativeSelect>
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor={`${mode}-catalog-description`}>Descripcion publica</Label>
+          <Textarea
+            id={`${mode}-catalog-description`}
+            name="catalog_description"
+            defaultValue={product?.catalog_description ?? ""}
+            maxLength={1000}
+            placeholder="Descripcion breve para el cliente, sin datos internos."
+            className="min-h-24 rounded-xl"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Disponibilidad publica</Label>
+          <NativeSelect
+            name="catalog_availability"
+            defaultValue={product?.catalog_availability ?? "consultar"}
+          >
+            <option value="disponible">Disponible</option>
+            <option value="consultar">Consultar</option>
+            <option value="agotado">Agotado</option>
+          </NativeSelect>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-catalog-sort-order`}>Orden publico</Label>
+          <Input
+            id={`${mode}-catalog-sort-order`}
+            name="catalog_sort_order"
+            type="number"
+            min="0"
+            step="1"
+            defaultValue={product?.catalog_sort_order ?? 0}
+            required
+            className="rounded-xl"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-catalog-min-quantity`}>Cantidad minima</Label>
+          <Input
+            id={`${mode}-catalog-min-quantity`}
+            name="catalog_min_quantity"
+            type="number"
+            min="0.001"
+            step="0.001"
+            defaultValue={product?.catalog_min_quantity ?? 1}
+            required
+            className="rounded-xl"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`${mode}-catalog-quantity-step`}>Incremento permitido</Label>
+          <Input
+            id={`${mode}-catalog-quantity-step`}
+            name="catalog_quantity_step"
+            type="number"
+            min="0.001"
+            step="0.001"
+            defaultValue={product?.catalog_quantity_step ?? 1}
+            required
+            className="rounded-xl"
+          />
+        </div>
+
+        <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground md:col-span-2">
+          Para publicar, la categoria tambien debe ser visible. El catalogo nunca muestra costo,
+          stock exacto, proveedor ni margen.
+        </p>
       </div>
 
       <DialogFooter>
@@ -344,14 +467,53 @@ function CatalogForm({
         <Input name="name" defaultValue={item?.name} required className="rounded-xl" />
       </div>
       {isCategory ? (
-        <div className="space-y-2">
-          <Label>Descripcion</Label>
-          <Textarea
-            name="description"
-            defaultValue={(item as ProductCategory | undefined)?.description ?? ""}
-            className="rounded-xl"
-          />
-        </div>
+        <>
+          <div className="space-y-2">
+            <Label>Descripcion</Label>
+            <Textarea
+              name="description"
+              defaultValue={(item as ProductCategory | undefined)?.description ?? ""}
+              className="rounded-xl"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Catalogo publico</Label>
+            <NativeSelect
+              name="is_catalog_visible"
+              defaultValue={String(
+                (item as ProductCategory | undefined)?.is_catalog_visible ?? false,
+              )}
+            >
+              <option value="false">Oculta</option>
+              <option value="true">Visible</option>
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label>Slug publico</Label>
+            <Input
+              name="catalog_slug"
+              defaultValue={(item as ProductCategory | undefined)?.catalog_slug ?? ""}
+              placeholder="verduras-frescas"
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              className="rounded-xl"
+            />
+            <p className="text-xs text-muted-foreground">
+              Si queda vacio, se genera automaticamente desde el nombre.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label>Orden publico</Label>
+            <Input
+              name="catalog_sort_order"
+              type="number"
+              min="0"
+              step="1"
+              defaultValue={(item as ProductCategory | undefined)?.catalog_sort_order ?? 0}
+              required
+              className="rounded-xl"
+            />
+          </div>
+        </>
       ) : (
         <div className="space-y-2">
           <Label>Abreviatura</Label>
@@ -431,6 +593,24 @@ function CatalogList({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {type === "category" ? (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "rounded-full",
+                    (item as ProductCategory).is_catalog_visible
+                      ? "border-teal-200 bg-teal-50 text-teal-700"
+                      : "border-slate-200 bg-slate-50 text-slate-500",
+                  )}
+                >
+                  {(item as ProductCategory).is_catalog_visible ? (
+                    <Eye className="size-3" />
+                  ) : (
+                    <EyeOff className="size-3" />
+                  )}
+                  {(item as ProductCategory).is_catalog_visible ? "Publica" : "Oculta"}
+                </Badge>
+              ) : null}
               <StatusBadge active={item.is_active} />
               {canManage ? (
                 <Dialog>
@@ -477,14 +657,27 @@ export function ProductManagement({
   categories,
   units,
   filters,
+  qbUnitDimensions,
+  qbUnits,
+  qbProductUnitSettings,
+  qbProductPresentations,
+  qbProductAllowedUnits,
+  qbProductClassificationOutputs,
+  qbParametrizationWarning,
   canManage,
 }: ProductManagementProps) {
   const activeProducts = products.filter((product) => product.is_active).length;
   const lowStock = products.filter((product) => product.stock_status !== "ok").length;
+  const publicProducts = products.filter(
+    (product) => product.is_active && product.is_catalog_visible,
+  ).length;
+  const qbConfiguredProductIds = new Set(
+    qbProductUnitSettings.map((settings) => settings.product_id),
+  );
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Productos activos</p>
           <p className="mt-2 font-heading text-3xl font-semibold">{activeProducts}</p>
@@ -492,6 +685,10 @@ export function ProductManagement({
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Stock bajo o agotado</p>
           <p className="mt-2 font-heading text-3xl font-semibold">{lowStock}</p>
+        </div>
+        <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Visibles en catalogo</p>
+          <p className="mt-2 font-heading text-3xl font-semibold">{publicProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Categorias y unidades</p>
@@ -510,29 +707,34 @@ export function ProductManagement({
                 Productos conectados a Supabase con filtros, estados y precios base.
               </p>
             </div>
-            {canManage ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="rounded-xl">
-                    <PackagePlus className="size-4" />
-                    Nuevo producto
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Nuevo producto</DialogTitle>
-                    <DialogDescription>
-                      Registra un producto base sin movimientos de inventario.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <ProductForm mode="create" categories={categories} units={units} />
-                </DialogContent>
-              </Dialog>
-            ) : (
-              <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
-                Solo lectura
-              </Badge>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {canManage ? (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button className="rounded-xl">
+                      <PackagePlus className="size-4" />
+                      Nuevo producto
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+                    <DialogHeader>
+                      <DialogTitle>Nuevo producto</DialogTitle>
+                      <DialogDescription>
+                        Registra un producto base sin movimientos de inventario.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ProductForm mode="create" categories={categories} units={units} />
+                  </DialogContent>
+                </Dialog>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-slate-200 bg-slate-50 text-slate-600"
+                >
+                  Solo lectura
+                </Badge>
+              )}
+            </div>
           </div>
 
           <form className="grid gap-3 lg:grid-cols-[1.3fr_0.8fr_0.7fr_0.7fr_auto]" action="/productos">
@@ -614,6 +816,40 @@ export function ProductManagement({
                       <div className="flex flex-wrap gap-1.5">
                         <StatusBadge active={product.is_active} />
                         <StockBadge product={product} />
+                        {product.is_catalog_visible ? (
+                          <Badge
+                            variant="outline"
+                            className="rounded-full border-teal-200 bg-teal-50 text-teal-700"
+                          >
+                            <Eye className="size-3" />
+                            Publico
+                          </Badge>
+                        ) : null}
+                        {product.is_sellable === false ? (
+                          <Badge
+                            variant="outline"
+                            className="rounded-full border-slate-200 bg-slate-100 text-slate-600"
+                          >
+                            Solo compra
+                          </Badge>
+                        ) : null}
+                        {qbParametrizationWarning ? null : qbConfiguredProductIds.has(
+                            product.id,
+                          ) ? (
+                          <Badge
+                            variant="outline"
+                            className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
+                          >
+                            QB configurado
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
+                          >
+                            QB pendiente
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -673,6 +909,18 @@ export function ProductManagement({
           ) : null}
         </CardContent>
       </Card>
+
+      <QbProductConfigPanel
+        products={products}
+        qbUnitDimensions={qbUnitDimensions}
+        qbUnits={qbUnits}
+        qbProductUnitSettings={qbProductUnitSettings}
+        qbProductPresentations={qbProductPresentations}
+        qbProductAllowedUnits={qbProductAllowedUnits}
+        qbProductClassificationOutputs={qbProductClassificationOutputs}
+        qbParametrizationWarning={qbParametrizationWarning}
+        canManage={canManage}
+      />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <CatalogList

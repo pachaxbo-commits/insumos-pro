@@ -1,5 +1,10 @@
+import Link from "next/link";
+import { SlidersHorizontal } from "lucide-react";
+
 import { ProductManagement } from "@/components/products/product-management";
 import { PageHeader } from "@/components/layout/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getProductsCatalogData } from "@/lib/products/data";
 import type { ProductFilters } from "@/types/products";
@@ -28,7 +33,7 @@ function normalizeFilters(params: Awaited<ProductosPageProps["searchParams"]>): 
 export default async function ProductosPage({ searchParams }: ProductosPageProps) {
   const auth = await requireRoleAccess("/productos");
   const filters = normalizeFilters(await searchParams);
-  const data = await getProductsCatalogData(filters);
+  const data = await getProductsCatalogData(filters, { includeQbParametrization: true });
   const canManage =
     auth.user.role === "administrador" || auth.user.role === "inventario";
 
@@ -36,10 +41,37 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
     <div className="space-y-6">
       <PageHeader
         eyebrow="Catalogo"
-        title="Productos, categorias y unidades"
-        description="Gestiona el catalogo base conectado a Supabase. El stock se actualiza mediante movimientos de inventario, compras y ventas confirmadas."
+        title="Productos"
+        description="Gestiona productos y configuracion QB sin movimientos de inventario ni flujos operativos."
+        action={
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link href="/parametrizacion">
+              <SlidersHorizontal className="size-4" />
+              Reglas de unidades
+            </Link>
+          </Button>
+        }
       />
-      <ProductManagement {...data} filters={filters} canManage={canManage} />
+      {data.error ? (
+        <Alert variant="destructive">
+          <AlertTitle>No se pudo cargar productos</AlertTitle>
+          <AlertDescription>{data.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      <ProductManagement
+        products={data.products}
+        categories={data.categories}
+        units={data.units}
+        filters={filters}
+        qbUnitDimensions={data.qbUnitDimensions}
+        qbUnits={data.qbUnits}
+        qbProductUnitSettings={data.qbProductUnitSettings}
+        qbProductPresentations={data.qbProductPresentations}
+        qbProductAllowedUnits={data.qbProductAllowedUnits}
+        qbProductClassificationOutputs={data.qbProductClassificationOutputs}
+        qbParametrizationWarning={data.qbParametrizationWarning}
+        canManage={canManage}
+      />
     </div>
   );
 }
