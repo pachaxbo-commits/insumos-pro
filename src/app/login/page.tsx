@@ -45,14 +45,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <div className="relative flex h-full flex-col justify-between gap-10">
             <div className="space-y-5">
               <Badge className="rounded-full bg-white/12 px-3 py-1 text-white hover:bg-white/12">
-                Acceso seguro
+                Gestión centralizada
               </Badge>
               <div className="space-y-4">
                 <h1 className="max-w-xl font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-                  QB Insumos prepara una operacion mas simple y segura.
+                  QB Insumos, desarrollado por Pachax®
                 </h1>
                 <p className="max-w-xl text-base leading-7 text-white/72">
-                  Inicia sesion para entrar al entorno de transicion QB-1 y ver solo los modulos habilitados.
+                  Administra pedidos, inventario, entregas y recibos desde una plataforma segura y fácil de usar.
                 </p>
               </div>
             </div>
@@ -62,9 +62,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <CardContent className="space-y-3 p-5">
                   <Lock className="size-5" />
                   <div>
-                    <p className="font-medium">Auth real</p>
+                    <p className="font-medium">Control integral</p>
                     <p className="mt-1 text-sm leading-6 text-white/65">
-                      Sesion validada con Supabase Auth.
+                      Gestiona cada etapa de la operación desde un solo lugar.
                     </p>
                   </div>
                 </CardContent>
@@ -73,9 +73,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <CardContent className="space-y-3 p-5">
                   <ShieldCheck className="size-5" />
                   <div>
-                    <p className="font-medium">Roles temporales</p>
+                    <p className="font-medium">Acceso personalizado</p>
                     <p className="mt-1 text-sm leading-6 text-white/65">
-                      Los roles reales se conservan hasta una fase posterior.
+                      Cada usuario accede únicamente a las funciones que necesita.
                     </p>
                   </div>
                 </CardContent>
@@ -84,9 +84,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <CardContent className="space-y-3 p-5">
                   <ArrowRight className="size-5" />
                   <div>
-                    <p className="font-medium">Rutas protegidas</p>
+                    <p className="font-medium">Información segura</p>
                     <p className="mt-1 text-sm leading-6 text-white/65">
-                      Acceso filtrado por modulo y perfil.
+                      Tus datos y movimientos se mantienen protegidos en todo momento.
                     </p>
                   </div>
                 </CardContent>
@@ -107,7 +107,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   Iniciar sesion
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Usa tus credenciales de Supabase Auth para entrar al entorno privado.
+                  Ingresa con tu correo y contraseña para acceder a tu cuenta.
                 </p>
               </div>
 

@@ -25,7 +25,7 @@ function SubmitButton() {
           Ingresando...
         </>
       ) : (
-        "Ingresar al sistema"
+        "Iniciar sesión"
       )}
     </Button>
   );
@@ -55,7 +55,7 @@ export function LoginForm() {
             id="email"
             name="email"
             type="email"
-            placeholder="equipo@insumospro.com"
+            placeholder="correo@empresa.com"
             autoComplete="email"
             className="h-11 rounded-xl pl-10"
           />
