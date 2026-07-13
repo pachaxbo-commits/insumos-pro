@@ -142,3 +142,23 @@ Contrato final:
 - RLS y grants de `anon/authenticated` sin cambios.
 
 `db reset`, E2E y prueba REST/Admin Auth pasaron localmente. El orden canonico queda preparado para comparacion, no para aplicacion ciega sobre Staging.
+
+## Resultado QB-9.6 - Staging legacy
+
+El inventario read-only confirmo que el Staging actual no cumple la precondicion de baseline:
+
+- no existe `supabase_migrations`;
+- faltan todas las tablas QB;
+- falta `customer_accounts`;
+- productos, perfiles e inventario provienen de un baseline legacy parcial;
+- cantidades fisicas usan precision `numeric(14,2)`;
+- existen objetos legacy de ventas, compras, pagos, caja, CxC y CxP.
+
+Por tanto:
+
+- **prohibido aplicar el baseline local sintetico sobre este proyecto**;
+- **prohibido tratar el orden canonico como upgrade directo del esquema legacy**;
+- el Staging actual no esta autorizado para migraciones;
+- cualquier migracion puente requiere backup, copia aislada, diff de datos y autorizacion propia.
+
+La opcion recomendada es crear un Staging QB nuevo y limpio y aplicar alli el orden canonico validado, solo despues de autorizar la creacion del proyecto y definir el traslado de datos.

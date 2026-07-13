@@ -2,7 +2,9 @@
 
 ## Estado
 
-No ejecutado en QB-9. Este documento prepara el uso futuro de Staging sin tocarlo todavia.
+QB-9.6 ejecuto exclusivamente el inventario remoto autorizado de solo lectura. No se ejecutaron migraciones, pruebas con datos, backup ni deploy.
+
+El Staging inspeccionado se clasifica como baseline legacy parcial e incompatible con el baseline QB actual. **No esta autorizado para migraciones.**
 
 ## Precondiciones
 
@@ -176,3 +178,26 @@ Secuencia obligatoria:
 5. Autorizar backup.
 6. Preparar compatibilidad local si corresponde.
 7. Solicitar otra autorizacion antes de cualquier escritura.
+
+## Resultado QB-9.6 y decision de transicion
+
+- No existe `supabase_migrations`.
+- No aparece ninguna de las 21 tablas QB esperadas.
+- `customer_accounts` esta ausente.
+- `profiles`, `products` e inventario pertenecen a un baseline legacy parcial.
+- Productos y movimientos usan precision `numeric(14,2)`.
+- Existen objetos de ventas, compras, pagos, caja, CxC y CxP.
+- Grants y conteos completos siguen parcialmente desconocidos.
+
+Queda **prohibido aplicar el baseline local sintetico sobre este Staging legacy**.
+
+Opcion recomendada: preparar, previa autorizacion independiente, un proyecto Staging QB nuevo y limpio. El proyecto actual no puede considerarse descartable.
+
+Antes de cualquier cambio se requieren por separado:
+
+1. autorizacion de backup;
+2. autorizacion de inventario ampliado de datos/Auth/Storage;
+3. autorizacion para crear un nuevo proyecto;
+4. autorizacion para trasladar datos;
+5. autorizacion para probar;
+6. autorizacion para migrar o desplegar.

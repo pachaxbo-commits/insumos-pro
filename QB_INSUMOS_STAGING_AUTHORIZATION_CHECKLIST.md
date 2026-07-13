@@ -4,19 +4,19 @@ Cada bloque requiere aprobacion humana independiente. Marcar una etapa no autori
 
 ## 1. Solicitar acceso de solo lectura
 
-- [ ] Staging identificado por host y project ref.
-- [ ] Produccion identificada por separado.
-- [ ] Alcance limitado al inventario.
-- [ ] Responsable y ventana registrados.
-- [ ] Aprobacion humana recibida.
+- [x] Staging identificado por host y project ref.
+- [x] Produccion excluida de la autorizacion.
+- [x] Alcance limitado al inventario.
+- [x] Responsable y ventana registrados.
+- [x] Aprobacion humana recibida.
 
 ## 2. Conectarse a Staging para inventario
 
-- [ ] Credenciales de solo lectura preparadas.
-- [ ] Comandos revisados y sin mutaciones.
-- [ ] Scripts `01` a `08` aprobados.
-- [ ] Regla de detencion confirmada.
-- [ ] Aprobacion humana recibida.
+- [x] Credenciales temporales de solo lectura preparadas y posteriormente eliminadas.
+- [x] Comandos revisados y sin mutaciones.
+- [x] Scripts `01` a `08` aprobados y ejecutados con READ ONLY/ROLLBACK.
+- [x] Regla de detencion confirmada.
+- [x] Aprobacion humana recibida.
 
 ## 3. Realizar backup
 
@@ -70,3 +70,14 @@ Cada bloque requiere aprobacion humana independiente. Marcar una etapa no autori
 | Pruebas |  |  |  |  |
 | Deploy |  |  |  |  |
 
+## Estado posterior a QB-9.6
+
+- Inventario de solo lectura: completado.
+- Credenciales temporales: eliminadas.
+- Backup: no autorizado.
+- Creacion de proyecto QB nuevo: no autorizada.
+- Traslado de datos/Auth/Storage: no autorizado.
+- Migraciones sobre Staging actual: prohibidas y no autorizadas.
+- Deploy: no autorizado.
+
+La recomendacion tecnica es un Staging QB nuevo y limpio, pero requiere una autorizacion humana especifica antes de crearlo.

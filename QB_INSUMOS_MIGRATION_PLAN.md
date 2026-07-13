@@ -415,3 +415,39 @@ Implementado:
 - esquema esperado, runbook de backup y checklist de autorizaciones.
 
 Siguiente paso: solicitar autorizacion exclusiva para inventario de solo lectura de Staging. No solicitar aun aplicacion de migraciones ni deploy.
+
+### QB-9.6 - Inventario remoto de solo lectura
+
+Completado bajo autorizacion limitada:
+
+- project ref confirmado como Staging;
+- ocho scripts ejecutados en transacciones READ ONLY con timeout y rollback;
+- credencial temporal eliminada;
+- sin escrituras, migraciones, Auth, pruebas con datos o deploy.
+
+Resultado:
+
+- baseline legacy parcial;
+- sin historial `supabase_migrations`;
+- sin 21 tablas ni RPCs QB;
+- sin `customer_accounts`;
+- precision legacy `numeric(14,2)`;
+- objetos financieros/operativos legacy presentes;
+- grants y conteos completos pendientes.
+
+Clasificacion: **Staging legacy incompatible; no autorizado para migraciones**.
+
+### QB-9.7 - Decision de transicion preparada
+
+Recomendacion inicial: crear un proyecto Staging QB nuevo y limpio, preservando el proyecto legacy mientras se inventarian y trasladan los datos autorizados.
+
+No autorizado:
+
+- aplicar baseline sintetico sobre Staging legacy;
+- borrar/recrear el esquema;
+- crear migraciones puente;
+- crear el proyecto nuevo;
+- hacer backup o trasladar datos;
+- ejecutar pruebas o deploy.
+
+Cada accion requiere aprobacion independiente.
