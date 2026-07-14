@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
+import { USER_ROLES } from "@/types/auth";
 
 const loginSchema = z.object({
   email: z.email("Ingresa un correo valido."),
@@ -66,31 +67,61 @@ export async function loginAction(
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
+    .select("id, role, is_active")
+    .eq("id", data.user.id)
+    .maybeSingle<{ id: string; role: string; is_active: boolean }>();
+
+  if (profileError) {
+    await supabase.auth.signOut({ scope: "local" });
+
+    return {
+      success: false,
+      message:
+        "Tu cuenta no tiene un acceso activo asignado. Comunícate con el administrador de QB Insumos.",
+    };
+  }
+
+  if (profile) {
+    if (!profile.is_active) {
+      await supabase.auth.signOut({ scope: "local" });
+
+      return {
+        success: false,
+        message:
+          "Tu usuario esta inactivo. Solicita a un administrador que reactive tu perfil.",
+      };
+    }
+
+    if (!USER_ROLES.some((role) => role === profile.role)) {
+      await supabase.auth.signOut({ scope: "local" });
+
+      return {
+        success: false,
+        message:
+          "Tu cuenta no tiene un acceso activo asignado. Comunícate con el administrador de QB Insumos.",
+      };
+    }
+
+    redirect("/");
+  }
+
+  const { data: customerAccount, error: customerAccountError } = await supabase
+    .from("customer_accounts")
     .select("id, is_active")
     .eq("id", data.user.id)
     .maybeSingle<{ id: string; is_active: boolean }>();
 
-  if (profileError || !profile) {
+  if (customerAccountError || !customerAccount?.is_active) {
     await supabase.auth.signOut({ scope: "local" });
 
     return {
       success: false,
       message:
-        "La sesion se creo, pero no existe un perfil valido en la tabla profiles. Ejecuta SUPABASE_SCHEMA.sql y crea el perfil del usuario.",
+        "Tu cuenta no tiene un acceso activo asignado. Comunícate con el administrador de QB Insumos.",
     };
   }
 
-  if (!profile.is_active) {
-    await supabase.auth.signOut({ scope: "local" });
-
-    return {
-      success: false,
-      message:
-        "Tu usuario esta inactivo. Solicita a un administrador que reactive tu perfil.",
-    };
-  }
-
-  redirect("/");
+  redirect("/mi-cuenta");
 }
 
 export async function logoutAction() {
