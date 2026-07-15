@@ -5,6 +5,10 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, MapPin, Send, ShoppingBasket, Trash2 } from "lucide-react";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
+import {
+  GuestCheckoutForm,
+  type GuestCheckoutLine,
+} from "@/components/catalog/guest-checkout-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +27,7 @@ type PublicCheckoutProps = {
   error?: string;
   account: QbCustomerAccount | null;
   locations: QbCustomerLocation[];
+  hasAuthenticatedSession: boolean;
 };
 
 const initialState: QbCatalogActionState = { success: false };
@@ -74,7 +79,13 @@ function CheckoutSuccess({ reference }: { reference?: string }) {
   );
 }
 
-export function PublicCheckout({ products, error, account, locations }: PublicCheckoutProps) {
+export function PublicCheckout({
+  products,
+  error,
+  account,
+  locations,
+  hasAuthenticatedSession,
+}: PublicCheckoutProps) {
   const [state, formAction, pending] = useActionState(submitQbCatalogOrderAction, initialState);
   const idempotencyKey = useIdempotencyKey();
   const cart = useLocalCart() as QbLocalCartItem[];
@@ -87,6 +98,14 @@ export function PublicCheckout({ products, error, account, locations }: PublicCh
     return [{ product, unit, item }];
   });
   const primaryLocation = locations.find((location) => location.isPrimary) ?? locations[0];
+  const guestLines: GuestCheckoutLine[] = lines.map(({ product, unit, item }) => ({
+    productId: item.productId,
+    allowedUnitId: item.allowedUnitId,
+    productName: product.name,
+    unitLabel: unit.label,
+    quantity: item.quantity,
+    notes: item.notes,
+  }));
 
   if (state.success) return <CheckoutSuccess reference={state.reference} />;
 
@@ -115,7 +134,7 @@ export function PublicCheckout({ products, error, account, locations }: PublicCh
             <div>
               <h1 className="text-2xl font-semibold">Revisar pedido</h1>
               <p className="text-sm text-muted-foreground">
-                {account ? account.fullName : "Inicia sesion para enviar tu pedido."}
+                {account ? account.fullName : "Elige cómo quieres confirmar tu pedido."}
               </p>
             </div>
           </div>
@@ -127,15 +146,19 @@ export function PublicCheckout({ products, error, account, locations }: PublicCh
           ) : null}
 
           {!account ? (
-            <div className="mt-5 rounded-lg border bg-muted/40 p-5">
-              <p className="font-medium">Necesitas una cuenta de cliente.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Tus productos se mantienen guardados en este navegador.
-              </p>
-              <Button asChild className="mt-4">
-                <Link href="/mi-cuenta">Entrar o crear cuenta</Link>
-              </Button>
-            </div>
+            hasAuthenticatedSession ? (
+              <div className="mt-5 rounded-lg border bg-muted/40 p-5">
+                <p className="font-medium">Esta sesión no corresponde a una cuenta de cliente.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Usa el acceso asignado a tu usuario. No enviaremos el carrito como pedido sin cuenta.
+                </p>
+                <Button asChild className="mt-4">
+                  <Link href="/">Volver al inicio</Link>
+                </Button>
+              </div>
+            ) : (
+              <GuestCheckoutForm lines={guestLines} onRemove={removeLine} />
+            )
           ) : !locations.length ? (
             <div className="mt-5 rounded-lg border bg-muted/40 p-5">
               <p className="font-medium">Agrega una ubicacion en tu cuenta.</p>
@@ -244,10 +267,14 @@ export function PublicCheckout({ products, error, account, locations }: PublicCh
 
         <aside className="rounded-lg border bg-background p-5 lg:sticky lg:top-5 lg:self-start">
           <div className="flex items-center gap-2">
-            <MapPin className="size-4 text-emerald-700" />
-            <h2 className="font-semibold">Ubicaciones</h2>
+            {account ? (
+              <MapPin className="size-4 text-emerald-700" />
+            ) : (
+              <ShoppingBasket className="size-4 text-emerald-700" />
+            )}
+            <h2 className="font-semibold">{account ? "Ubicaciones" : "Resumen del pedido"}</h2>
           </div>
-          {locations.length ? (
+          {account && locations.length ? (
             <div className="mt-3 space-y-2">
               {locations.map((location) => (
                 <div key={location.id} className="rounded-md bg-muted/50 p-3 text-sm">
@@ -256,8 +283,21 @@ export function PublicCheckout({ products, error, account, locations }: PublicCh
                 </div>
               ))}
             </div>
-          ) : (
+          ) : account ? (
             <p className="mt-3 text-sm text-muted-foreground">Sin ubicaciones activas.</p>
+          ) : guestLines.length ? (
+            <div className="mt-3 space-y-2">
+              {guestLines.map((line) => (
+                <div key={line.productId} className="rounded-md bg-muted/50 p-3 text-sm">
+                  <p className="font-medium">{line.productName}</p>
+                  <p className="text-muted-foreground">
+                    {quantity(line.quantity)} {line.unitLabel}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">Tu pedido está vacío.</p>
           )}
         </aside>
       </div>

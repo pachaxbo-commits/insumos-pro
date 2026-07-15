@@ -31,11 +31,12 @@ function SubmitButton() {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ returnTo }: { returnTo?: "/catalogo/checkout" }) {
   const [state, formAction] = useActionState(loginAction, initialState);
 
   return (
     <form action={formAction} className="space-y-5">
+      {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
       {state.message ? (
         <Alert
           variant="destructive"

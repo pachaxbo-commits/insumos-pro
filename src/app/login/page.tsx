@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 type LoginPageProps = {
   searchParams: Promise<{
     reason?: string;
+    returnTo?: string;
   }>;
 };
 
@@ -35,6 +36,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const params = await searchParams;
   const reasonMessage = getReasonMessage(params.reason);
+  const returnTo = params.returnTo === "/catalogo/checkout" ? params.returnTo : undefined;
   const hasEnv = hasSupabaseEnv();
 
   return (
@@ -122,7 +124,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <ConfigAlert title="Atencion requerida" description={reasonMessage} />
               ) : null}
 
-              <LoginForm />
+              <LoginForm returnTo={returnTo} />
             </CardContent>
           </Card>
         </section>

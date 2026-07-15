@@ -381,14 +381,17 @@ export async function getQbCustomerPortalData(): Promise<QbCustomerPortalData> {
 export async function getQbCheckoutData() {
   noStore();
 
-  const [catalog, portal] = await Promise.all([
+  const supabase = await createSupabaseServerClient();
+  const [catalog, portal, authenticatedUserId] = await Promise.all([
     getQbCatalogData(),
     getQbCustomerPortalData(),
+    supabase ? getCurrentCustomerId(supabase) : Promise.resolve(null),
   ]);
 
   return {
     ...catalog,
     account: portal.account,
     locations: portal.locations,
+    hasAuthenticatedSession: Boolean(authenticatedUserId),
   };
 }

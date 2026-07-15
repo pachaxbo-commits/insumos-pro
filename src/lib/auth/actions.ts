@@ -9,6 +9,7 @@ import { USER_ROLES } from "@/types/auth";
 const loginSchema = z.object({
   email: z.email("Ingresa un correo valido."),
   password: z.string().min(6, "La contrasena debe tener al menos 6 caracteres."),
+  return_to: z.literal("/catalogo/checkout").optional(),
 });
 
 export type LoginActionState = {
@@ -35,6 +36,7 @@ export async function loginAction(
   const payload = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
+    return_to: formData.get("return_to") || undefined,
   });
 
   if (!payload.success) {
@@ -121,7 +123,7 @@ export async function loginAction(
     };
   }
 
-  redirect("/mi-cuenta");
+  redirect(payload.data.return_to ?? "/mi-cuenta");
 }
 
 export async function logoutAction() {

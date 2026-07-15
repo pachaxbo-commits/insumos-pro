@@ -265,7 +265,7 @@ export async function submitQbGuestCatalogOrderAction(
       success: false,
       code: "idempotency_conflict",
       message:
-        "Los datos del pedido cambiaron desde el ultimo intento. Recarga el checkout y vuelve a enviarlo.",
+        "Es posible que un pedido anterior ya haya sido recibido con datos diferentes. No vuelvas a enviarlo. Comunícate con QB Insumos para verificarlo.",
     };
   }
 
