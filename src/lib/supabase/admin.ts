@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseEnv } from "@/lib/supabase/server";
 
-export function getSupabaseAdminEnv() {
+function getSupabaseAdminEnv() {
   const { url } = getSupabaseEnv();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
