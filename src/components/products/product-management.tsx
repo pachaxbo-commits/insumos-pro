@@ -660,9 +660,9 @@ export function ProductManagement({
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <CardTitle className="font-heading text-xl">Catalogo de productos</CardTitle>
+              <CardTitle className="font-heading text-xl">Catálogo de productos</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Productos conectados a Supabase con filtros, estados y precios base.
+                Consulta y administra productos, categorías, estados y precios base.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -780,7 +780,7 @@ export function ProductManagement({
                             className="rounded-full border-teal-200 bg-teal-50 text-teal-700"
                           >
                             <Eye className="size-3" />
-                            Catalogo QB
+                            Catálogo
                           </Badge>
                         ) : null}
                         {product.is_sellable === false ? (
@@ -798,14 +798,14 @@ export function ProductManagement({
                             variant="outline"
                             className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
                           >
-                            QB configurado
+                            Configurado
                           </Badge>
                         ) : (
                           <Badge
                             variant="outline"
                             className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
                           >
-                            QB pendiente
+                            Configuración pendiente
                           </Badge>
                         )}
                       </div>

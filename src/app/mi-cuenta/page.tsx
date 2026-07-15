@@ -6,7 +6,7 @@ import { getQbCatalogData, getQbCustomerPortalData } from "@/lib/qb-catalog/data
 
 export const metadata: Metadata = {
   title: "Mi cuenta | QB Insumos",
-  description: "Cuenta cliente QB para pedidos y ubicaciones.",
+  description: "Consulta tus pedidos, ubicaciones y productos frecuentes.",
 };
 
 export default async function CustomerAccountPage({

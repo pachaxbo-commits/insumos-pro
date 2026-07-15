@@ -5,7 +5,7 @@ import { getQbCheckoutData } from "@/lib/qb-catalog/data";
 
 export const metadata: Metadata = {
   title: "Revisar pedido | QB Insumos",
-  description: "Revision de pedido QB sin precios.",
+  description: "Revisa los productos y datos de entrega antes de enviar tu pedido.",
 };
 
 export default async function PublicCheckoutPage() {

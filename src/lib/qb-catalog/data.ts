@@ -281,7 +281,7 @@ async function getQbCustomerOrders(
     items: (itemsByOrder.get(order.id) ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,
-      productName: catalogNames.get(item.product_id) ?? "Producto QB",
+      productName: catalogNames.get(item.product_id) ?? "Producto",
       allowedUnitId: item.allowed_unit_id,
       sourceLabel: item.source_label,
       requestedQuantity: Number(item.requested_quantity) || 0,
@@ -325,7 +325,7 @@ export async function getQbCatalogData(): Promise<QbCatalogData> {
       products: [],
       categories: [],
       frequentProducts: [],
-      error: "El catalogo no esta disponible porque falta configurar Supabase.",
+      error: "El Catálogo no está disponible en este momento. Inténtalo nuevamente más tarde.",
     };
   }
 
@@ -341,7 +341,7 @@ export async function getQbCatalogData(): Promise<QbCatalogData> {
       categories: [],
       frequentProducts: [],
       error:
-        "No pudimos cargar el catalogo QB. Verifica que la migracion local QB-5 este aplicada.",
+        "No pudimos cargar el Catálogo en este momento. Inténtalo nuevamente más tarde.",
     };
   }
 }
@@ -356,7 +356,7 @@ export async function getQbCustomerPortalData(): Promise<QbCustomerPortalData> {
       locations: [],
       orders: [],
       frequentProducts: [],
-      error: "Falta configurar Supabase.",
+      error: "No pudimos cargar tu cuenta en este momento. Inténtalo nuevamente más tarde.",
     };
   }
 

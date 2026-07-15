@@ -29,16 +29,15 @@ export function ModuleTransitionScreen({
               <div className="space-y-3">
                 <QbInsumosBrand showSubtitle />
                 <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">
-                  Modulo en transicion
+                  Función no disponible
                 </Badge>
                 <div className="space-y-2">
                   <h1 className="font-heading text-3xl font-semibold tracking-tight">
                     {module.title}
                   </h1>
                   <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                    Modulo temporalmente suspendido durante la transicion a QB Insumos.
-                    Esta funcion sera reemplazada por el nuevo flujo operativo. Los datos
-                    existentes no fueron eliminados.
+                    Este módulo no forma parte de la operación actual de QB Insumos.
+                    Consulta la indicación siguiente para continuar desde la función disponible.
                   </p>
                 </div>
               </div>
@@ -56,7 +55,7 @@ export function ModuleTransitionScreen({
                     <Link href="/">Ir al inicio</Link>
                   </Button>
                   <Button asChild variant="outline" className="rounded-xl">
-                    <Link href="/configuracion">Ver estado QB-1</Link>
+                    <Link href="/configuracion">Ver funciones disponibles</Link>
                   </Button>
                 </div>
               ) : null}

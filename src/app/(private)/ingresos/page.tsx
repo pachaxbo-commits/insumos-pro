@@ -12,13 +12,13 @@ export default async function IngresosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="QB-4"
+        eyebrow="Inventario"
         title="Ingresos"
-        description="Recepcion fisica de mercaderia con conversiones, clasificacion opcional y trazabilidad de stock."
+        description="Registra la recepción de mercadería, sus cantidades y la clasificación de productos cuando corresponda."
       />
       {data.error ? (
         <Alert variant="destructive">
-          <AlertTitle>No se pudo cargar ingresos</AlertTitle>
+          <AlertTitle>No se pudieron cargar los ingresos</AlertTitle>
           <AlertDescription>{data.error}</AlertDescription>
         </Alert>
       ) : null}

@@ -486,7 +486,7 @@ export function QbReceiptsManagement({
     <div className="space-y-5">
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>No se pudo cargar recibos QB</AlertTitle>
+          <AlertTitle>No se pudieron cargar los recibos</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -540,7 +540,7 @@ export function QbReceiptsManagement({
         ) : (
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
-              No hay recibos QB creados.
+              No hay recibos creados.
             </CardContent>
           </Card>
         )}

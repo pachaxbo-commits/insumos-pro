@@ -720,7 +720,7 @@ function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[
       date: str(receipt.created_at, str(receipt.receipt_date)),
       event: "ingreso_creado",
       entity: str(receipt.reference_code, getId(receipt.id).slice(0, 8)),
-      detail: str(receipt.supplier_name, "Ingreso QB"),
+      detail: str(receipt.supplier_name, "Ingreso de mercadería"),
       actor: userName(profiles, receipt.created_by),
     });
     if (receipt.confirmed_at) {
@@ -729,7 +729,7 @@ function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[
         date: str(receipt.confirmed_at),
         event: "ingreso_confirmado",
         entity: str(receipt.reference_code, getId(receipt.id).slice(0, 8)),
-        detail: "Ingreso confirmado con movimiento QB-4",
+        detail: "Ingreso de mercadería confirmado",
         actor: userName(profiles, receipt.confirmed_by),
       });
     }
@@ -742,7 +742,7 @@ function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[
       event: "pedido_recibido",
       entity: str(order.public_reference, getId(order.id).slice(0, 8)),
       detail: str(order.status),
-      actor: "Cliente QB",
+      actor: "Cliente",
     });
     if (order.delivered_at) {
       events.push({
@@ -750,7 +750,7 @@ function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[
         date: str(order.delivered_at),
         event: "pedido_entregado",
         entity: str(order.public_reference, getId(order.id).slice(0, 8)),
-        detail: "Entrega fisica QB-6 confirmada",
+        detail: "Entrega física confirmada",
         actor: userName(profiles, order.delivered_by),
       });
     }
@@ -774,7 +774,7 @@ function buildAudit(bundle: Bundle, filters: QbReportFilters): QbAuditReportRow[
       date: str(event.created_at),
       event: str(event.event_type),
       entity: str(receipt?.receipt_number, getId(event.receipt_id).slice(0, 8)),
-      detail: "Evento de recibo acumulativo QB-7",
+      detail: "Actualización de recibo acumulativo",
       actor: userName(profiles, event.created_by),
     });
   }
@@ -879,14 +879,14 @@ export async function getQbReportsData(
 
   const permissions = getReportsPermissions(role);
   if (!permissions.tabs.length) {
-    return emptyData(permissions, "El rol actual no tiene acceso a reportes QB.");
+    return emptyData(permissions, "Tu rol actual no tiene acceso a Reportes.");
   }
 
   const bundle = await fetchBundle(filters);
   if (!bundle) {
     return emptyData(
       permissions,
-      "No se pudieron cargar reportes QB. Revisa que las migraciones QB-2 a QB-7 existan en la base local conectada y que RLS permita lectura.",
+      "No pudimos cargar los reportes en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     );
   }
 

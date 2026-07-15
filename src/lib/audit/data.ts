@@ -63,7 +63,7 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
   if (!supabase) {
     return {
       ...empty,
-      error: "Faltan variables publicas de Supabase.",
+      error: "No pudimos cargar la bitácora en este momento. Comunícate con el administrador de QB Insumos.",
     };
   }
 
@@ -107,7 +107,7 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
   if (logsResult.error) {
     return {
       ...empty,
-      error: `No se pudo cargar la bitacora: ${logsResult.error.message}`,
+      error: "No pudimos cargar la bitácora en este momento. Inténtalo nuevamente.",
     };
   }
 
@@ -123,7 +123,7 @@ export async function getAuditLogsData(filters: AuditFilters = {}): Promise<Audi
   return {
     logs,
     error: profilesResult.error
-      ? `La bitacora cargo, pero no se pudieron resolver usuarios: ${profilesResult.error.message}`
+      ? "La bitácora se cargó, pero algunos nombres de usuario no están disponibles."
       : undefined,
     users: profiles.map((profile) => ({
       id: profile.id,

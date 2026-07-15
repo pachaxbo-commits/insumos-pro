@@ -67,14 +67,14 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
             <QbInsumosBrand showSubtitle variant="hero" />
             <div className="space-y-3">
               <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800">
-                Inicio operativo QB
+                Inicio operativo
               </Badge>
               <h1 className="max-w-2xl font-heading text-4xl font-semibold tracking-tight">
-                Gestion de pedidos, inventario y recibos acumulativos
+                Gestión de pedidos, inventario y recibos acumulativos
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                Resumen de operacion QB Insumos sin ventas legacy, caja, pagos, CxC ni CxP.
-                Los modulos incompatibles siguen suspendidos por ruta.
+                Consulta el estado de pedidos, ingresos, existencias y recibos para organizar
+                la operación diaria de QB Insumos.
               </p>
             </div>
           </div>
@@ -83,13 +83,13 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-emerald-950">
                 <ShieldCheck className="size-5" />
-                Estado de transicion
+                Flujo operativo
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm leading-6 text-emerald-950/75">
-              <p>Sin metricas financieras.</p>
-              <p>Sin datos de ventas, caja, pagos, CxC ni CxP.</p>
-              <p>Reportes e inicio usan solo tablas operativas QB.</p>
+              <p>Los pedidos se preparan y entregan desde Pedidos.</p>
+              <p>El inventario se actualiza al confirmar Ingresos y Entregas.</p>
+              <p>Los pedidos entregados se agrupan en Recibos.</p>
             </CardContent>
           </Card>
         </div>
@@ -98,9 +98,9 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
       {summary ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryTile
-            title="Pendientes de preparacion"
+            title="Pendientes de preparación"
             value={formatNumber(summary.pendingPreparation)}
-            detail={`${formatNumber(summary.inPreparation)} en preparacion`}
+            detail={`${formatNumber(summary.inPreparation)} en preparación`}
             icon={ClipboardList}
           />
           <SummaryTile
@@ -128,7 +128,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
         <section className="grid gap-4 xl:grid-cols-2">
           <Card className="border-white/60 bg-white/82 shadow-sm">
             <CardHeader>
-              <CardTitle>Ultimos pedidos recibidos</CardTitle>
+              <CardTitle>Últimos pedidos recibidos</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {reportsData.orders.slice(0, 5).map((order) => (
@@ -147,7 +147,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
               ))}
               {!reportsData.orders.length ? (
                 <p className="rounded-lg border border-dashed bg-muted/35 p-4 text-sm text-muted-foreground">
-                  Todavia no hay pedidos QB para mostrar.
+                  Aún no hay pedidos para mostrar.
                 </p>
               ) : null}
             </CardContent>
@@ -155,7 +155,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
 
           <Card className="border-white/60 bg-white/82 shadow-sm">
             <CardHeader>
-              <CardTitle>Ingresos recientes de mercaderia</CardTitle>
+              <CardTitle>Ingresos recientes de mercadería</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {reportsData.merchandiseReceipts.slice(0, 5).map((receipt) => (
@@ -176,7 +176,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
               ))}
               {!reportsData.merchandiseReceipts.length ? (
                 <p className="rounded-lg border border-dashed bg-muted/35 p-4 text-sm text-muted-foreground">
-                  Todavia no hay ingresos QB para mostrar.
+                  Aún no hay ingresos para mostrar.
                 </p>
               ) : null}
             </CardContent>
@@ -189,7 +189,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="size-5 text-emerald-800" />
-              Visible ahora
+              Accesos rápidos
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -213,14 +213,14 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="size-5" />
-              Alcance QB-1
+              Flujo principal
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm leading-6 text-muted-foreground md:grid-cols-2">
-            <p>Rebranding visual a QB Insumos.</p>
-            <p>Congelamiento visual y por ruta de modulos legado.</p>
-            <p>Navegacion temporal simplificada.</p>
-            <p>Documentacion de roles y estados objetivo sin activar nuevos flujos.</p>
+            <p>Consulta y administra el Catálogo de productos.</p>
+            <p>Registra mercadería recibida desde Ingresos.</p>
+            <p>Prepara y confirma entregas desde Pedidos.</p>
+            <p>Da seguimiento a Inventario, Recibos y Reportes.</p>
           </CardContent>
         </Card>
       </section>

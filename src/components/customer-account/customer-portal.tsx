@@ -133,7 +133,7 @@ export function CustomerPortal({
           <QbInsumosBrand variant="compact" showSubtitle />
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
-              <Link href="/catalogo">Catalogo</Link>
+              <Link href="/catalogo">Catálogo</Link>
             </Button>
             <form action={customerLogoutAction}>
               <Button type="submit" variant="outline" size="sm">
@@ -156,7 +156,7 @@ export function CustomerPortal({
               {lastOrder ? (
                 <Button type="button" onClick={() => repeatOrder(lastOrder)}>
                   <RefreshCcw className="size-4" />
-                  Repetir ultimo pedido
+                  Repetir último pedido
                 </Button>
               ) : null}
             </div>
@@ -183,14 +183,14 @@ export function CustomerPortal({
                   >
                     <p className="font-medium">{product.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {product.allowedUnits[0]?.label ?? "Unidad QB"}
+                      {product.allowedUnits[0]?.label ?? "Unidad disponible"}
                     </p>
                   </button>
                 ))}
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
-                Apareceran cuando tengas pedidos QB anteriores.
+                Aparecerán cuando tengas pedidos anteriores.
               </p>
             )}
           </div>
@@ -203,9 +203,9 @@ export function CustomerPortal({
 
             {!orders.length ? (
               <div className="mt-4 rounded-lg border border-dashed p-8 text-center">
-                <p className="font-medium">Aun no tienes pedidos QB.</p>
+                <p className="font-medium">Aún no tienes pedidos.</p>
                 <Button asChild className="mt-4">
-                  <Link href="/catalogo">Ir al catalogo</Link>
+                  <Link href="/catalogo">Ir al Catálogo</Link>
                 </Button>
               </div>
             ) : (

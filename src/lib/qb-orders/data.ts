@@ -91,7 +91,7 @@ function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
 
 function productName(item: ItemRow) {
   const product = Array.isArray(item.product) ? item.product[0] : item.product;
-  return product?.name ?? "Producto QB";
+  return product?.name ?? "Producto";
 }
 
 function productStock(item: ItemRow) {
@@ -178,7 +178,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { orders: [], error: "Faltan variables publicas de Supabase." };
+  if (!supabase) return { orders: [], error: "No pudimos cargar los pedidos en este momento. Comunícate con el administrador de QB Insumos." };
 
   const { data: ordersData, error } = await supabase
     .from("qb_orders")
@@ -190,7 +190,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
     return {
       orders: [],
       error:
-        "No pudimos cargar pedidos QB. Verifica que la migracion local QB-6 este aplicada.",
+        "No pudimos cargar los pedidos en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     };
   }
 
@@ -208,7 +208,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
   if (itemsError) {
     return {
       orders: [],
-      error: "No pudimos cargar el detalle de pedidos QB.",
+      error: "No pudimos cargar el detalle de los pedidos.",
     };
   }
 
@@ -284,7 +284,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
       reference: order.public_reference,
       status: order.status,
       submittedAt: order.submitted_at,
-      customerName: snapshotText(order.customer_snapshot, "full_name") ?? "Cliente QB",
+      customerName: snapshotText(order.customer_snapshot, "full_name") ?? "Cliente",
       customerEmail: snapshotText(order.customer_snapshot, "email") ?? "Sin correo",
       customerPhone: snapshotText(order.customer_snapshot, "phone"),
       locationLabel: snapshotText(order.location_snapshot, "label"),

@@ -43,27 +43,27 @@ type ConfiguracionPageProps = {
 
 const settings = [
   {
-    title: "Marca visual",
-    description: "La aplicacion se presenta como QB Insumos durante la transicion local.",
-    status: "QB-1",
+    title: "Identidad del sistema",
+    description: "La aplicación utiliza la identidad oficial de QB Insumos.",
+    status: "Actual",
     icon: Settings,
   },
   {
-    title: "Roles actuales",
-    description: "Los roles reales de Supabase siguen intactos hasta una fase posterior.",
-    status: "Sin cambios",
+    title: "Accesos del personal",
+    description: "Cada rol dispone únicamente de las funciones necesarias para su trabajo.",
+    status: "Configurados",
     icon: ShieldCheck,
   },
   {
-    title: "Modulos legado",
-    description: "Las rutas incompatibles muestran pantalla de transicion y no montan formularios operativos.",
-    status: "Suspendidos",
+    title: "Funciones no disponibles",
+    description: "Las funciones que no forman parte de la operación actual permanecen bloqueadas.",
+    status: "Bloqueadas",
     icon: LockKeyhole,
   },
   {
-    title: "Auditoria",
-    description: "Consulta de bitacora en modo lectura para trazabilidad historica.",
-    status: "Lectura",
+    title: "Auditoría",
+    description: "Consulta la bitácora de actividad para dar seguimiento a las acciones registradas.",
+    status: "Consulta",
     icon: FileText,
   },
 ];
@@ -169,7 +169,7 @@ function formatDateTime(value: string) {
 
 function formatMetadata(metadata: Record<string, unknown>) {
   const entries = Object.entries(metadata);
-  if (!entries.length) return "Sin metadata";
+  if (!entries.length) return "Sin información adicional";
 
   return entries
     .slice(0, 3)
@@ -188,9 +188,9 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Configuracion"
-        title="Transicion QB-1"
-        description="Estado visual de modulos, roles actuales y auditoria sin modificar Auth, RLS ni permisos reales."
+        eyebrow="Administración"
+        title="Configuración y auditoría"
+        description="Consulta las funciones disponibles, los accesos por rol y la actividad registrada en QB Insumos."
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -223,7 +223,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="size-5 text-emerald-700" />
-              Modulos visibles temporales
+              Módulos disponibles
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -237,7 +237,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
 
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Roles actuales y destino QB</CardTitle>
+            <CardTitle>Acceso por rol</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-4">
             {USER_ROLES.map((role) => (
@@ -245,12 +245,12 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                 <p className="font-medium">{getRoleLabel(role)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {role === "administrador"
-                    ? "Destino: Administrador"
+                    ? "Acceso: Administración"
                     : role === "ventas"
-                      ? "Destino: transitorio hasta Preparacion/Inventario o Administrador"
+                      ? "Acceso: Preparación, Inventario o Administración"
                       : role === "inventario"
-                        ? "Destino: Preparacion/Inventario"
-                        : "Destino: legado suspendido"}
+                        ? "Acceso: Preparación e Inventario"
+                        : "Sin acceso operativo"}
                 </p>
               </div>
             ))}
@@ -261,7 +261,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Rutas suspendidas</CardTitle>
+            <CardTitle>Funciones no disponibles</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {suspendedModules.map((module) => (
@@ -275,7 +275,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
 
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Modulos futuros</CardTitle>
+            <CardTitle>Otras funciones</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {futureModules.map((module) => (
@@ -294,16 +294,16 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="size-5" />
-                Bitacora de actividad
+                Bitácora de actividad
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Registro de acciones criticas. Visible para administradores.
+                Registro de acciones importantes, visible para administradores.
               </p>
             </div>
             <div className="grid gap-2 text-sm md:grid-cols-3">
               <span className="rounded-xl bg-muted/50 px-3 py-2">Filas: {audit.summary.total}</span>
               <span className="rounded-xl bg-muted/50 px-3 py-2">Hoy: {audit.summary.today}</span>
-              <span className="rounded-xl bg-muted/50 px-3 py-2">Criticas: {audit.summary.critical}</span>
+              <span className="rounded-xl bg-muted/50 px-3 py-2">Críticas: {audit.summary.critical}</span>
             </div>
           </div>
 
@@ -346,7 +346,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
         <CardContent>
           {audit.error ? (
             <Alert variant="destructive" className="mb-4">
-              <AlertTitle>No se pudo cargar la bitacora correctamente</AlertTitle>
+              <AlertTitle>No se pudo cargar la bitácora correctamente</AlertTitle>
               <AlertDescription>{audit.error}</AlertDescription>
             </Alert>
           ) : null}
@@ -388,7 +388,7 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                 {!audit.logs.length ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      Sin eventos de auditoria para los filtros actuales.
+                      No hay eventos de auditoría para los filtros actuales.
                     </TableCell>
                   </TableRow>
                 ) : null}

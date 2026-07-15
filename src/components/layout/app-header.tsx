@@ -32,12 +32,12 @@ export function AppHeader({ user }: AppHeaderProps) {
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" className="lg:hidden">
               <Menu className="size-5" />
-              <span className="sr-only">Abrir menu</span>
+              <span className="sr-only">Abrir menú</span>
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-[320px] border-0 bg-transparent p-0">
             <SheetHeader className="sr-only">
-              <SheetTitle>Navegacion principal</SheetTitle>
+              <SheetTitle>Navegación principal</SheetTitle>
             </SheetHeader>
             <AppSidebar mobile onNavigate={() => setOpen(false)} user={user} />
           </SheetContent>
@@ -46,7 +46,7 @@ export function AppHeader({ user }: AppHeaderProps) {
         <div className="flex min-w-0 items-center gap-3">
           <QbInsumosBrand variant="compact" />
           <h2 className="hidden font-heading text-lg font-semibold tracking-tight sm:block">
-            Transicion visual segura
+            Gestión operativa
           </h2>
         </div>
       </div>
@@ -56,7 +56,7 @@ export function AppHeader({ user }: AppHeaderProps) {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             readOnly
-            value="QB-1: modulos legado suspendidos por ruta"
+            value="Gestión operativa de QB Insumos"
             className="border-white bg-muted/70 pl-9 text-muted-foreground"
           />
         </div>

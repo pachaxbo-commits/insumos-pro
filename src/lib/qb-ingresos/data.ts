@@ -86,10 +86,10 @@ function getQbIngresosWarning(message: string) {
     normalizedMessage.includes("could not find") ||
     normalizedMessage.includes("relation")
   ) {
-    return "La migracion local QB-4 de ingresos de mercaderia todavia no esta aplicada.";
+    return "El registro de ingresos no está disponible. Comunícate con el administrador de QB Insumos.";
   }
 
-  return `No se pudo cargar ingresos QB: ${message}`;
+  return "No pudimos cargar el registro de ingresos. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
 }
 
 export async function getQbIngresosData(): Promise<QbIngresosData> {
@@ -118,7 +118,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
   if (!supabase) {
     return {
       ...baseData,
-      error: catalogData.error ?? "Faltan variables publicas de Supabase.",
+      error: catalogData.error ?? "No pudimos cargar los ingresos en este momento. Comunícate con el administrador de QB Insumos.",
     };
   }
 

@@ -63,10 +63,10 @@ function getQbParametrizationWarning(message: string) {
     normalizedMessage.includes("could not find") ||
     normalizedMessage.includes("relation")
   ) {
-    return "La migracion local QB-2/QB-3 de unidades, productos QB y presentaciones todavia no esta aplicada.";
+    return "La configuración de unidades y presentaciones no está disponible. Comunícate con el administrador de QB Insumos.";
   }
 
-  return `No se pudo cargar la parametrizacion QB: ${message}`;
+  return "No pudimos cargar la configuración de unidades y presentaciones. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
 }
 
 async function loadQbParametrizationData(
@@ -163,7 +163,7 @@ export async function getProductsCatalogData(
       categories: [],
       units: [],
       ...getEmptyQbParametrizationData(),
-      error: "Faltan variables publicas de Supabase.",
+      error: "No pudimos cargar los productos en este momento. Comunícate con el administrador de QB Insumos.",
     };
   }
 
@@ -207,18 +207,12 @@ export async function getProductsCatalogData(
   const productsResult = await productsQuery;
 
   if (categoriesResult.error || unitsResult.error || productsResult.error) {
-    const message =
-      categoriesResult.error?.message ??
-      unitsResult.error?.message ??
-      productsResult.error?.message ??
-      "Error desconocido.";
-
     return {
       products: [],
       categories: [],
       units: [],
       ...getEmptyQbParametrizationData(),
-      error: `No se pudo cargar el catalogo: ${message}`,
+      error: "No pudimos cargar el Catálogo en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     };
   }
 

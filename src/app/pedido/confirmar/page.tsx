@@ -5,7 +5,7 @@ import { getTransitionModuleByPath } from "@/lib/qb-insumos/transition-policy";
 
 export const metadata: Metadata = {
   title: "Confirmar pedido | QB Insumos",
-  description: "Confirmacion publica temporalmente suspendida durante la transicion a QB Insumos.",
+  description: "Información sobre la confirmación de pedidos en QB Insumos.",
   robots: {
     index: false,
     follow: false,

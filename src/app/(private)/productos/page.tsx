@@ -40,9 +40,9 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Catalogo"
+        eyebrow="Catálogo"
         title="Productos"
-        description="Gestiona productos y configuracion QB sin movimientos de inventario ni flujos operativos."
+        description="Gestiona el catálogo, las categorías, las unidades y la información comercial de los productos."
         action={
           <Button asChild variant="outline" className="rounded-xl">
             <Link href="/parametrizacion">
@@ -54,7 +54,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
       />
       {data.error ? (
         <Alert variant="destructive">
-          <AlertTitle>No se pudo cargar productos</AlertTitle>
+          <AlertTitle>No se pudieron cargar los productos</AlertTitle>
           <AlertDescription>{data.error}</AlertDescription>
         </Alert>
       ) : null}

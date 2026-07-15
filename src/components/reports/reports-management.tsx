@@ -54,9 +54,9 @@ const tabLabels = {
 
 const exportLabels: Record<QbReportExportKey, string> = {
   inventario: "Inventario",
-  pedidos: "Pedidos QB",
+  pedidos: "Pedidos",
   pendientes_recibo: "Pendientes de recibo",
-  recibos: "Recibos QB",
+  recibos: "Recibos",
 };
 
 const statusStyles: Record<string, string> = {
@@ -208,10 +208,10 @@ function Filters({ data, filters }: { data: QbReportsData; filters: QbReportFilt
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Filter className="size-4" />
-          Filtros QB
+          Filtros de reportes
         </CardTitle>
         <CardDescription>
-          Filtros de solo lectura sobre inventario, ingresos, pedidos, entregas y recibos QB.
+          Filtra la información de inventario, ingresos, pedidos, entregas y recibos.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -286,7 +286,7 @@ function Filters({ data, filters }: { data: QbReportsData; filters: QbReportFilt
             </NativeSelect>
           </div>
           <div className="space-y-2">
-            <Label>Catalogo QB</Label>
+            <Label>Catálogo</Label>
             <NativeSelect name="qbCatalog" defaultValue={filters.qbCatalog}>
               <option value="all">Todos</option>
               <option value="visible">Visible</option>
@@ -294,7 +294,7 @@ function Filters({ data, filters }: { data: QbReportsData; filters: QbReportFilt
             </NativeSelect>
           </div>
           <div className="space-y-2">
-            <Label>Estado QB</Label>
+            <Label>Estado</Label>
             <NativeSelect name="qbActive" defaultValue={filters.qbActive}>
               <option value="all">Todos</option>
               <option value="active">Activo</option>
@@ -405,20 +405,20 @@ function InventoryTab({ data }: { data: QbReportsData }) {
   return (
     <Card className="bg-white/85">
       <CardHeader>
-        <CardTitle>Inventario actual QB</CardTitle>
-        <CardDescription>Stock fisico actual y configuracion QB. Esta vista no modifica inventario.</CardDescription>
+        <CardTitle>Inventario actual</CardTitle>
+        <CardDescription>Consulta las existencias físicas y el estado de configuración de cada producto.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Producto</TableHead>
-              <TableHead>Categoria</TableHead>
+              <TableHead>Categoría</TableHead>
               <TableHead>Stock</TableHead>
-              <TableHead>Estado QB</TableHead>
-              <TableHead>Catalogo</TableHead>
-              <TableHead>Clasificacion</TableHead>
-              <TableHead>Ultimo movimiento</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Catálogo</TableHead>
+              <TableHead>Clasificación</TableHead>
+              <TableHead>Último movimiento</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -436,7 +436,7 @@ function InventoryTab({ data }: { data: QbReportsData }) {
                 <TableCell><StatusBadge value={row.qbStatus} /></TableCell>
                 <TableCell>{row.catalogVisible ? "Visible" : "Oculto"}</TableCell>
                 <TableCell>
-                  {row.isLossProduct ? "Merma/loss" : row.isClassificationResult ? "Resultado" : row.isClassifiable ? "Clasificable" : "N/A"}
+                  {row.isLossProduct ? "Merma" : row.isClassificationResult ? "Resultado" : row.isClassifiable ? "Clasificable" : "N/A"}
                 </TableCell>
                 <TableCell>{formatDate(row.lastMovementAt)}</TableCell>
               </TableRow>
@@ -453,8 +453,8 @@ function MerchandiseTab({ data }: { data: QbReportsData }) {
   return (
     <Card className="bg-white/85">
       <CardHeader>
-        <CardTitle>Ingresos de mercaderia QB</CardTitle>
-        <CardDescription>Recepciones QB-4, sin compras legacy, pagos, CxP ni caja.</CardDescription>
+        <CardTitle>Ingresos de mercadería</CardTitle>
+        <CardDescription>Consulta las recepciones registradas, sus cantidades y su clasificación.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
@@ -465,7 +465,7 @@ function MerchandiseTab({ data }: { data: QbReportsData }) {
               <TableHead>Producto recibido</TableHead>
               <TableHead>Cantidad</TableHead>
               <TableHead>Base</TableHead>
-              <TableHead>Clasificacion</TableHead>
+              <TableHead>Clasificación</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Costo informativo de ingreso</TableHead>
             </TableRow>
@@ -501,8 +501,8 @@ function OrdersTab({ data }: { data: QbReportsData }) {
   return (
     <Card className="bg-white/85">
       <CardHeader>
-        <CardTitle>Pedidos y preparacion QB</CardTitle>
-        <CardDescription>Pedidos QB sin precios al cliente y preparacion sin cobro.</CardDescription>
+        <CardTitle>Pedidos y preparación</CardTitle>
+        <CardDescription>Consulta las cantidades solicitadas, preparadas y entregadas de cada pedido.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
@@ -510,7 +510,7 @@ function OrdersTab({ data }: { data: QbReportsData }) {
             <TableRow>
               <TableHead>Fecha</TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Ubicacion</TableHead>
+              <TableHead>Ubicación</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Solicitado</TableHead>
               <TableHead>Preparado</TableHead>
@@ -554,7 +554,7 @@ function PendingReceiptsTab({ data }: { data: QbReportsData }) {
       <Card className="bg-white/85">
         <CardHeader>
           <CardTitle>Entregas pendientes de recibo</CardTitle>
-          <CardDescription>Pedidos entregados por QB-6 que esperan recibo acumulativo QB-7.</CardDescription>
+          <CardDescription>Pedidos entregados que aún no fueron incluidos en un recibo acumulativo.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -562,9 +562,9 @@ function PendingReceiptsTab({ data }: { data: QbReportsData }) {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Pedidos pendientes</TableHead>
-                <TableHead>Ultima entrega</TableHead>
+              <TableHead>Última entrega</TableHead>
                 <TableHead>Productos entregados</TableHead>
-                <TableHead>Ubicacion</TableHead>
+              <TableHead>Ubicación</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -593,17 +593,17 @@ function ReceiptsTab({ data }: { data: QbReportsData }) {
   return (
     <Card className="bg-white/85">
       <CardHeader>
-        <CardTitle>Recibos acumulativos QB</CardTitle>
-        <CardDescription>Total de recibo no fiscal. No es cobro, pago, caja ni factura fiscal.</CardDescription>
+        <CardTitle>Recibos acumulativos</CardTitle>
+        <CardDescription>Consulta los importes consolidados de pedidos entregados; estos recibos no son facturas fiscales.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Numero</TableHead>
+              <TableHead>Número</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Emision</TableHead>
+              <TableHead>Emisión</TableHead>
               <TableHead>Factores</TableHead>
               <TableHead>Pedidos</TableHead>
               <TableHead className="text-right">Total de recibo</TableHead>
@@ -654,8 +654,8 @@ function AuditTab({ data }: { data: QbReportsData }) {
   return (
     <Card className="bg-white/85">
       <CardHeader>
-        <CardTitle>Auditoria operativa QB</CardTitle>
-        <CardDescription>Eventos derivados de timestamps y eventos QB existentes, sin auditoria retroactiva falsa.</CardDescription>
+        <CardTitle>Auditoría operativa</CardTitle>
+        <CardDescription>Consulta la actividad registrada durante ingresos, entregas y gestión de recibos.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <Table>

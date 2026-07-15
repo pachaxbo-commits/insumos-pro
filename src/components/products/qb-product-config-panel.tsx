@@ -224,7 +224,7 @@ function ProductQbSettingsForm({
           </NativeSelect>
         </div>
         <div className="space-y-2">
-          <Label>Precio base QB</Label>
+          <Label>Precio base</Label>
           <Input
             name="base_sale_price"
             type="number"
@@ -235,10 +235,10 @@ function ProductQbSettingsForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Estado QB</Label>
+          <Label>Estado en el Catálogo</Label>
           <NativeSelect name="is_qb_active" defaultValue={String(settings?.is_qb_active ?? true)}>
-            <option value="true">Activo para QB</option>
-            <option value="false">Inactivo para QB</option>
+            <option value="true">Activo</option>
+            <option value="false">Inactivo</option>
           </NativeSelect>
         </div>
         <div className="space-y-2">
@@ -268,7 +268,7 @@ function ProductQbSettingsForm({
           </NativeSelect>
         </div>
         <div className="space-y-2 md:col-span-2">
-          <Label>Notas internas QB</Label>
+          <Label>Notas internas</Label>
           <Textarea
             name="internal_notes"
             defaultValue={settings?.internal_notes ?? ""}
@@ -559,8 +559,8 @@ export function QbProductConfigPanel({
     <section className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">QB-3</p>
-          <h2 className="font-heading text-2xl font-semibold">Configuracion QB por producto</h2>
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Productos</p>
+          <h2 className="font-heading text-2xl font-semibold">Configuración por producto</h2>
         </div>
         {!canManage ? (
           <Badge variant="outline" className="w-fit rounded-full border-slate-200 bg-slate-50">
@@ -572,7 +572,7 @@ export function QbProductConfigPanel({
       {qbParametrizationWarning ? (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900">
           <AlertTriangle className="size-4" />
-          <AlertTitle>Configuracion QB pendiente</AlertTitle>
+          <AlertTitle>Configuración no disponible</AlertTitle>
           <AlertDescription>{qbParametrizationWarning}</AlertDescription>
         </Alert>
       ) : null}
@@ -583,7 +583,7 @@ export function QbProductConfigPanel({
           <p className="mt-2 font-heading text-3xl font-semibold">{products.length}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">Configurados QB</p>
+          <p className="text-sm text-muted-foreground">Configurados</p>
           <p className="mt-2 font-heading text-3xl font-semibold">{configuredProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
@@ -602,7 +602,7 @@ export function QbProductConfigPanel({
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 font-heading text-xl">
             <PackageCheck className="size-5" />
-            Productos QB
+            Productos
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -615,7 +615,7 @@ export function QbProductConfigPanel({
                   <TableHead>Precio base</TableHead>
                   <TableHead>Visibilidad en el Catálogo</TableHead>
                   <TableHead>Clasificacion</TableHead>
-                  <TableHead>Estado QB</TableHead>
+                  <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Config</TableHead>
                 </TableRow>
               </TableHeader>
@@ -634,7 +634,7 @@ export function QbProductConfigPanel({
                                 variant="outline"
                                 className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
                               >
-                                Configuracion QB pendiente
+                                Configuración pendiente
                               </Badge>
                             ) : null}
                             <span className="text-xs text-muted-foreground">
@@ -662,7 +662,7 @@ export function QbProductConfigPanel({
                               unitsById.get(settings.base_price_unit_id ?? settings.base_unit_id)
                                 ?.symbol ?? "N/D"
                             }`
-                          : "Sin precio QB"}
+                          : "Sin precio base"}
                       </TableCell>
                       <TableCell>
                         {settings ? (
@@ -697,12 +697,12 @@ export function QbProductConfigPanel({
                             <DialogTrigger asChild>
                               <Button variant="outline" size="sm" className="rounded-xl">
                                 <Edit3 className="size-4" />
-                                Editar QB
+                                Editar configuración
                               </Button>
                             </DialogTrigger>
                             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
                               <DialogHeader>
-                                <DialogTitle>Configurar producto QB</DialogTitle>
+                                <DialogTitle>Configurar producto</DialogTitle>
                                 <DialogDescription>
                                   Define unidades, precio base y flags futuros del producto.
                                 </DialogDescription>
@@ -744,7 +744,7 @@ export function QbProductConfigPanel({
               </DialogTrigger>
               <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
-                  <DialogTitle>Nueva unidad permitida QB</DialogTitle>
+                  <DialogTitle>Nueva unidad permitida</DialogTitle>
                   <DialogDescription>Define una unidad o presentacion por contexto.</DialogDescription>
                 </DialogHeader>
                 <ProductAllowedUnitForm
@@ -803,7 +803,7 @@ export function QbProductConfigPanel({
                           </DialogTrigger>
                           <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
                             <DialogHeader>
-                              <DialogTitle>Editar unidad permitida QB</DialogTitle>
+                              <DialogTitle>Editar unidad permitida</DialogTitle>
                               <DialogDescription>
                                 Actualiza la unidad o presentacion seleccionada.
                               </DialogDescription>
@@ -829,7 +829,7 @@ export function QbProductConfigPanel({
           </div>
           {!qbProductAllowedUnits.length ? (
             <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-              No hay unidades permitidas QB registradas.
+              No hay unidades permitidas registradas.
             </p>
           ) : null}
         </CardContent>
@@ -924,7 +924,7 @@ export function QbProductConfigPanel({
           </div>
           {!qbProductClassificationOutputs.length ? (
             <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-              No hay salidas de clasificacion QB registradas.
+              No hay salidas de clasificación registradas.
             </p>
           ) : null}
         </CardContent>

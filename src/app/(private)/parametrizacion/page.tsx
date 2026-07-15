@@ -12,9 +12,9 @@ export default async function ParametrizacionPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="QB-2"
-        title="Parametrizacion"
-        description="Reglas generales de unidades, conversiones y presentaciones por producto sin conectar flujos operativos."
+        eyebrow="Productos"
+        title="Parametrización"
+        description="Define las unidades, conversiones y presentaciones disponibles para los productos."
       />
       {data.error ? (
         <Alert variant="destructive">

@@ -21,7 +21,7 @@ type LoginPageProps = {
 function getReasonMessage(reason?: string) {
   switch (reason) {
     case "missing-env":
-      return "La autenticacion necesita que configures las variables de Supabase antes de iniciar sesion.";
+      return "El acceso no está disponible en este momento. Comunícate con el administrador de QB Insumos.";
     default:
       return null;
   }
@@ -106,7 +106,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   Bienvenido
                 </p>
                 <h2 className="font-heading text-3xl font-semibold tracking-tight">
-                  Iniciar sesion
+                  Iniciar sesión
                 </h2>
                 <p className="text-sm leading-6 text-muted-foreground">
                   Ingresa con tu correo y contraseña para acceder a tu cuenta.
@@ -115,13 +115,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
               {!hasEnv ? (
                 <ConfigAlert
-                  title="Supabase aun no esta configurado"
-                  description="Completa NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local. La app compila sin estas variables, pero el login real no puede funcionar hasta configurarlas."
+                  title="Acceso no disponible"
+                  description="La configuración de acceso no está completa. Comunícate con el administrador de QB Insumos."
                 />
               ) : null}
 
               {reasonMessage ? (
-                <ConfigAlert title="Atencion requerida" description={reasonMessage} />
+                <ConfigAlert title="Atención requerida" description={reasonMessage} />
               ) : null}
 
               <LoginForm returnTo={returnTo} />

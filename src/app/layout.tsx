@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "QB Insumos",
-  description: "Base visual y técnica para la operación mayorista de alimentos e insumos.",
+  description: "Gestión operativa de productos, pedidos, inventario, entregas y recibos.",
 };
 
 export default function RootLayout({

@@ -43,7 +43,7 @@ export function CustomerAuth({ authError = false }: { authError?: boolean }) {
               </h1>
               <p className="mt-4 max-w-md leading-7 text-white/72">
                 Guarda tus datos habituales, revisa tu historial y vuelve a pedir desde el
-                catalogo QB.
+                catálogo de QB Insumos.
               </p>
             </div>
             <p className="text-sm text-white/60">

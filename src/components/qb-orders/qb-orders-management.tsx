@@ -506,7 +506,7 @@ export function QbOrdersManagement({
     <div className="space-y-5">
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>No se pudo cargar pedidos QB</AlertTitle>
+          <AlertTitle>No se pudieron cargar los pedidos</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
@@ -548,7 +548,7 @@ export function QbOrdersManagement({
       {!orders.length ? (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            No hay pedidos QB recibidos.
+            No hay pedidos recibidos.
           </CardContent>
         </Card>
       ) : (
@@ -572,7 +572,7 @@ export function QbOrdersManagement({
 
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Send className="size-4" />
-        QB-6 descuenta stock solo al confirmar entrega; los recibos acumulativos quedan para QB-7.
+        El inventario se descuenta al confirmar la entrega; después, el pedido queda disponible para su recibo acumulativo.
       </p>
     </div>
   );

@@ -86,9 +86,9 @@ export function AppSidebar({ onNavigate, mobile = false, user }: AppSidebarProps
       </nav>
 
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-sm font-medium">Transicion QB-1</p>
+        <p className="text-sm font-medium">Operación QB Insumos</p>
         <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
-          El menu muestra solo modulos seguros durante el congelamiento visual.
+          Accede a las funciones disponibles para tu rol.
         </p>
       </div>
     </aside>

@@ -48,22 +48,22 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
     <div className="space-y-6">
       <PageHeader
         eyebrow="Clientes"
-        title="Clientes en transicion"
-        description="Consulta temporal de datos de contacto. La gestion de ubicaciones y pedidos se habilitara en fases posteriores de QB Insumos."
+        title="Directorio de clientes"
+        description="Consulta los datos de contacto y el estado de los clientes registrados."
       />
       <Card className="border-white/60 bg-card/92 shadow-sm">
         <CardHeader className="gap-4">
           <div>
-            <CardTitle>Directorio transitorio</CardTitle>
+            <CardTitle>Clientes registrados</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Vista sin cobros, saldos, credito ni acciones comerciales antiguas.
+              Busca por nombre o teléfono y filtra el directorio por estado.
             </p>
           </div>
           <form className="grid gap-3 md:grid-cols-[1fr_160px_auto]" action="/clientes">
             <Input
               name="q"
               defaultValue={filters.q ?? ""}
-              placeholder="Buscar por nombre o telefono"
+              placeholder="Buscar por nombre o teléfono"
               className="rounded-xl"
             />
             <select

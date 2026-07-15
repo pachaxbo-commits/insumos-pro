@@ -478,7 +478,7 @@ export function QbParametrizationPanel({
     <section className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">QB-2</p>
+          <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Parametrización</p>
           <h2 className="font-heading text-2xl font-semibold">
             Reglas de unidades, conversiones y presentaciones
           </h2>
@@ -493,7 +493,7 @@ export function QbParametrizationPanel({
       {qbParametrizationWarning ? (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900">
           <AlertTriangle className="size-4" />
-          <AlertTitle>Parametrizacion QB pendiente</AlertTitle>
+          <AlertTitle>Parametrización no disponible</AlertTitle>
           <AlertDescription>{qbParametrizationWarning}</AlertDescription>
         </Alert>
       ) : null}
@@ -528,7 +528,7 @@ export function QbParametrizationPanel({
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>Nueva dimension QB</DialogTitle>
+                    <DialogTitle>Nueva dimensión</DialogTitle>
                     <DialogDescription>Registra una dimension de conversion.</DialogDescription>
                   </DialogHeader>
                   <QbDimensionForm />
@@ -560,7 +560,7 @@ export function QbParametrizationPanel({
                       </DialogTrigger>
                       <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
-                          <DialogTitle>Editar dimension QB</DialogTitle>
+                          <DialogTitle>Editar dimensión</DialogTitle>
                           <DialogDescription>Actualiza la dimension seleccionada.</DialogDescription>
                         </DialogHeader>
                         <QbDimensionForm dimension={dimension} />
@@ -572,7 +572,7 @@ export function QbParametrizationPanel({
             ))}
             {!qbUnitDimensions.length ? (
               <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-                Sin dimensiones QB registradas.
+                No hay dimensiones registradas.
               </p>
             ) : null}
           </CardContent>
@@ -590,7 +590,7 @@ export function QbParametrizationPanel({
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-xl">
                   <DialogHeader>
-                    <DialogTitle>Nueva unidad QB</DialogTitle>
+                    <DialogTitle>Nueva unidad</DialogTitle>
                     <DialogDescription>Registra una unidad global.</DialogDescription>
                   </DialogHeader>
                   <QbUnitForm dimensions={qbUnitDimensions} />
@@ -644,12 +644,12 @@ export function QbParametrizationPanel({
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon-sm">
                                 <Edit3 className="size-4" />
-                                <span className="sr-only">Editar unidad QB</span>
+                                <span className="sr-only">Editar unidad</span>
                               </Button>
                             </DialogTrigger>
                             <DialogContent className="sm:max-w-xl">
                               <DialogHeader>
-                                <DialogTitle>Editar unidad QB</DialogTitle>
+                                <DialogTitle>Editar unidad</DialogTitle>
                                 <DialogDescription>Actualiza la unidad seleccionada.</DialogDescription>
                               </DialogHeader>
                               <QbUnitForm unit={unit} dimensions={qbUnitDimensions} />
@@ -680,7 +680,7 @@ export function QbParametrizationPanel({
               </DialogTrigger>
               <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
-                  <DialogTitle>Nueva presentacion QB</DialogTitle>
+                  <DialogTitle>Nueva presentación</DialogTitle>
                   <DialogDescription>Registra una presentacion especifica del producto.</DialogDescription>
                 </DialogHeader>
                 <ProductPresentationForm products={activeProducts} units={activeQbUnits} />
@@ -744,7 +744,7 @@ export function QbParametrizationPanel({
                           </DialogTrigger>
                           <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
                             <DialogHeader>
-                              <DialogTitle>Editar presentacion QB</DialogTitle>
+                              <DialogTitle>Editar presentación</DialogTitle>
                               <DialogDescription>
                                 Actualiza la presentacion seleccionada.
                               </DialogDescription>
@@ -767,7 +767,7 @@ export function QbParametrizationPanel({
           </div>
           {!qbProductPresentations.length ? (
             <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-              No hay presentaciones QB registradas.
+              No hay presentaciones registradas.
             </p>
           ) : null}
         </CardContent>

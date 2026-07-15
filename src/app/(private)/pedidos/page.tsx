@@ -10,9 +10,9 @@ export default async function PedidosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="QB-6"
+        eyebrow="Operación"
         title="Pedidos"
-        description="Preparacion y entrega fisica de pedidos QB; descuenta stock solo al entregar, sin ventas, cobros ni recibos."
+        description="Prepara los pedidos recibidos y confirma la entrega de las cantidades efectivamente despachadas."
       />
       <QbOrdersManagement {...data} />
     </div>

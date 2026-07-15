@@ -390,7 +390,7 @@ function ClassificationForm({
       </div>
       {!outputs.length ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Este producto no tiene salidas de clasificacion configuradas en Productos QB.
+          Este producto no tiene salidas de clasificación configuradas en Productos.
         </p>
       ) : null}
       <Button type="submit" disabled={pending || !canManage || !outputs.length} className="mt-4 rounded-xl">
@@ -630,14 +630,14 @@ export function QbIngresosManagement({
       {qbParametrizationWarning ? (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900">
           <AlertTriangle className="size-4" />
-          <AlertTitle>Parametrizacion QB pendiente</AlertTitle>
+          <AlertTitle>Parametrización no disponible</AlertTitle>
           <AlertDescription>{qbParametrizationWarning}</AlertDescription>
         </Alert>
       ) : null}
       {qbIngresosWarning ? (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900">
           <AlertTriangle className="size-4" />
-          <AlertTitle>Migracion QB-4 pendiente</AlertTitle>
+          <AlertTitle>Ingresos no disponibles</AlertTitle>
           <AlertDescription>{qbIngresosWarning}</AlertDescription>
         </Alert>
       ) : null}
@@ -703,9 +703,9 @@ export function QbIngresosManagement({
             <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
               <PackageOpen className="size-8 text-muted-foreground" />
               <div>
-                <p className="font-medium">Aun no hay ingresos QB</p>
+                <p className="font-medium">Aún no hay ingresos registrados</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Crea el primer borrador cuando la migracion local QB-4 este aplicada.
+                  Crea el primer borrador para registrar una recepción de mercadería.
                 </p>
               </div>
             </CardContent>

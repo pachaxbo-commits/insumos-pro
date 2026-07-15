@@ -54,14 +54,14 @@ export default async function ReportesPage({ searchParams }: ReportesPageProps) 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Auditoria operativa"
-        title="Reportes QB"
-        description="Supervision de inventario, ingresos, pedidos, entregas y recibos acumulativos sin reportes financieros legacy."
+        eyebrow="Seguimiento operativo"
+        title="Reportes"
+        description="Consulta inventario, ingresos, pedidos, entregas y recibos acumulativos en un solo lugar."
       />
 
       {data.error ? (
         <Alert variant="destructive">
-          <AlertTitle>No se pudieron cargar reportes QB</AlertTitle>
+          <AlertTitle>No se pudieron cargar los reportes</AlertTitle>
           <AlertDescription>{data.error}</AlertDescription>
         </Alert>
       ) : null}

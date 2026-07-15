@@ -19,13 +19,13 @@ type RestrictedPageProps = {
 function getRestrictedMessage(reason?: string) {
   switch (reason) {
     case "inactive":
-      return "Tu perfil existe, pero esta marcado como inactivo. Necesitas que un administrador lo reactive.";
+      return "Tu cuenta está inactiva. Comunícate con el administrador de QB Insumos para solicitar su reactivación.";
     case "missing-profile":
-      return "Tu usuario existe en Supabase Auth, pero no tiene un perfil valido en la tabla profiles.";
+      return "Tu cuenta no tiene un acceso operativo asignado. Comunícate con el administrador de QB Insumos.";
     case "profile-error":
-      return "No fue posible leer tu perfil. Verifica que SUPABASE_SCHEMA.sql se haya ejecutado correctamente.";
+      return "No pudimos verificar tu acceso en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
     default:
-      return "Tu rol actual no tiene permisos para acceder a este modulo.";
+      return "Tu rol actual no tiene permisos para acceder a este módulo.";
   }
 }
 
@@ -49,7 +49,7 @@ export default async function RestrictedPage({ searchParams }: RestrictedPagePro
         <PageHeader
           eyebrow="Seguridad"
           title="Acceso restringido"
-          description="QB Insumos limita los modulos visibles y accesibles segun el rol y el estado activo del usuario autenticado."
+          description="QB Insumos muestra las funciones disponibles según el rol y el estado de cada cuenta."
         />
 
         <Card className="border-white/60 bg-card/92 shadow-sm">
@@ -77,7 +77,7 @@ export default async function RestrictedPage({ searchParams }: RestrictedPagePro
             <Button asChild className="rounded-xl">
               <Link href="/">
                 <ArrowLeft className="size-4" />
-                Volver al dashboard
+                Volver al inicio
               </Link>
             </Button>
           </CardContent>

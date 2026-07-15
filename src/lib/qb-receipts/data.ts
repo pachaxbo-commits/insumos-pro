@@ -104,7 +104,7 @@ function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
 }
 
 function customerName(customer: CustomerRow | null) {
-  return customer?.full_name?.trim() || customer?.email || "Cliente QB";
+  return customer?.full_name?.trim() || customer?.email || "Cliente";
 }
 
 function mapReceipt(
@@ -184,7 +184,7 @@ async function getReceiptParts(
       items.push({
         id: row.id,
         orderId: row.order_id,
-        orderReference: order?.public_reference ?? "Pedido QB",
+        orderReference: order?.public_reference ?? "Pedido",
         status: row.inclusion_status,
       });
       ordersByReceipt.set(row.receipt_id, items);
@@ -199,7 +199,7 @@ async function getReceiptParts(
       items.push({
         id: row.id,
         orderId: row.order_id,
-        orderReference: order?.public_reference ?? "Pedido QB",
+        orderReference: order?.public_reference ?? "Pedido",
         productId: row.product_id,
         productName: row.product_name_snapshot,
         deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
@@ -296,7 +296,7 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { receipts: [], pendingGroups: [], error: "Faltan variables publicas de Supabase." };
+  if (!supabase) return { receipts: [], pendingGroups: [], error: "No pudimos cargar los recibos en este momento. Comunícate con el administrador de QB Insumos." };
 
   const { data, error } = await supabase
     .from("qb_receipts")
@@ -308,7 +308,7 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
     return {
       receipts: [],
       pendingGroups: [],
-      error: "No pudimos cargar recibos QB. Verifica que la migracion local QB-7 este aplicada.",
+      error: "No pudimos cargar los recibos en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     };
   }
 
@@ -336,7 +336,7 @@ export async function getQbReceiptDetailData(receiptId: string): Promise<QbRecei
   noStore();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { receipt: null, error: "Faltan variables publicas de Supabase." };
+  if (!supabase) return { receipt: null, error: "No pudimos cargar el recibo en este momento. Comunícate con el administrador de QB Insumos." };
 
   const { data, error } = await supabase
     .from("qb_receipts")
@@ -345,7 +345,7 @@ export async function getQbReceiptDetailData(receiptId: string): Promise<QbRecei
     .maybeSingle<ReceiptRow>();
 
   if (error || !data) {
-    return { receipt: null, error: "Recibo QB no encontrado." };
+    return { receipt: null, error: "No se encontró el recibo solicitado." };
   }
 
   const { ordersByReceipt, linesByReceipt, eventsByReceipt } = await getReceiptParts(supabase, [data.id]);
