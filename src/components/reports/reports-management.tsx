@@ -77,6 +77,7 @@ const statusStyles: Record<string, string> = {
   inactivo: "border-slate-200 bg-slate-50 text-slate-700",
   stock_bajo: "border-amber-200 bg-amber-50 text-amber-700",
   sin_stock: "border-rose-200 bg-rose-50 text-rose-700",
+  pendiente_regularizacion: "border-violet-200 bg-violet-50 text-violet-700",
   completo: "border-emerald-200 bg-emerald-50 text-emerald-700",
   parcial: "border-amber-200 bg-amber-50 text-amber-700",
   no_disponible: "border-rose-200 bg-rose-50 text-rose-700",
@@ -117,7 +118,9 @@ function KpiTile({ title, value, detail }: { title: string; value: string; detai
 function StatusBadge({ value }: { value: string }) {
   return (
     <Badge variant="outline" className={cn("capitalize", statusStyles[value] ?? "border-slate-200 bg-slate-50")}>
-      {value.replaceAll("_", " ")}
+      {value === "pendiente_regularizacion"
+        ? "Pendiente de regularización"
+        : value.replaceAll("_", " ")}
     </Badge>
   );
 }
@@ -279,7 +282,7 @@ function Filters({ data, filters }: { data: QbReportsData; filters: QbReportFilt
             <NativeSelect name="inventoryStatus" defaultValue={filters.inventoryStatus}>
               <option value="all">Todos</option>
               <option value="low">Stock bajo</option>
-              <option value="out">Sin stock</option>
+              <option value="out">Sin stock o por regularizar</option>
             </NativeSelect>
           </div>
           <div className="space-y-2">
@@ -328,7 +331,7 @@ function SummaryTab({ data }: { data: QbReportsData }) {
           detail={`Total en recibos emitidos: ${formatCurrency(data.summary.issuedReceiptTotalInPeriod)}`}
         />
         <KpiTile title="Stock bajo" value={formatNumber(data.summary.lowStockProducts)} />
-        <KpiTile title="Sin stock" value={formatNumber(data.summary.outOfStockProducts)} />
+        <KpiTile title="Sin stock o por regularizar" value={formatNumber(data.summary.outOfStockProducts)} />
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="bg-white/85">

@@ -104,6 +104,14 @@ function StatusBadge({ active }: { active: boolean }) {
 }
 
 function StockBadge({ product }: { product: ProductWithRelations }) {
+  if (product.stock_status === "pendiente_regularizacion") {
+    return (
+      <Badge variant="outline" className="rounded-full border-violet-200 bg-violet-50 text-violet-700">
+        Pendiente de regularización
+      </Badge>
+    );
+  }
+
   if (product.stock_status === "sin_stock") {
     return (
       <Badge variant="outline" className="rounded-full border-rose-200 bg-rose-50 text-rose-700">
@@ -268,7 +276,6 @@ function ProductForm({
             id={`${mode}-stock-current`}
             name="stock_current"
             type="number"
-            min="0"
             step="0.001"
             defaultValue={product?.stock_current ?? 0}
             required
@@ -634,7 +641,7 @@ export function ProductManagement({
           <p className="mt-2 font-heading text-3xl font-semibold">{activeProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">Stock bajo o agotado</p>
+          <p className="text-sm text-muted-foreground">Alertas de inventario</p>
           <p className="mt-2 font-heading text-3xl font-semibold">{lowStock}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">

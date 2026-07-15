@@ -137,9 +137,14 @@ export async function getDashboardData(): Promise<DashboardData> {
     alerts: [
       ...inventoryData.alerts.slice(0, 3).map((product) => ({
         id: product.id,
-        title: product.stock_status === "sin_stock" ? "Producto sin stock" : "Producto con stock bajo",
+        title:
+          product.stock_status === "pendiente_regularizacion"
+            ? "Producto pendiente de regularización"
+            : product.stock_status === "sin_stock"
+              ? "Producto sin stock"
+              : "Producto con stock bajo",
         description: `${product.name}: ${formatNumber(Number(product.stock_current))} de minimo ${formatNumber(Number(product.stock_min))}.`,
-        tone: product.stock_status === "sin_stock" ? ("critical" as const) : ("warning" as const),
+        tone: product.stock_status !== "stock_bajo" ? ("critical" as const) : ("warning" as const),
         time: "Inventario",
       })),
       ...(payableTotal > 0

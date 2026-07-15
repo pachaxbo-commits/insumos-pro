@@ -77,8 +77,7 @@ const productSchema = z.object({
     unit_id: z.uuid("Selecciona una unidad."),
     stock_current: z.coerce
       .number()
-      .finite("El stock actual debe ser valido.")
-      .min(0, "El stock actual no puede ser negativo."),
+      .finite("El stock actual debe ser valido."),
     stock_min: z.coerce
       .number()
       .finite("El stock minimo debe ser valido.")

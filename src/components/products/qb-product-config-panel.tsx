@@ -242,13 +242,13 @@ function ProductQbSettingsForm({
           </NativeSelect>
         </div>
         <div className="space-y-2">
-          <Label>Catalogo futuro</Label>
+          <Label>Visibilidad en el Catálogo</Label>
           <NativeSelect
             name="is_visible_in_qb_catalog"
             defaultValue={String(settings?.is_visible_in_qb_catalog ?? false)}
           >
-            <option value="false">Oculto</option>
-            <option value="true">Visible sin precios</option>
+            <option value="false">Oculto para clientes</option>
+            <option value="true">Visible para clientes</option>
           </NativeSelect>
         </div>
         <div className="space-y-2">
@@ -613,7 +613,7 @@ export function QbProductConfigPanel({
                   <TableHead>Producto</TableHead>
                   <TableHead>Inventario</TableHead>
                   <TableHead>Precio base</TableHead>
-                  <TableHead>Catalogo futuro</TableHead>
+                  <TableHead>Visibilidad en el Catálogo</TableHead>
                   <TableHead>Clasificacion</TableHead>
                   <TableHead>Estado QB</TableHead>
                   <TableHead className="text-right">Config</TableHead>
@@ -675,7 +675,7 @@ export function QbProductConfigPanel({
                                 : "border-slate-200 bg-slate-50 text-slate-600",
                             )}
                           >
-                            {settings.is_visible_in_qb_catalog ? "Visible futuro" : "Oculto"}
+                            {settings.is_visible_in_qb_catalog ? "Visible para clientes" : "Oculto para clientes"}
                           </Badge>
                         ) : (
                           <span className="text-sm text-muted-foreground">Pendiente</span>

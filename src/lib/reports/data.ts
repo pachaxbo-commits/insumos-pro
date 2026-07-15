@@ -464,7 +464,13 @@ function buildInventory(bundle: Bundle, filters: QbReportFilters): QbInventoryRe
       const stockCurrent = num(product.stock_current);
       const stockMin = num(product.stock_min);
       const stockStatus =
-        stockCurrent <= 0 ? "sin_stock" : stockCurrent <= stockMin ? "stock_bajo" : "ok";
+        stockCurrent < 0
+          ? "pendiente_regularizacion"
+          : stockCurrent === 0
+            ? "sin_stock"
+            : stockCurrent <= stockMin
+              ? "stock_bajo"
+              : "ok";
       const baseUnitId = getId(settings?.base_inventory_unit_id) || getId(settings?.base_unit_id);
       const row: QbInventoryReportRow = {
         id: getId(product.id),
@@ -489,7 +495,11 @@ function buildInventory(bundle: Bundle, filters: QbReportFilters): QbInventoryRe
     .filter((row) => (filters.product && filters.product !== "all" ? row.id === filters.product : true))
     .filter((row) => includesText(`${row.product} ${row.sku}`, filters.q))
     .filter((row) => (filters.inventoryStatus === "low" ? row.stockStatus === "stock_bajo" : true))
-    .filter((row) => (filters.inventoryStatus === "out" ? row.stockStatus === "sin_stock" : true))
+    .filter((row) =>
+      filters.inventoryStatus === "out"
+        ? row.stockStatus === "sin_stock" || row.stockStatus === "pendiente_regularizacion"
+        : true,
+    )
     .filter((row) => (filters.qbCatalog === "visible" ? row.catalogVisible : true))
     .filter((row) => (filters.qbCatalog === "hidden" ? !row.catalogVisible : true))
     .filter((row) => (filters.qbActive === "active" ? row.qbStatus === "activo" : true))
@@ -789,7 +799,9 @@ function buildSummary(bundle: Bundle, inventory: QbInventoryReportRow[], filters
     issuedReceiptsInPeriod: receiptPeriodRows.length,
     issuedReceiptTotalInPeriod: receiptPeriodRows.reduce((sum, receipt) => sum + num(receipt.total_amount), 0),
     lowStockProducts: inventory.filter((row) => row.stockStatus === "stock_bajo").length,
-    outOfStockProducts: inventory.filter((row) => row.stockStatus === "sin_stock").length,
+    outOfStockProducts: inventory.filter(
+      (row) => row.stockStatus === "sin_stock" || row.stockStatus === "pendiente_regularizacion",
+    ).length,
     recentMerchandiseReceipts: bundle.merchandiseReceipts.length,
     recentOrders: bundle.orders.length,
   };

@@ -154,7 +154,11 @@ export async function getInventoryData(filters: InventoryFilters = {}): Promise<
     summary: {
       totalProducts: products.length,
       lowStockProducts: products.filter((product) => product.stock_status === "stock_bajo").length,
-      outOfStockProducts: products.filter((product) => product.stock_status === "sin_stock").length,
+      outOfStockProducts: products.filter(
+        (product) =>
+          product.stock_status === "sin_stock" ||
+          product.stock_status === "pendiente_regularizacion",
+      ).length,
       movementsToday: movementsTodayResult.count ?? 0,
     },
   };

@@ -52,7 +52,7 @@ export type ProductWithRelations = Product & {
   category: ProductCategory | null;
   unit: UnitOfMeasure | null;
   margin_percentage: number;
-  stock_status: "sin_stock" | "stock_bajo" | "ok";
+  stock_status: "pendiente_regularizacion" | "sin_stock" | "stock_bajo" | "ok";
 };
 
 export type ProductFilters = {

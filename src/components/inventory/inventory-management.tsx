@@ -133,6 +133,14 @@ function MovementBadge({ type }: { type: InventoryMovementType }) {
 }
 
 function StockAlertBadge({ product }: { product: ProductWithRelations }) {
+  if (product.stock_status === "pendiente_regularizacion") {
+    return (
+      <Badge variant="outline" className="rounded-full border-violet-200 bg-violet-50 text-violet-700">
+        Pendiente de regularización
+      </Badge>
+    );
+  }
+
   if (product.stock_status === "sin_stock") {
     return (
       <Badge variant="outline" className="rounded-full border-rose-200 bg-rose-50 text-rose-700">
@@ -299,7 +307,7 @@ export function InventoryManagement({
           <p className="mt-2 font-heading text-3xl font-semibold">{summary.lowStockProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">Sin stock</p>
+          <p className="text-sm text-muted-foreground">Sin stock o por regularizar</p>
           <p className="mt-2 font-heading text-3xl font-semibold">{summary.outOfStockProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">

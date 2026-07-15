@@ -32,6 +32,7 @@ export type QbInternalOrderItem = {
   requestedQuantity: number;
   requestedBaseQuantity: number;
   baseUnitSymbol: string;
+  stockCurrent: number;
   notes: string | null;
   allowedUnits: QbPreparationAllowedUnit[];
   preparationItem: QbPreparationItem | null;

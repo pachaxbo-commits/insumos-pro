@@ -118,7 +118,7 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
           <SummaryTile
             title="Productos con alerta"
             value={formatNumber(summary.lowStockProducts + summary.outOfStockProducts)}
-            detail={`${formatNumber(summary.outOfStockProducts)} sin stock`}
+            detail={`${formatNumber(summary.outOfStockProducts)} sin stock o por regularizar`}
             icon={PackageSearch}
           />
         </section>

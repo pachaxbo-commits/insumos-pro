@@ -119,6 +119,26 @@ function buildInitialLine(item: QbInternalOrderItem): LineDraft {
   };
 }
 
+function deliveryWouldLeaveNegative(order: QbInternalOrder) {
+  const deliveredByProduct = new Map<string, { stockCurrent: number; deliveredQuantity: number }>();
+
+  for (const item of order.items) {
+    const preparationItem = item.preparationItem;
+    if (!preparationItem || preparationItem.status === "no_disponible") continue;
+
+    const current = deliveredByProduct.get(item.productId) ?? {
+      stockCurrent: item.stockCurrent,
+      deliveredQuantity: 0,
+    };
+    current.deliveredQuantity += preparationItem.actualBaseQuantity;
+    deliveredByProduct.set(item.productId, current);
+  }
+
+  return [...deliveredByProduct.values()].some(
+    ({ stockCurrent, deliveredQuantity }) => stockCurrent - deliveredQuantity < 0,
+  );
+}
+
 function PreparationEditor({
   order,
   action,
@@ -297,9 +317,11 @@ function OrderCard({
   cancelAction: (formData: FormData) => void;
   cancelPending: boolean;
 }) {
+  const [negativeStockConfirmed, setNegativeStockConfirmed] = useState(false);
   const canPrepare = order.status === "pendiente_preparacion";
   const canEditPreparation = order.status === "en_preparacion" || order.status === "preparado";
   const canDeliver = order.status === "preparado";
+  const willLeaveNegativeStock = canDeliver && deliveryWouldLeaveNegative(order);
   const canCancel =
     order.status === "pendiente_preparacion" ||
     order.status === "en_preparacion" ||
@@ -396,11 +418,35 @@ function OrderCard({
           />
         ) : null}
 
+        {willLeaveNegativeStock ? (
+          <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+            <AlertTitle>Existencia insuficiente</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                El stock registrado es insuficiente. Puedes continuar con la entrega, pero la
+                existencia quedará negativa hasta que se registre el ingreso correspondiente.
+              </p>
+              <label className="flex items-start gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  checked={negativeStockConfirmed}
+                  onChange={(event) => setNegativeStockConfirmed(event.target.checked)}
+                  className="mt-0.5 size-4"
+                />
+                Confirmo que deseo continuar con la entrega.
+              </label>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="flex flex-wrap gap-2">
           {canDeliver ? (
             <form action={deliveryAction}>
               <input type="hidden" name="order_id" value={order.id} />
-              <Button type="submit" disabled={deliveryPending}>
+              <Button
+                type="submit"
+                disabled={deliveryPending || (willLeaveNegativeStock && !negativeStockConfirmed)}
+              >
                 <Truck className="size-4" />
                 {deliveryPending ? "Entregando..." : "Confirmar entrega"}
               </Button>

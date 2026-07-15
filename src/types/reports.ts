@@ -72,7 +72,7 @@ export type QbInventoryReportRow = {
   baseUnit: string;
   qbStatus: "activo" | "inactivo" | "sin_configuracion";
   catalogVisible: boolean;
-  stockStatus: "ok" | "stock_bajo" | "sin_stock";
+  stockStatus: "ok" | "stock_bajo" | "sin_stock" | "pendiente_regularizacion";
   isClassifiable: boolean;
   isClassificationResult: boolean;
   isLossProduct: boolean;

@@ -33,7 +33,10 @@ type ItemRow = {
   base_unit_symbol: string;
   base_quantity: number | string;
   customer_notes: string | null;
-  product?: { name: string } | { name: string }[] | null;
+  product?:
+    | { name: string; stock_current: number | string }
+    | { name: string; stock_current: number | string }[]
+    | null;
 };
 
 type PreparationRow = {
@@ -89,6 +92,11 @@ function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
 function productName(item: ItemRow) {
   const product = Array.isArray(item.product) ? item.product[0] : item.product;
   return product?.name ?? "Producto QB";
+}
+
+function productStock(item: ItemRow) {
+  const product = Array.isArray(item.product) ? item.product[0] : item.product;
+  return numberOr(product?.stock_current, 0);
 }
 
 function numberOr(value: number | string | null | undefined, fallback: number) {
@@ -193,7 +201,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
 
   const { data: itemsData, error: itemsError } = await supabase
     .from("qb_order_items")
-    .select("id, order_id, product_id, source_label, requested_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name)")
+    .select("id, order_id, product_id, source_label, requested_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)")
     .in("order_id", orderIds)
     .order("sort_order", { ascending: true });
 
@@ -254,6 +262,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
         requestedQuantity: Number(item.requested_quantity) || 0,
         requestedBaseQuantity: Number(item.base_quantity) || 0,
         baseUnitSymbol: item.base_unit_symbol,
+        stockCurrent: productStock(item),
         notes: item.customer_notes,
         allowedUnits: allowedUnitsByProduct.get(item.product_id) ?? [],
         preparationItem: preparationItem
