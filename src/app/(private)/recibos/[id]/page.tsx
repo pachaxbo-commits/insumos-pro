@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getQbReceiptDetailData } from "@/lib/qb-receipts/data";
 
-function money(value: number) {
+function money(value: number | null) {
+  if (value === null || value <= 0) return "Precio pendiente";
   return new Intl.NumberFormat("es-BO", {
     style: "currency",
     currency: "BOB",
@@ -153,11 +154,11 @@ export default async function ReceiptDetailPage({
           <div className="space-y-2 rounded-lg border p-4">
             <div className="flex justify-between text-sm">
               <span>Subtotal</span>
-              <span>{money(receipt.subtotalAmount)}</span>
+              <span>{receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.subtotalAmount)}</span>
             </div>
             <div className="flex justify-between text-lg font-semibold">
               <span>Total</span>
-              <span>{money(receipt.totalAmount)}</span>
+              <span>{receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.totalAmount)}</span>
             </div>
           </div>
         </div>

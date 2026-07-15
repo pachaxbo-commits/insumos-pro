@@ -645,20 +645,39 @@ function buildReceipts(bundle: Bundle, filters: QbReportFilters): QbReceiptRepor
   const customers = firstById(bundle.customers);
   const profiles = firstById(bundle.profiles);
   const ordersByReceipt = groupBy(bundle.receiptOrders, "receipt_id");
+  const linesByReceipt = groupBy(bundle.receiptLines, "receipt_id");
 
   return bundle.receipts
-    .map((receipt) => ({
-      id: getId(receipt.id),
-      number: str(receipt.receipt_number, getId(receipt.id).slice(0, 8)),
-      customer: customerLabel(customers.get(getId(receipt.customer_account_id))),
-      status: str(receipt.status, "sin_estado"),
-      issuedAt: nullableStr(receipt.issued_at),
-      totalAmount: num(receipt.total_amount),
-      factors: `Dist. ${num(receipt.distance_factor_percent)}% / Exig. ${num(receipt.exigency_factor_percent)}% / Clima ${num(receipt.weather_factor_percent)}% / Ext. ${num(receipt.extraordinary_factor_percent)}%`,
-      includedOrders: ordersByReceipt.get(getId(receipt.id))?.length ?? 0,
-      issuedBy: userName(profiles, receipt.issued_by),
-      voidReason: str(receipt.void_reason, "N/A"),
-    }))
+    .map((receipt) => {
+      const receiptId = getId(receipt.id);
+      const lines = linesByReceipt.get(receiptId) ?? [];
+      const hasPendingPrices =
+        !lines.length ||
+        lines.some(
+          (line) =>
+            line.base_price_used === null ||
+            num(line.base_price_used) <= 0 ||
+            line.final_unit_price === null ||
+            num(line.final_unit_price) <= 0 ||
+            line.line_total === null ||
+            num(line.line_total) <= 0 ||
+            num(line.delivered_base_quantity) <= 0,
+        );
+
+      return {
+        id: receiptId,
+        number: str(receipt.receipt_number, receiptId.slice(0, 8)),
+        customer: customerLabel(customers.get(getId(receipt.customer_account_id))),
+        status: str(receipt.status, "sin_estado"),
+        issuedAt: nullableStr(receipt.issued_at),
+        totalAmount: hasPendingPrices ? null : num(receipt.total_amount),
+        pricingStatus: hasPendingPrices ? "pendiente" : "completo",
+        factors: `Dist. ${num(receipt.distance_factor_percent)}% / Exig. ${num(receipt.exigency_factor_percent)}% / Clima ${num(receipt.weather_factor_percent)}% / Ext. ${num(receipt.extraordinary_factor_percent)}%`,
+        includedOrders: ordersByReceipt.get(receiptId)?.length ?? 0,
+        issuedBy: userName(profiles, receipt.issued_by),
+        voidReason: str(receipt.void_reason, "N/A"),
+      } satisfies QbReceiptReportRow;
+    })
     .filter((row) => (filters.customer && filters.customer !== "all" ? bundle.receipts.find((receipt) => getId(receipt.id) === row.id)?.customer_account_id === filters.customer : true))
     .filter((row) => (filters.receiptStatus && filters.receiptStatus !== "all" ? row.status === filters.receiptStatus : true))
     .filter((row) => includesText(`${row.number} ${row.customer}`, filters.q));
@@ -855,7 +874,8 @@ function buildExports(
       cliente: row.customer,
       estado: row.status,
       fecha_emision: row.issuedAt,
-      total_recibo: row.totalAmount,
+      estado_precios: row.pricingStatus,
+      total_recibo: row.totalAmount ?? "",
       factores: row.factors,
       pedidos_incluidos: row.includedOrders,
       emisor: row.issuedBy,

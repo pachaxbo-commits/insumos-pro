@@ -16,19 +16,41 @@ const createDraftSchema = z.object({
   orderIds: z.array(z.string().uuid()).min(1),
 });
 
-const receiptLineUpdateSchema = z.object({
-  lineId: z.string().uuid(),
-  basePriceUsed: z.coerce.number().min(0).max(99999999),
-  saveAsNewBasePrice: z.coerce.boolean().optional().default(false),
-  notes: z.string().max(500).optional().default(""),
-});
+const nullableReceiptPriceSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return Number(trimmed);
+  }
+  return value;
+}, z.number().finite().positive().max(99999999).nullable());
+
+const receiptLineUpdateSchema = z
+  .object({
+    lineId: z.string().uuid(),
+    basePriceUsed: nullableReceiptPriceSchema,
+    saveAsNewBasePrice: z.coerce.boolean().optional().default(false),
+    notes: z.string().max(500).optional().default(""),
+  })
+  .superRefine((line, context) => {
+    if (line.basePriceUsed === null && line.saveAsNewBasePrice) {
+      context.addIssue({
+        code: "custom",
+        path: ["saveAsNewBasePrice"],
+        message: "Ingresa un precio positivo antes de guardarlo como precio base.",
+      });
+    }
+  });
+
+const receiptFactorSchema = z.coerce.number().finite().min(-100).max(1000);
 
 const updateDraftSchema = z.object({
   receiptId: z.string().uuid(),
-  distanceFactorPercent: z.coerce.number().min(-100).max(1000),
-  exigencyFactorPercent: z.coerce.number().min(-100).max(1000),
-  weatherFactorPercent: z.coerce.number().min(-100).max(1000),
-  extraordinaryFactorPercent: z.coerce.number().min(-100).max(1000),
+  distanceFactorPercent: receiptFactorSchema,
+  exigencyFactorPercent: receiptFactorSchema,
+  weatherFactorPercent: receiptFactorSchema,
+  extraordinaryFactorPercent: receiptFactorSchema,
   visibleNote: z.string().max(1000).optional().default(""),
   internalNotes: z.string().max(1500).optional().default(""),
   lines: z.array(receiptLineUpdateSchema).optional().default([]),
@@ -116,7 +138,7 @@ export async function updateQbReceiptDraftAction(
   });
 
   if (!parsed.success) {
-    return initialFailure("Revisa factores, precios y notas del recibo.");
+    return initialFailure("El precio debe ser un número positivo válido o quedar pendiente.");
   }
 
   const { supabase, state } = await getSupabaseOrState();

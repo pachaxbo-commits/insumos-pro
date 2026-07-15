@@ -129,7 +129,8 @@ export type QbReceiptReportRow = {
   customer: string;
   status: string;
   issuedAt: string | null;
-  totalAmount: number;
+  totalAmount: number | null;
+  pricingStatus: "pendiente" | "completo";
   factors: string;
   includedOrders: number;
   issuedBy: string;

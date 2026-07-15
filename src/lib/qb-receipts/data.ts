@@ -59,12 +59,12 @@ type ReceiptLineRow = {
   delivered_base_quantity: number | string;
   base_unit_symbol: string;
   visible_unit_label: string;
-  original_base_price: number | string;
-  base_price_used: number | string;
+  original_base_price: number | string | null;
+  base_price_used: number | string | null;
   base_price_edited: boolean;
   save_as_new_base_price: boolean;
-  final_unit_price: number | string;
-  line_total: number | string;
+  final_unit_price: number | string | null;
+  line_total: number | string | null;
   notes: string | null;
   order?: { id: string; public_reference: string } | { id: string; public_reference: string }[] | null;
 };
@@ -96,6 +96,12 @@ function single<T>(value: T | T[] | null | undefined) {
 function numberValue(value: number | string | null | undefined) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumberValue(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
@@ -131,6 +137,16 @@ function mapReceipt(
     extraordinaryFactorPercent: numberValue(row.extraordinary_factor_percent),
     subtotalAmount: numberValue(row.subtotal_amount),
     totalAmount: numberValue(row.total_amount),
+    hasPendingPrices: lines.some(
+      (line) =>
+        line.deliveredBaseQuantity <= 0 ||
+        line.basePriceUsed === null ||
+        line.basePriceUsed <= 0 ||
+        line.finalUnitPrice === null ||
+        line.finalUnitPrice <= 0 ||
+        line.lineTotal === null ||
+        line.lineTotal <= 0,
+    ),
     visibleNote: row.visible_note,
     internalNotes: row.internal_notes,
     issuedAt: row.issued_at,
@@ -205,12 +221,12 @@ async function getReceiptParts(
         deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
-        originalBasePrice: numberValue(row.original_base_price),
-        basePriceUsed: numberValue(row.base_price_used),
+        originalBasePrice: nullableNumberValue(row.original_base_price),
+        basePriceUsed: nullableNumberValue(row.base_price_used),
         basePriceEdited: row.base_price_edited,
         saveAsNewBasePrice: row.save_as_new_base_price,
-        finalUnitPrice: numberValue(row.final_unit_price),
-        lineTotal: numberValue(row.line_total),
+        finalUnitPrice: nullableNumberValue(row.final_unit_price),
+        lineTotal: nullableNumberValue(row.line_total),
         notes: row.notes,
       });
       linesByReceipt.set(row.receipt_id, items);

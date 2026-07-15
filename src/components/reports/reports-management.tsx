@@ -606,6 +606,7 @@ function ReceiptsTab({ data }: { data: QbReportsData }) {
               <TableHead>Emisión</TableHead>
               <TableHead>Factores</TableHead>
               <TableHead>Pedidos</TableHead>
+              <TableHead>Precios</TableHead>
               <TableHead className="text-right">Total de recibo</TableHead>
             </TableRow>
           </TableHeader>
@@ -626,10 +627,13 @@ function ReceiptsTab({ data }: { data: QbReportsData }) {
                 </TableCell>
                 <TableCell className="max-w-[280px]">{row.factors}</TableCell>
                 <TableCell>{formatNumber(row.includedOrders)}</TableCell>
-                <TableCell className="text-right font-semibold">{formatCurrency(row.totalAmount)}</TableCell>
+                <TableCell>{row.pricingStatus === "pendiente" ? "Precio pendiente" : "Completo"}</TableCell>
+                <TableCell className="text-right font-semibold">
+                  {row.totalAmount === null ? "Precio pendiente" : formatCurrency(row.totalAmount)}
+                </TableCell>
               </TableRow>
             ))}
-            {!data.receipts.length ? <EmptyRow colSpan={7} /> : null}
+            {!data.receipts.length ? <EmptyRow colSpan={8} /> : null}
           </TableBody>
         </Table>
       </CardContent>

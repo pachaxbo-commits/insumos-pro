@@ -11,12 +11,12 @@ export type QbReceiptLine = {
   deliveredBaseQuantity: number;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
-  originalBasePrice: number;
-  basePriceUsed: number;
+  originalBasePrice: number | null;
+  basePriceUsed: number | null;
   basePriceEdited: boolean;
   saveAsNewBasePrice: boolean;
-  finalUnitPrice: number;
-  lineTotal: number;
+  finalUnitPrice: number | null;
+  lineTotal: number | null;
   notes: string | null;
 };
 
@@ -49,6 +49,7 @@ export type QbReceipt = {
   extraordinaryFactorPercent: number;
   subtotalAmount: number;
   totalAmount: number;
+  hasPendingPrices: boolean;
   visibleNote: string | null;
   internalNotes: string | null;
   issuedAt: string | null;
