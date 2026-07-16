@@ -3,8 +3,10 @@ import { ArrowLeft } from "lucide-react";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { PrintReceiptButton } from "@/components/qb-receipts/print-receipt-button";
+import { ReceiptImageActions } from "@/components/qb-receipts/receipt-image-actions";
 import { Button } from "@/components/ui/button";
 import { requireRoleAccess } from "@/lib/auth/session";
+import { formatBoliviaDate } from "@/lib/date-time";
 import { getQbReceiptDetailData } from "@/lib/qb-receipts/data";
 
 function money(value: number | null) {
@@ -18,14 +20,6 @@ function money(value: number | null) {
 
 function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
-}
-
-function dateText(value: string | null) {
-  if (!value) return "Sin fecha";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("es-BO", { day: "2-digit", month: "long", year: "numeric" });
 }
 
 export default async function ReceiptDetailPage({
@@ -53,6 +47,11 @@ export default async function ReceiptDetailPage({
     );
   }
 
+  const receiptTargetId = "qb-receipt-export";
+  const receiptTotalText = receipt.hasPendingPrices
+    ? "Precio pendiente"
+    : money(receipt.totalAmount);
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -62,10 +61,23 @@ export default async function ReceiptDetailPage({
             Volver
           </Link>
         </Button>
-        <PrintReceiptButton />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {receipt.status === "emitido" ? (
+            <ReceiptImageActions
+              receiptNumber={receipt.number}
+              targetId={receiptTargetId}
+              totalText={receiptTotalText}
+            />
+          ) : null}
+          <PrintReceiptButton />
+        </div>
       </div>
 
-      <section className="rounded-lg border bg-background p-6 print:border-none">
+      <section
+        id={receiptTargetId}
+        data-qb-receipt-export
+        className="qb-receipt-export-surface rounded-lg border bg-background p-6 print:border-none"
+      >
         <div className="flex flex-wrap items-start justify-between gap-6 border-b pb-5">
           <QbInsumosBrand variant="compact" showSubtitle />
           <div className="text-right">
@@ -89,12 +101,15 @@ export default async function ReceiptDetailPage({
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Periodo</p>
             <p className="mt-1 text-sm">
-              {dateText(receipt.periodStart)} - {dateText(receipt.periodEnd)}
+              {formatBoliviaDate(receipt.periodStart)} -{" "}
+              {formatBoliviaDate(receipt.periodEnd)}
             </p>
           </div>
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Emision</p>
-            <p className="mt-1 text-sm">{dateText(receipt.issuedAt ?? receipt.createdAt)}</p>
+            <p className="mt-1 text-sm">
+              {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
+            </p>
           </div>
         </div>
 
@@ -109,7 +124,7 @@ export default async function ReceiptDetailPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto py-5">
+        <div data-qb-receipt-table className="overflow-x-auto py-5">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs uppercase text-muted-foreground">

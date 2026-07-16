@@ -32,6 +32,7 @@ import {
   updateQbReceiptDraftAction,
   voidQbReceiptAction,
 } from "@/lib/qb-receipts/actions";
+import { formatBoliviaDate } from "@/lib/date-time";
 import type {
   QbReceipt,
   QbReceiptActionState,
@@ -58,14 +59,6 @@ function money(value: number) {
 
 function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
-}
-
-function shortDate(value: string | null) {
-  if (!value) return "Sin fecha";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("es-BO", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function statusClass(status: QbReceiptStatus) {
@@ -187,7 +180,8 @@ function CreateReceiptPanel({
                     <span className="min-w-0">
                       <span className="block font-mono font-medium">{order.reference}</span>
                       <span className="block text-muted-foreground">
-                        {shortDate(order.deliveredAt)} · {order.deliveredLineCount} lineas entregadas
+                        {formatBoliviaDate(order.deliveredAt, "short")} ·{" "}
+                        {order.deliveredLineCount} lineas entregadas
                       </span>
                       {order.locationLabel ? (
                         <span className="block text-muted-foreground">{order.locationLabel}</span>
@@ -429,7 +423,8 @@ function ReceiptCard({
           <CardTitle className="font-mono text-base">{receipt.number}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">{receipt.customerName}</p>
           <p className="text-xs text-muted-foreground">
-            {shortDate(receipt.periodStart)} - {shortDate(receipt.periodEnd)}
+            {formatBoliviaDate(receipt.periodStart, "short")} -{" "}
+            {formatBoliviaDate(receipt.periodEnd, "short")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

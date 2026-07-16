@@ -132,3 +132,16 @@
     @apply font-sans;
   }
 }
+
+.qb-receipt-export-surface {
+  --background: #ffffff;
+  --foreground: #172033;
+  --muted: #f4f4f5;
+  --muted-foreground: #596273;
+  --border: #d8dbe1;
+  color: var(--foreground);
+}
+
+.qb-receipt-export-capturing [data-qb-receipt-table] {
+  overflow: visible;
+}
