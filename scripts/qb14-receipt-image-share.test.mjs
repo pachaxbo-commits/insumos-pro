@@ -7,7 +7,9 @@ import {
   buildReceiptPngFilename,
   buildReceiptShareMessage,
   buildWhatsAppShareUrl,
+  isLikelyMobileShareDevice,
   sanitizeReceiptFilePart,
+  shouldUseNativeReceiptFileShare,
 } from "../src/lib/qb-receipts/receipt-export.ts";
 
 const actionsSource = readFileSync(
@@ -46,9 +48,62 @@ test("WhatsApp fallback contains only the prepared business message", () => {
   assert.doesNotMatch(message, /enviado|uuid|token|administrador/i);
 });
 
+test("desktop operating systems always use the WhatsApp Web fallback", () => {
+  const desktopAgents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "Mozilla/5.0 (X11; Linux x86_64)",
+    "Mozilla/5.0 (X11; CrOS x86_64 16093.68.0)",
+  ];
+
+  for (const userAgent of desktopAgents) {
+    assert.equal(
+      shouldUseNativeReceiptFileShare(
+        { userAgent, userAgentDataMobile: false },
+        true,
+      ),
+      false,
+    );
+  }
+});
+
+test("mobile and tablet devices use native file share only when supported", () => {
+  const mobileAgents = [
+    "Mozilla/5.0 (Linux; Android 15; Pixel 9)",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)",
+    "Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X)",
+    "Mozilla/5.0 (iPod touch; CPU iPhone OS 15_7 like Mac OS X)",
+  ];
+
+  for (const userAgent of mobileAgents) {
+    assert.equal(isLikelyMobileShareDevice({ userAgent }), true);
+    assert.equal(shouldUseNativeReceiptFileShare({ userAgent }, true), true);
+  }
+
+  assert.equal(
+    shouldUseNativeReceiptFileShare(
+      { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 9)" },
+      false,
+    ),
+    false,
+  );
+});
+
+test("coarse pointer is complementary and never the sole mobile signal", () => {
+  assert.equal(isLikelyMobileShareDevice({ coarsePointer: true }), false);
+  assert.equal(
+    isLikelyMobileShareDevice({
+      coarsePointer: true,
+      maxTouchPoints: 5,
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    }),
+    true,
+  );
+});
+
 test("prepared file share starts before any await in the cached branch", () => {
   const branchStart = actionsSource.indexOf(
-    "if (preparedFile && canSharePngFile(preparedFile))",
+    "if (preparedFile && shouldUseNativeFileShare(preparedFile))",
   );
   const shareCall = actionsSource.indexOf("sharePromise = navigator.share", branchStart);
   const branchEnd = actionsSource.indexOf("if (preparedFile) {", shareCall);
@@ -63,10 +118,7 @@ test("prepared file share starts before any await in the cached branch", () => {
 test("first mobile share prepares the file without sharing after generation", () => {
   const firstClickStart = actionsSource.indexOf("if (nativeFileShare) {");
   const firstClickEnd = actionsSource.indexOf("downloadReceiptImage(file, filename)", firstClickStart);
-  const preparationStart = actionsSource.lastIndexOf(
-    "const file = createPngFile",
-    firstClickStart,
-  );
+  const preparationStart = actionsSource.lastIndexOf("let file = preparedFile", firstClickStart);
   const firstClickBranch = actionsSource.slice(preparationStart, firstClickEnd);
 
   assert.match(firstClickBranch, /storePreparedFile\(file\)/);
@@ -78,4 +130,24 @@ test("desktop fallback never replaces the QB Insumos page", () => {
   assert.doesNotMatch(actionsSource, /\bwindow\.location\.(assign|replace)\b/);
   assert.match(actionsSource, /fallbackWindow\.opener = null/);
   assert.match(actionsSource, /Abre WhatsApp Web y adjúntala desde Descargas/);
+});
+
+test("desktop fallback reuses the prepared file and downloads it at most once", () => {
+  assert.match(actionsSource, /let file = preparedFile/);
+  assert.match(
+    actionsSource,
+    /if \(whatsAppDownloadedFileRef\.current !== file\) \{\s*downloadReceiptImage\(file, filename\);\s*whatsAppDownloadedFileRef\.current = file;/,
+  );
+  assert.match(actionsSource, /const fallbackWindow = nativeFileShare \? null : window\.open/);
+  assert.match(actionsSource, /if \(busyRef\.current\) return;/);
+});
+
+test("desktop interface keeps the WhatsApp label and uses no automatic attachment", () => {
+  assert.match(actionsSource, /setShareReadyKey\(null\)/);
+  assert.match(actionsSource, /"Compartir por WhatsApp"/);
+  assert.doesNotMatch(
+    actionsSource,
+    /buildWhatsAppShareUrl\([^)]*(blob|base64|createObjectURL)/,
+  );
+  assert.doesNotMatch(actionsSource, /fetch\(|supabase|rpc\(|Server Action/);
 });

@@ -67,6 +67,7 @@ Assert-Contract "Los dobles clics quedan bloqueados" (
 )
 Assert-Contract "El flujo nativo comparte un archivo PNG" (
   $actions.Contains('navigator.canShare({ files: [file] })') -and
+  $actions.Contains('shouldUseNativeFileShare(preparedFile)') -and
   $actions.Contains('navigator.share({') -and
   $actions.Contains('files: [preparedFile]')
 )
@@ -76,7 +77,7 @@ Assert-Contract "El fallback descarga y abre WhatsApp" (
 )
 Assert-Contract "El fallback no afirma que el archivo fue enviado" (
   -not $actions.Contains('archivo fue enviado') -and
-  $actions.Contains('puedas adjuntarla desde Descargas')
+  $actions.Contains('adjunta el archivo desde Descargas')
 )
 Assert-Contract "Los errores de generacion tienen mensaje profesional" (
   $actions.Contains('No se pudo generar la imagen.')
@@ -105,16 +106,16 @@ Assert-Contract "Los botones no aparecen en impresion ni imagen" (
   $actionsStart -lt $exportStart -and $page.Contains('print:hidden')
 )
 
-$cachedBranchStart = $actions.IndexOf('if (preparedFile && canSharePngFile(preparedFile))')
+$cachedBranchStart = $actions.IndexOf('if (preparedFile && shouldUseNativeFileShare(preparedFile))')
 $cachedShareCall = $actions.IndexOf('sharePromise = navigator.share', $cachedBranchStart)
-$cachedBranchEnd = $actions.IndexOf('if (preparedFile) {', $cachedShareCall)
+$cachedBranchEnd = $actions.IndexOf('void withLock', $cachedShareCall)
 $cachedBeforeShare = $actions.Substring(
   $cachedBranchStart,
   $cachedShareCall - $cachedBranchStart
 )
 $firstMobileStart = $actions.IndexOf('if (nativeFileShare) {')
 $firstMobilePreparationStart = $actions.LastIndexOf(
-  'const file = createPngFile',
+  'let file = preparedFile',
   $firstMobileStart
 )
 $firstMobileEnd = $actions.IndexOf('downloadReceiptImage(file, filename)', $firstMobileStart)
@@ -128,7 +129,7 @@ Assert-Contract "Existe un ref local para el File preparado" (
 )
 Assert-Contract "Descargar almacena el File y registra una sola descarga" (
   $actions.Contains('preparedFileRef.current = file') -and
-  $actions.Contains('downloadedFileRef.current = file') -and
+  $actions.Contains('whatsAppDownloadedFileRef.current = file') -and
   $actions.Contains('downloadReceiptImage(file, filename)')
 )
 Assert-Contract "El primer clic movil prepara sin llamar share tras generar" (
@@ -169,8 +170,78 @@ Assert-Contract "El bloqueo de doble clic sigue activo en ambos flujos" (
   $actions.Contains('disabled={busy}')
 )
 
-if ($script:Passed -ne 30) {
-  throw "QB-14 FAIL: se esperaban 30 controles y aprobaron $script:Passed."
+Assert-Contract "Windows macOS Linux y ChromeOS se clasifican como escritorio" (
+  $exportHelper.Contains('Windows NT|Macintosh|Mac OS X|X11|CrOS|Linux x86_64') -and
+  $exportHelper.Contains('return false')
+)
+Assert-Contract "canShare no activa el flujo nativo sin dispositivo movil" (
+  $exportHelper.Contains(
+    'return isLikelyMobileShareDevice(signals) && canShareFiles;'
+  )
+)
+Assert-Contract "Android iPhone iPad e iPod se reconocen como moviles" (
+  $exportHelper.Contains('Android|iPhone|iPad|iPod')
+)
+Assert-Contract "userAgentData mobile tiene prioridad progresiva" (
+  $exportHelper.Contains('if (userAgentDataMobile === true)')
+)
+Assert-Contract "Pointer coarse no se usa como unica senal" (
+  $exportHelper.Contains('maxTouchPoints > 1 && coarsePointer') -and
+  -not $exportHelper.Contains('if (coarsePointer) {')
+)
+Assert-Contract "Escritorio conserva siempre la etiqueta de WhatsApp" (
+  $actions.Contains('"Compartir por WhatsApp"') -and
+  $actions.Contains('setShareReadyKey(null)')
+)
+Assert-Contract "Escritorio muestra el estado Preparando imagen" (
+  $actions.Contains('"Preparando imagen..."')
+)
+Assert-Contract "El primer clic movil prepara y el segundo comparte" (
+  $actions.Contains('"Imagen lista. Pulsa nuevamente para compartir."') -and
+  $cachedShareCall -gt $cachedBranchStart
+)
+Assert-Contract "Escritorio reutiliza el File preparado" (
+  $actions.Contains('let file = preparedFile') -and
+  $actions.Contains('if (!file)')
+)
+Assert-Contract "La descarga de WhatsApp ocurre una sola vez por File" (
+  $actions.Contains('if (whatsAppDownloadedFileRef.current !== file)') -and
+  $actions.Contains('whatsAppDownloadedFileRef.current = file')
+)
+Assert-Contract "Se abre como maximo una pestaña por operacion" (
+  ([regex]::Matches($actions, 'window\.open\("about:blank", "_blank"\)')).Count -eq 1 -and
+  $actions.Contains('if (busyRef.current) return;')
+)
+Assert-Contract "WhatsApp Web abierto no altera la decision" (
+  -not ($actions -match 'getWindow|findWindow|whatsapp.*opened|visibilityState')
+)
+Assert-Contract "La URL no contiene Blob base64 ni archivos locales" (
+  -not ($exportHelper -match 'blob:|base64|data:image|file:') -and
+  $exportHelper.Contains('https://wa.me/?text=')
+)
+Assert-Contract "No se intenta adjuntar el archivo automaticamente" (
+  -not ($actions -match 'DataTransfer|clipboard|drop|attach|input\[type=.file')
+)
+Assert-Contract "El popup usa opener nulo cuando es posible" (
+  $actions.Contains('fallbackWindow.opener = null')
+)
+Assert-Contract "Popup bloqueado no reemplaza QB Insumos" (
+  -not ($actions -match '\bwindow\.location\.(assign|replace)\b') -and
+  $actions.Contains('Abre WhatsApp Web') -and
+  $actions.Contains('desde Descargas')
+)
+Assert-Contract "AbortError movil sigue siendo cancelacion voluntaria" (
+  $actions.Contains('error.name === "AbortError"') -and
+  $actions.Contains('setStatus({ kind: "idle", message: null })')
+)
+Assert-Contract "Fecha impresion y captura PNG permanecen integras" (
+  $dateHelper.Contains('America/La_Paz') -and
+  $page.Contains('<PrintReceiptButton />') -and
+  $actions.Contains('pixelRatio: 2')
+)
+
+if ($script:Passed -ne 48) {
+  throw "QB-14.1 FAIL: se esperaban 48 controles y aprobaron $script:Passed."
 }
 
-Write-Output "Contrato focalizado local QB-14 OK: 30/30 controles."
+Write-Output "Contrato focalizado local QB-14.1 OK: 48/48 controles."

@@ -8,6 +8,7 @@ import {
   buildReceiptPngFilename,
   buildReceiptShareMessage,
   buildWhatsAppShareUrl,
+  shouldUseNativeReceiptFileShare,
 } from "@/lib/qb-receipts/receipt-export";
 
 type ReceiptImageActionsProps = {
@@ -108,6 +109,26 @@ function canSharePngFile(file: File) {
   }
 }
 
+function getReceiptShareDeviceSignals() {
+  const browserNavigator = navigator as Navigator & {
+    userAgentData?: { mobile?: boolean };
+  };
+
+  return {
+    coarsePointer: window.matchMedia?.("(pointer: coarse)").matches ?? false,
+    maxTouchPoints: browserNavigator.maxTouchPoints,
+    userAgent: browserNavigator.userAgent,
+    userAgentDataMobile: browserNavigator.userAgentData?.mobile,
+  };
+}
+
+function shouldUseNativeFileShare(file: File) {
+  return shouldUseNativeReceiptFileShare(
+    getReceiptShareDeviceSignals(),
+    canSharePngFile(file),
+  );
+}
+
 export function ReceiptImageActions({
   receiptNumber,
   targetId,
@@ -116,7 +137,7 @@ export function ReceiptImageActions({
   const busyRef = useRef(false);
   const preparedFileRef = useRef<File | null>(null);
   const preparedReceiptKeyRef = useRef<string | null>(null);
-  const downloadedFileRef = useRef<File | null>(null);
+  const whatsAppDownloadedFileRef = useRef<File | null>(null);
   const [shareReadyKey, setShareReadyKey] = useState<string | null>(null);
   const [status, setStatus] = useState<ActionStatus>({ kind: "idle", message: null });
   const busy = status.kind === "working";
@@ -154,9 +175,8 @@ export function ReceiptImageActions({
         const blob = await createReceiptPng(targetId);
         const file = createPngFile(blob, filename);
         storePreparedFile(file);
-        setShareReadyKey(canSharePngFile(file) ? receiptKey : null);
+        setShareReadyKey(shouldUseNativeFileShare(file) ? receiptKey : null);
         downloadReceiptImage(file, filename);
-        downloadedFileRef.current = file;
         setStatus({ kind: "success", message: "Imagen descargada." });
       } catch {
         setStatus({
@@ -171,7 +191,7 @@ export function ReceiptImageActions({
     if (busyRef.current) return;
 
     const preparedFile = getPreparedFile();
-    if (preparedFile && canSharePngFile(preparedFile)) {
+    if (preparedFile && shouldUseNativeFileShare(preparedFile)) {
       busyRef.current = true;
       setStatus({ kind: "working", message: "Preparando para compartir..." });
 
@@ -230,40 +250,9 @@ export function ReceiptImageActions({
       return;
     }
 
-    if (preparedFile) {
-      const fallbackWindow = window.open("about:blank", "_blank");
-      if (fallbackWindow) {
-        try {
-          fallbackWindow.opener = null;
-        } catch {
-          // Some browsers expose opener as read-only.
-        }
-      }
-
-      if (downloadedFileRef.current !== preparedFile) {
-        downloadReceiptImage(preparedFile, filename);
-        downloadedFileRef.current = preparedFile;
-      }
-
-      if (fallbackWindow) {
-        fallbackWindow.location.replace(buildWhatsAppShareUrl(shareMessage));
-        setStatus({
-          kind: "success",
-          message:
-            "Tu navegador no permite compartir archivos directamente. La imagen fue descargada para que puedas adjuntarla desde Descargas en la conversación de WhatsApp.",
-        });
-      } else {
-        setStatus({
-          kind: "success",
-          message: "La imagen fue descargada. Abre WhatsApp Web y adjúntala desde Descargas.",
-        });
-      }
-      return;
-    }
-
     void withLock(async () => {
       const shareProbe = createPngFile(new Blob(["qb"], { type: "image/png" }), filename);
-      const nativeFileShare = canSharePngFile(shareProbe);
+      const nativeFileShare = shouldUseNativeFileShare(preparedFile ?? shareProbe);
       const fallbackWindow = nativeFileShare ? null : window.open("about:blank", "_blank");
       if (fallbackWindow) {
         try {
@@ -272,31 +261,40 @@ export function ReceiptImageActions({
           // Some browsers expose opener as read-only.
         }
       }
-      setStatus({ kind: "working", message: "Preparando para compartir..." });
+      setStatus({
+        kind: "working",
+        message: nativeFileShare ? "Preparando para compartir..." : "Preparando imagen...",
+      });
 
       try {
-        const blob = await createReceiptPng(targetId);
-        const file = createPngFile(blob, filename);
-        storePreparedFile(file);
+        let file = preparedFile;
+        if (!file) {
+          const blob = await createReceiptPng(targetId);
+          file = createPngFile(blob, filename);
+          storePreparedFile(file);
+        }
 
         if (nativeFileShare) {
           setShareReadyKey(receiptKey);
           setStatus({
             kind: "success",
-            message: "Imagen lista. Pulsa nuevamente para abrir el menú de compartir.",
+            message: "Imagen lista. Pulsa nuevamente para compartir.",
           });
           return;
         }
 
-        downloadReceiptImage(file, filename);
-        downloadedFileRef.current = file;
+        setShareReadyKey(null);
+        if (whatsAppDownloadedFileRef.current !== file) {
+          downloadReceiptImage(file, filename);
+          whatsAppDownloadedFileRef.current = file;
+        }
         const whatsappUrl = buildWhatsAppShareUrl(shareMessage);
         if (fallbackWindow) {
           fallbackWindow.location.replace(whatsappUrl);
           setStatus({
             kind: "success",
             message:
-              "Tu navegador no permite compartir archivos directamente. La imagen fue descargada para que puedas adjuntarla desde Descargas en la conversación de WhatsApp.",
+              "La imagen del recibo fue descargada. Selecciona la conversación en WhatsApp y adjunta el archivo desde Descargas.",
           });
         } else {
           setStatus({
@@ -327,7 +325,9 @@ export function ReceiptImageActions({
       </Button>
       <Button type="button" variant="outline" disabled={busy} onClick={handleShare}>
         <Share2 className="size-4" />
-        {busy && status.message === "Preparando para compartir..."
+        {busy &&
+        (status.message === "Preparando para compartir..." ||
+          status.message === "Preparando imagen...")
           ? status.message
           : hasCurrentShareFile
             ? "Abrir menú para compartir"
