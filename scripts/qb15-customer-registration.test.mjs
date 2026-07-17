@@ -154,8 +154,8 @@ test("login exposes registration while preserving the safe return", () => {
 
 test("registration callback preserves only the normalized return path on failure", () => {
   assert.match(callbackSource, /getSafeCustomerReturnPath\(requestedNext\)/);
-  assert.match(callbackSource, /registrationUrl\.searchParams\.set\("returnTo", next\)/);
-  assert.match(callbackSource, /registrationUrl\.searchParams\.set\(\s*"error"/);
+  assert.match(callbackSource, /getLoginNoticePath\("account-linking", registrationNext\)/);
+  assert.match(callbackSource, /getLoginNoticePath\("invalid-confirmation", registrationNext\)/);
   assert.doesNotMatch(callbackSource, /completion\.code[^\n]*searchParams/);
 });
 

@@ -21,6 +21,12 @@ type LoginPageProps = {
 
 function getReasonMessage(reason?: string) {
   switch (reason) {
+    case "account-linking":
+      return "No pudimos completar tu acceso automáticamente. Inicia sesión para continuar.";
+    case "email-confirmed":
+      return "Tu correo fue confirmado. Inicia sesión para continuar.";
+    case "invalid-confirmation":
+      return "El enlace de confirmación no es válido o ya venció. Solicita uno nuevo.";
     case "missing-env":
       return "El acceso no está disponible en este momento. Comunícate con el administrador de QB Insumos.";
     default:

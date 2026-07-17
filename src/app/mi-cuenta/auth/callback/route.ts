@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { completeOwnCustomerAccount } from "@/lib/customer-registration/account";
+import {
+  completeConfirmedCustomerAccount,
+  getLoginNoticePath,
+  isMissingPkceContext,
+  withConfirmationState,
+} from "@/lib/customer-registration/confirmation";
 import { getSafeCustomerReturnPath } from "@/lib/customer-registration/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -9,8 +14,9 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const requestedNext = url.searchParams.get("next");
   const isRegistration = url.searchParams.get("registration") === "1";
+  const registrationNext = getSafeCustomerReturnPath(requestedNext);
   const next = isRegistration
-    ? getSafeCustomerReturnPath(requestedNext)
+    ? registrationNext
     : requestedNext === "/mi-cuenta/restablecer"
       ? requestedNext
       : "/mi-cuenta";
@@ -23,28 +29,34 @@ export async function GET(request: Request) {
 
     if (!error && supabase) {
       if (isRegistration) {
-        const { data } = await supabase.auth.getUser();
-        const metadata = data.user?.user_metadata;
-        const completion = await completeOwnCustomerAccount(supabase, {
-          businessName: metadata?.business_name,
-          responsibleName: metadata?.responsible_name,
-          phone: metadata?.phone,
-        });
+        const completion = await completeConfirmedCustomerAccount(supabase);
 
         if (!completion.completed) {
           await supabase.auth.signOut({ scope: "local" });
-          const registrationUrl = new URL("/registro", url.origin);
-          registrationUrl.searchParams.set(
-            "error",
-            "No pudimos completar la vinculación de tu cuenta. Inténtalo nuevamente.",
+          return NextResponse.redirect(
+            new URL(getLoginNoticePath("account-linking", registrationNext), url.origin),
           );
-          registrationUrl.searchParams.set("returnTo", next);
-          return NextResponse.redirect(registrationUrl);
         }
+
+        return NextResponse.redirect(
+          new URL(withConfirmationState(registrationNext, "confirmed"), url.origin),
+        );
       }
 
       return NextResponse.redirect(new URL(next, url.origin));
     }
+
+    if (isRegistration && error && isMissingPkceContext(error)) {
+      return NextResponse.redirect(
+        new URL(getLoginNoticePath("email-confirmed", registrationNext), url.origin),
+      );
+    }
+  }
+
+  if (isRegistration) {
+    return NextResponse.redirect(
+      new URL(getLoginNoticePath("invalid-confirmation", registrationNext), url.origin),
+    );
   }
 
   return NextResponse.redirect(new URL("/mi-cuenta?error=auth", url.origin));

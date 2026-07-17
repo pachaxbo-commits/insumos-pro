@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { CustomerAuth } from "@/components/customer-account/customer-auth";
+import { CustomerConfirmationStatus } from "@/components/customer-account/confirmation-status";
 import { CustomerPortal } from "@/components/customer-account/customer-portal";
 import { getQbCatalogData, getQbCustomerPortalData } from "@/lib/qb-catalog/data";
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 export default async function CustomerAccountPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string }>;
+  searchParams?: Promise<{ confirmation?: string; error?: string }>;
 }) {
   const [{ account, locations, orders, frequentProducts, error }, catalog] = await Promise.all([
     getQbCustomerPortalData(),
@@ -23,13 +24,16 @@ export default async function CustomerAccountPage({
   if (!account) return <CustomerAuth authError={params?.error === "auth"} />;
 
   return (
-    <CustomerPortal
-      account={account}
-      locations={locations}
-      orders={orders}
-      frequentProducts={frequentProducts}
-      catalogProducts={catalog.products}
-      error={error ?? catalog.error}
-    />
+    <>
+      <CustomerConfirmationStatus state={params?.confirmation} />
+      <CustomerPortal
+        account={account}
+        locations={locations}
+        orders={orders}
+        frequentProducts={frequentProducts}
+        catalogProducts={catalog.products}
+        error={error ?? catalog.error}
+      />
+    </>
   );
 }

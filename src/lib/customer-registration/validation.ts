@@ -32,6 +32,56 @@ export function getSafeCustomerReturnPath(
     : fallback;
 }
 
+export function getSafeCustomerReturnPathFromRedirect(
+  value: string | null | undefined,
+  authorizedOrigin: string,
+  fallback: CustomerRegistrationReturnPath = "/mi-cuenta",
+): CustomerRegistrationReturnPath {
+  if (!value || value.includes("\\") || value.startsWith("//")) return fallback;
+
+  try {
+    const origin = new URL(authorizedOrigin).origin;
+    const candidate = new URL(value, origin);
+
+    if (candidate.origin !== origin || candidate.username || candidate.password) {
+      return fallback;
+    }
+
+    return getSafeCustomerReturnPath(candidate.pathname, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+export function getSafeCustomerConfirmationReturnPath(input: {
+  returnTo?: string | null;
+  redirectTo?: string | null;
+  authorizedOrigin: string;
+}): CustomerRegistrationReturnPath {
+  if (input.returnTo) return getSafeCustomerReturnPath(input.returnTo);
+
+  if (input.redirectTo && !input.redirectTo.includes("\\")) {
+    try {
+      const origin = new URL(input.authorizedOrigin).origin;
+      const redirect = new URL(input.redirectTo, origin);
+      if (
+        redirect.origin === origin &&
+        redirect.pathname === "/mi-cuenta/auth/callback" &&
+        redirect.searchParams.get("registration") === "1"
+      ) {
+        return getSafeCustomerReturnPath(redirect.searchParams.get("next"));
+      }
+    } catch {
+      return "/mi-cuenta";
+    }
+  }
+
+  return getSafeCustomerReturnPathFromRedirect(
+    input.redirectTo,
+    input.authorizedOrigin,
+  );
+}
+
 const requiredText = (label: string, max: number) =>
   z
     .string()
