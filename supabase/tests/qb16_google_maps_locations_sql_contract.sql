@@ -334,6 +334,7 @@ declare
   v_location_a2 uuid;
   v_manual uuid;
   v_soft_delete uuid;
+  v_soft_delete_deactivated boolean;
   v_before_snapshot jsonb;
   v_rejected boolean;
 begin
@@ -547,7 +548,9 @@ begin
     null, 'Temporal', 'Direccion temporal QB16', null, null,
     null, null, null, false
   ) into v_soft_delete;
-  if not public.deactivate_own_qb_customer_location(v_soft_delete)
+  v_soft_delete_deactivated :=
+    public.deactivate_own_qb_customer_location(v_soft_delete);
+  if not v_soft_delete_deactivated
     or not exists (
       select 1 from public.qb_customer_locations
       where id = v_soft_delete and is_active = false
@@ -758,9 +761,14 @@ $historical_snapshot$;
 do $deactivate_primary$
 declare
   context qb16_test_context%rowtype;
+  v_location_a2_deactivated boolean;
+  v_location_a1_deactivated boolean;
+  v_manual_location_deactivated boolean;
 begin
   select * into strict context from qb16_test_context;
-  if not public.deactivate_own_qb_customer_location(context.location_a2_id)
+  v_location_a2_deactivated :=
+    public.deactivate_own_qb_customer_location(context.location_a2_id);
+  if not v_location_a2_deactivated
     or exists (
       select 1 from public.qb_customer_locations
       where id = context.location_a2_id and is_active = true
@@ -773,8 +781,12 @@ begin
   then
     raise exception 'QB-16 escenario 22: eliminar la principal no eligió sustituta segura.';
   end if;
-  if not public.deactivate_own_qb_customer_location(context.location_a1_id)
-    or not public.deactivate_own_qb_customer_location(context.manual_location_id)
+  v_location_a1_deactivated :=
+    public.deactivate_own_qb_customer_location(context.location_a1_id);
+  v_manual_location_deactivated :=
+    public.deactivate_own_qb_customer_location(context.manual_location_id);
+  if not v_location_a1_deactivated
+    or not v_manual_location_deactivated
     or exists (
       select 1 from public.qb_customer_locations
       where customer_account_id = context.customer_a_id
