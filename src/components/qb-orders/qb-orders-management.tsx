@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { InternalOrderCreator } from "@/components/qb-orders/internal-order-creator";
 import {
   cancelQbOrderBeforeDeliveryAction,
   confirmQbOrderDeliveryAction,
@@ -35,6 +36,7 @@ import {
 } from "@/lib/qb-orders/actions";
 import type {
   QbInternalOrder,
+  QbInternalOrderCreationData,
   QbInternalOrderItem,
   QbOrderActionState,
   QbPreparationLineStatus,
@@ -476,9 +478,13 @@ function OrderCard({
 
 export function QbOrdersManagement({
   orders,
+  creation,
+  canCreateOrder,
   error,
 }: {
   orders: QbInternalOrder[];
+  creation?: QbInternalOrderCreationData;
+  canCreateOrder: boolean;
   error?: string;
 }) {
   const [startState, startAction, startPending] = useActionState(
@@ -510,6 +516,8 @@ export function QbOrdersManagement({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      {canCreateOrder && creation ? <InternalOrderCreator {...creation} /> : null}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Card>

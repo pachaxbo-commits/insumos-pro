@@ -3,10 +3,12 @@ import "server-only";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getQbCatalogData } from "@/lib/qb-catalog/data";
 import type {
   QbInternalOrder,
   QbInternalOrderItem,
   QbInternalOrdersData,
+  QbInternalOrderCreationData,
   QbPreparationAllowedUnit,
 } from "@/types/qb-orders";
 import type { QbOrderStatus } from "@/types/qb-catalog";
@@ -82,6 +84,21 @@ type PresentationRow = {
   id: string;
   symbol: string;
   name: string;
+};
+
+type CustomerRow = {
+  id: string;
+  business_name: string;
+  responsible_name: string;
+  phone: string | null;
+};
+
+type CustomerLocationRow = {
+  id: string;
+  customer_account_id: string;
+  label: string;
+  address: string;
+  is_primary: boolean;
 };
 
 function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
@@ -174,11 +191,70 @@ async function getAllowedUnitsByProduct(
   return byProduct;
 }
 
-export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
+async function getInternalOrderCreationData(
+  supabase: SupabaseServerClient,
+): Promise<QbInternalOrderCreationData> {
+  const [catalog, customersResult, locationsResult] = await Promise.all([
+    getQbCatalogData(),
+    supabase
+      .from("customer_accounts")
+      .select("id, business_name, responsible_name, phone")
+      .eq("is_active", true)
+      .order("business_name", { ascending: true }),
+    supabase
+      .from("qb_customer_locations")
+      .select("id, customer_account_id, label, address, is_primary")
+      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
+      .order("sort_order", { ascending: true }),
+  ]);
+
+  const locationsByCustomer = new Map<string, CustomerLocationRow[]>();
+  if (!locationsResult.error) {
+    for (const location of (locationsResult.data ?? []) as CustomerLocationRow[]) {
+      const locations = locationsByCustomer.get(location.customer_account_id) ?? [];
+      locations.push(location);
+      locationsByCustomer.set(location.customer_account_id, locations);
+    }
+  }
+
+  return {
+    products: catalog.products
+      .map((product) => ({
+        ...product,
+        allowedUnits: product.allowedUnits.filter(
+          (unit) => !/^bs\.?$/i.test(unit.label.trim()),
+        ),
+      }))
+      .filter((product) => product.allowedUnits.length > 0),
+    customers: customersResult.error
+      ? []
+      : ((customersResult.data ?? []) as CustomerRow[]).map((customer) => ({
+          id: customer.id,
+          label: customer.business_name,
+          responsibleName: customer.responsible_name,
+          phone: customer.phone,
+          locations: (locationsByCustomer.get(customer.id) ?? []).map((location) => ({
+            id: location.id,
+            label: location.label,
+            address: location.address,
+            isPrimary: location.is_primary,
+          })),
+        })),
+  };
+}
+
+export async function getQbInternalOrdersData(
+  includeCreationData = false,
+): Promise<QbInternalOrdersData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { orders: [], error: "No pudimos cargar los pedidos en este momento. Comunícate con el administrador de QB Insumos." };
+
+  const creationPromise = includeCreationData
+    ? getInternalOrderCreationData(supabase)
+    : Promise.resolve(undefined);
 
   const { data: ordersData, error } = await supabase
     .from("qb_orders")
@@ -197,7 +273,7 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
   const orders = (ordersData ?? []) as OrderRow[];
   const orderIds = orders.map((order) => order.id);
 
-  if (!orderIds.length) return { orders: [] };
+  if (!orderIds.length) return { orders: [], creation: await creationPromise };
 
   const { data: itemsData, error: itemsError } = await supabase
     .from("qb_order_items")
@@ -305,5 +381,5 @@ export async function getQbInternalOrdersData(): Promise<QbInternalOrdersData> {
     };
   });
 
-  return { orders: mappedOrders };
+  return { orders: mappedOrders, creation: await creationPromise };
 }

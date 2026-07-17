@@ -14,6 +14,55 @@ const actionState = (success: boolean, message: string): QbOrderActionState => (
 
 const uuidSchema = z.string().uuid();
 
+const internalOrderItemSchema = z.object({
+  productId: z.string().uuid(),
+  allowedUnitId: z.string().uuid(),
+  quantity: z.number().finite().positive().max(10000),
+  notes: z.string().trim().max(500).optional().default(""),
+});
+
+const createInternalOrderSchema = z
+  .object({
+    orderMode: z.enum(["registered", "guest"]),
+    customerAccountId: z.string().uuid().optional().nullable(),
+    customerLocationId: z.string().uuid().optional().nullable(),
+    businessName: z.string().trim().max(120).optional().default(""),
+    responsibleName: z.string().trim().max(120).optional().default(""),
+    phone: z.string().trim().max(25).optional().default(""),
+    email: z.string().trim().email().max(254).optional().or(z.literal("")).default(""),
+    address: z.string().trim().max(300).optional().default(""),
+    locationLabel: z.string().trim().max(80).optional().default(""),
+    locationReference: z.string().trim().max(300).optional().default(""),
+    customerNotes: z.string().trim().max(1000).optional().default(""),
+    idempotencyKey: z.string().uuid(),
+    items: z.array(internalOrderItemSchema).min(1).max(30),
+  })
+  .superRefine((value, context) => {
+    if (value.orderMode === "registered") {
+      if (!value.customerAccountId) {
+        context.addIssue({ code: "custom", path: ["customerAccountId"], message: "Selecciona un cliente." });
+      }
+      if (!value.customerLocationId) {
+        context.addIssue({ code: "custom", path: ["customerLocationId"], message: "Selecciona una ubicacion." });
+      }
+      return;
+    }
+
+    if (value.businessName.length < 2) {
+      context.addIssue({ code: "custom", path: ["businessName"], message: "Ingresa el nombre del negocio." });
+    }
+    if (value.responsibleName.length < 2) {
+      context.addIssue({ code: "custom", path: ["responsibleName"], message: "Ingresa el nombre del responsable." });
+    }
+    const phoneDigits = value.phone.replace(/\D/g, "");
+    if (!/^\+?[0-9\s()-]+$/.test(value.phone) || phoneDigits.length < 7 || phoneDigits.length > 15) {
+      context.addIssue({ code: "custom", path: ["phone"], message: "Ingresa un telefono valido." });
+    }
+    if (value.address.length < 5) {
+      context.addIssue({ code: "custom", path: ["address"], message: "Ingresa una direccion." });
+    }
+  });
+
 const preparationLineSchema = z.object({
   orderItemId: z.string().uuid(),
   status: z.enum(["completo", "parcial", "no_disponible"]),
@@ -42,6 +91,95 @@ function errorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function parseInternalOrderItems(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = z.array(internalOrderItemSchema).min(1).max(30).safeParse(JSON.parse(value));
+    if (!parsed.success) return null;
+    return new Set(parsed.data.map((item) => item.productId)).size === parsed.data.length
+      ? parsed.data
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createQbInternalOrderAction(
+  _previous: QbOrderActionState,
+  formData: FormData,
+): Promise<QbOrderActionState> {
+  const auth = await requireRoleAccess("/pedidos");
+  if (auth.user.role !== "administrador") {
+    return actionState(false, "Solo un administrador puede crear pedidos internos.");
+  }
+
+  const items = parseInternalOrderItems(formData.get("items"));
+  if (!items) return actionState(false, "Agrega productos validos sin repetir.");
+
+  const parsed = createInternalOrderSchema.safeParse({
+    orderMode: formData.get("order_mode"),
+    customerAccountId: formData.get("customer_account_id") || null,
+    customerLocationId: formData.get("customer_location_id") || null,
+    businessName: formData.get("business_name"),
+    responsibleName: formData.get("responsible_name"),
+    phone: formData.get("phone"),
+    email: formData.get("email"),
+    address: formData.get("address"),
+    locationLabel: formData.get("location_label"),
+    locationReference: formData.get("location_reference"),
+    customerNotes: formData.get("customer_notes"),
+    idempotencyKey: formData.get("idempotency_key"),
+    items,
+  });
+
+  if (!parsed.success) {
+    return actionState(false, parsed.error.issues[0]?.message ?? "Revisa el pedido.");
+  }
+
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+
+  const { data, error } = await supabase.rpc("create_qb_internal_catalog_order", {
+    p_order_mode: parsed.data.orderMode,
+    p_customer_account_id: parsed.data.customerAccountId,
+    p_customer_location_id: parsed.data.customerLocationId,
+    p_business_name: parsed.data.businessName || null,
+    p_full_name: parsed.data.responsibleName || null,
+    p_phone: parsed.data.phone || null,
+    p_email: parsed.data.email || null,
+    p_address: parsed.data.address || null,
+    p_location_label: parsed.data.locationLabel || null,
+    p_location_reference: parsed.data.locationReference || null,
+    p_customer_notes: parsed.data.customerNotes || null,
+    p_items: parsed.data.items.map((item) => ({
+      product_id: item.productId,
+      allowed_unit_id: item.allowedUnitId,
+      quantity: item.quantity,
+      notes: item.notes || null,
+    })),
+    p_idempotency_key: parsed.data.idempotencyKey,
+  });
+
+  if (error) {
+    return actionState(false, errorMessage(error, "No se pudo crear el pedido."));
+  }
+
+  const result = ((data ?? []) as Array<{
+    order_reference: string | null;
+    result_code: string;
+  }>)[0];
+  if (!result || !["created", "already_created"].includes(result.result_code)) {
+    return actionState(false, "No se pudo crear el pedido. Revisa cliente, ubicacion y productos.");
+  }
+
+  revalidatePath("/pedidos");
+  return {
+    success: true,
+    message: result.result_code === "already_created" ? "El pedido ya habia sido recibido." : "Pedido creado y enviado a preparacion.",
+    reference: result.order_reference ?? undefined,
+  };
 }
 
 export async function startQbOrderPreparationAction(

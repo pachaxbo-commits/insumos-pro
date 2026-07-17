@@ -1,4 +1,5 @@
 import type { QbOrderStatus } from "@/types/qb-catalog";
+import type { QbCatalogProduct } from "@/types/qb-catalog";
 
 export type QbPreparationStatus = "en_preparacion" | "preparado" | "cancelado";
 
@@ -65,10 +66,32 @@ export type QbInternalOrder = {
 
 export type QbInternalOrdersData = {
   orders: QbInternalOrder[];
+  creation?: QbInternalOrderCreationData;
   error?: string;
+};
+
+export type QbInternalOrderCustomerLocation = {
+  id: string;
+  label: string;
+  address: string;
+  isPrimary: boolean;
+};
+
+export type QbInternalOrderCustomer = {
+  id: string;
+  label: string;
+  responsibleName: string;
+  phone: string | null;
+  locations: QbInternalOrderCustomerLocation[];
+};
+
+export type QbInternalOrderCreationData = {
+  customers: QbInternalOrderCustomer[];
+  products: QbCatalogProduct[];
 };
 
 export type QbOrderActionState = {
   success: boolean;
   message?: string;
+  reference?: string;
 };
