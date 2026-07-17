@@ -136,6 +136,7 @@ export function GoogleLocationPicker({
   const markerRef = useRef<MarkerInstance | null>(null);
   const geocoderRef = useRef<GeocoderInstance | null>(null);
   const initializedRef = useRef(false);
+  const initializationRequestRef = useRef(0);
   const selectionRequestRef = useRef(0);
   const selectionRef = useRef(selection);
   const onChangeRef = useRef(onChange);
@@ -193,15 +194,28 @@ export function GoogleLocationPicker({
   }
 
   async function initializeMap() {
-    if (initializedRef.current || !apiKey || !mapContainerRef.current) return;
+    const mapContainer = mapContainerRef.current;
+    if (initializedRef.current || !apiKey || !mapContainer) return;
+
+    const initializationRequestId = initializationRequestRef.current + 1;
+    initializationRequestRef.current = initializationRequestId;
     initializedRef.current = true;
     setMapStatus("loading");
+
+    const isCurrentInitialization = () =>
+      initializationRequestRef.current === initializationRequestId &&
+      mapContainerRef.current === mapContainer;
 
     try {
       const maps = window.google?.maps;
       if (!maps) throw new Error("maps_unavailable");
-      const mapsLibrary = await maps.importLibrary("maps");
-      const markerLibrary = await maps.importLibrary("marker");
+      const [mapsLibrary, markerLibrary, geocodingLibrary] = await Promise.all([
+        maps.importLibrary("maps"),
+        maps.importLibrary("marker"),
+        maps.importLibrary("geocoding"),
+      ]);
+      if (!isCurrentInitialization()) return;
+
       const MapConstructor = mapsLibrary.Map as new (
         element: HTMLElement,
         options: Record<string, unknown>,
@@ -209,8 +223,18 @@ export function GoogleLocationPicker({
       const MarkerConstructor = markerLibrary.AdvancedMarkerElement as new (
         options: Record<string, unknown>,
       ) => MarkerInstance;
+      const GeocoderConstructor = geocodingLibrary.Geocoder as new () => GeocoderInstance;
+      if (
+        typeof MapConstructor !== "function" ||
+        typeof MarkerConstructor !== "function" ||
+        typeof GeocoderConstructor !== "function"
+      ) {
+        throw new Error("maps_library_incomplete");
+      }
+
+      const geocoder = new GeocoderConstructor();
       const center = initialCoordinates ?? COCHABAMBA;
-      const map = new MapConstructor(mapContainerRef.current, {
+      const map = new MapConstructor(mapContainer, {
         center,
         zoom: initialCoordinates ? 17 : 13,
         mapId: configuredMapId || "DEMO_MAP_ID",
@@ -224,9 +248,14 @@ export function GoogleLocationPicker({
         gmpDraggable: !readOnly,
         title: "Ubicación seleccionada",
       });
+      if (!isCurrentInitialization()) {
+        marker.map = null;
+        return;
+      }
+
       mapRef.current = map;
       markerRef.current = marker;
-      geocoderRef.current = new maps.Geocoder();
+      geocoderRef.current = geocoder;
 
       if (!readOnly) {
         map.addListener("click", (event) => {
@@ -245,6 +274,8 @@ export function GoogleLocationPicker({
       if (!readOnly && autocompleteContainerRef.current) {
         try {
           const placesLibrary = await maps.importLibrary("places");
+          if (!isCurrentInitialization()) return;
+
           const AutocompleteConstructor = placesLibrary.PlaceAutocompleteElement as new (
             options?: Record<string, unknown>,
           ) => PlaceAutocompleteElementInstance;
@@ -302,8 +333,10 @@ export function GoogleLocationPicker({
         }
       }
 
-      setMapStatus("ready");
+      if (isCurrentInitialization()) setMapStatus("ready");
     } catch {
+      if (!isCurrentInitialization()) return;
+
       initializedRef.current = false;
       setMapStatus("unavailable");
       setMessage(MAP_UNAVAILABLE_MESSAGE);
@@ -340,11 +373,23 @@ export function GoogleLocationPicker({
 
   useEffect(
     () => () => {
+      initializationRequestRef.current += 1;
+      selectionRequestRef.current += 1;
+      initializedRef.current = false;
       if (markerRef.current) markerRef.current.map = null;
+      mapRef.current = null;
+      markerRef.current = null;
+      geocoderRef.current = null;
       autocompleteContainerRef.current?.replaceChildren();
     },
     [],
   );
+
+  useEffect(() => {
+    if (apiKey && window.google?.maps && mapContainerRef.current) {
+      void initializeMap();
+    }
+  });
 
   const scriptUrl = apiKey
     ? `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&loading=async&v=weekly&language=es&region=BO`
@@ -439,6 +484,8 @@ export function GoogleLocationPicker({
           strategy="afterInteractive"
           onReady={() => void initializeMap()}
           onError={() => {
+            initializationRequestRef.current += 1;
+            initializedRef.current = false;
             setMapStatus("unavailable");
             setMessage(MAP_UNAVAILABLE_MESSAGE);
           }}
