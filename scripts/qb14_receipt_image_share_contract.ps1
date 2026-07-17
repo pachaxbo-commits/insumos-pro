@@ -3,12 +3,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $pagePath = Join-Path $root "src/app/(private)/recibos/[id]/page.tsx"
 $actionsPath = Join-Path $root "src/components/qb-receipts/receipt-image-actions.tsx"
+$documentPath = Join-Path $root "src/components/qb-receipts/receipt-document.tsx"
 $managementPath = Join-Path $root "src/components/qb-receipts/qb-receipts-management.tsx"
 $datePath = Join-Path $root "src/lib/date-time.ts"
 $exportPath = Join-Path $root "src/lib/qb-receipts/receipt-export.ts"
 
 $page = Get-Content -LiteralPath $pagePath -Raw -Encoding utf8
 $actions = Get-Content -LiteralPath $actionsPath -Raw -Encoding utf8
+$document = Get-Content -LiteralPath $documentPath -Raw -Encoding utf8
 $management = Get-Content -LiteralPath $managementPath -Raw -Encoding utf8
 $dateHelper = Get-Content -LiteralPath $datePath -Raw -Encoding utf8
 $exportHelper = Get-Content -LiteralPath $exportPath -Raw -Encoding utf8
@@ -29,25 +31,29 @@ function Assert-Contract {
   Write-Output "PASS $($script:Passed.ToString('00')) - $Name"
 }
 
-$exportStart = $page.IndexOf('id={receiptTargetId}')
+$exportStart = $page.IndexOf('variant="customer-export"')
 $actionsStart = $page.IndexOf('<ReceiptImageActions')
 
 Assert-Contract "El recibo exportable contiene el codigo" (
-  $exportStart -ge 0 -and $page.IndexOf('{receipt.number}', $exportStart) -gt $exportStart
+  $exportStart -ge 0 -and $document.Contains('{receipt.number}')
 )
 Assert-Contract "Las lineas se renderizan dinamicamente dentro del recibo" (
-  $page.IndexOf('receipt.lines.map', $exportStart) -gt $exportStart
+  $document.Contains('receipt.lines.map')
 )
-Assert-Contract "El recibo contiene subtotal y total" (
-  $page.IndexOf('<span>Subtotal</span>', $exportStart) -gt $exportStart -and
-  $page.IndexOf('<span>Total</span>', $exportStart) -gt $exportStart
+Assert-Contract "La vista admin contiene subtotal y total" (
+  $document.Contains('<span>Subtotal</span>') -and
+  $document.Contains('<span>Total</span>') -and
+  $document -match '!isCustomerExport\s*\?\s*\([\s\S]*?<span>Subtotal</span>[\s\S]*?receipt\.subtotalAmount'
 )
-Assert-Contract "El recibo contiene el aviso no fiscal" (
-  $page.IndexOf('No constituye factura fiscal', $exportStart) -gt $exportStart
+Assert-Contract "La vista interna conserva el aviso no fiscal" (
+  $document.Contains('No constituye factura fiscal') -and
+  $document.Contains('!isCustomerExport ? (')
 )
 Assert-Contract "La navegacion y los botones quedan fuera del nodo exportable" (
   $actionsStart -ge 0 -and $actionsStart -lt $exportStart -and
-  $page.IndexOf('Volver') -lt $exportStart
+  $page.IndexOf('Volver') -lt $exportStart -and
+  -not $document.Contains('<ReceiptImageActions') -and
+  -not $document.Contains('<PrintReceiptButton')
 )
 Assert-Contract "El nombre PNG se sanitiza" (
   $exportHelper.Contains('unsafeFilenameCharacters') -and
@@ -59,7 +65,7 @@ Assert-Contract "Los recibos largos usan la altura completa" (
   $actions.Contains('height,') -and
   $actions.Contains('receipt.scrollWidth') -and
   $actions.Contains('qb-receipt-export-capturing') -and
-  $page.Contains('data-qb-receipt-table')
+  $document.Contains('data-qb-receipt-table')
 )
 Assert-Contract "Los dobles clics quedan bloqueados" (
   $actions.Contains('busyRef.current') -and
@@ -88,7 +94,7 @@ Assert-Contract "La fecha civil usa America La Paz sin retroceder a UTC" (
   -not $dateHelper.Contains('T00:00:00')
 )
 Assert-Contract "Lista y detalle usan el mismo helper de fecha" (
-  $page.Contains('formatBoliviaDate') -and
+  $document.Contains('formatBoliviaDate') -and
   $management.Contains('formatBoliviaDate') -and
   -not $management.Contains('function shortDate')
 )
@@ -240,8 +246,50 @@ Assert-Contract "Fecha impresion y captura PNG permanecen integras" (
   $actions.Contains('pixelRatio: 2')
 )
 
-if ($script:Passed -ne 48) {
-  throw "QB-14.1 FAIL: se esperaban 48 controles y aprobaron $script:Passed."
+Assert-Contract "Existe variante interna y variante customer export" (
+  $document.Contains('type ReceiptDocumentVariant = "admin" | "customer-export"') -and
+  $page.Contains('variant="admin"') -and
+  $page.Contains('variant="customer-export"')
+)
+Assert-Contract "PNG y WhatsApp apuntan solo a customer export" (
+  $page.Contains('id={receiptTargetId}') -and
+  $page.IndexOf('id={receiptTargetId}') -lt $page.IndexOf('variant="customer-export"') -and
+  $page.IndexOf('id={receiptTargetId}') -gt $page.IndexOf('variant="admin"')
+)
+Assert-Contract "Customer export oculta Precio base" (
+  $document -match '!isCustomerExport\s*\?\s*\(\s*<th[^>]*>Precio base</th>'
+)
+Assert-Contract "Customer export oculta factores aplicados" (
+  $document -match '!isCustomerExport\s*\?\s*\(\s*<div>\s*<p[^>]*>\s*Factores aplicados'
+)
+Assert-Contract "Customer export oculta aviso fiscal y de pago" (
+  $document -match '!isCustomerExport\s*\?\s*\(\s*<p[^>]*>\s*No constituye factura fiscal'
+)
+Assert-Contract "Customer export conserva columnas requeridas" (
+  $document.Contains('>Producto</th>') -and
+  $document.Contains('>Cantidad</th>') -and
+  $document.Contains('>Precio final</th>') -and
+  $document.Contains('>Total</th>')
+)
+Assert-Contract "Customer export conserva encabezado y datos generales" (
+  $document.Contains('QbInsumosBrand') -and
+  $document.Contains('Cliente') -and
+  $document.Contains('Periodo') -and
+  $document.Contains('Emision') -and
+  $document.Contains('Pedidos incluidos')
+)
+Assert-Contract "Customer export conserva solo el total final" (
+  ([regex]::Matches($document, 'receipt\.subtotalAmount')).Count -eq 1 -and
+  $document.Contains('<span>Total</span>') -and
+  $document.Contains('money(receipt.totalAmount)')
+)
+Assert-Contract "La nota visible se comparte sin duplicarse" (
+  ([regex]::Matches($document, 'receipt\.visibleNote')).Count -eq 2 -and
+  $document.Contains('<p className="font-medium">Nota</p>')
+)
+
+if ($script:Passed -ne 57) {
+  throw "QB-14.2 FAIL: se esperaban 57 controles y aprobaron $script:Passed."
 }
 
-Write-Output "Contrato focalizado local QB-14.1 OK: 48/48 controles."
+Write-Output "Contrato focalizado local QB-14.2 OK: 57/57 controles."

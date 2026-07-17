@@ -16,6 +16,14 @@ const actionsSource = readFileSync(
   new URL("../src/components/qb-receipts/receipt-image-actions.tsx", import.meta.url),
   "utf8",
 );
+const documentSource = readFileSync(
+  new URL("../src/components/qb-receipts/receipt-document.tsx", import.meta.url),
+  "utf8",
+);
+const receiptPageSource = readFileSync(
+  new URL("../src/app/(private)/recibos/[id]/page.tsx", import.meta.url),
+  "utf8",
+);
 
 test("date-only values keep their civil day in Bolivia", () => {
   assert.equal(formatBoliviaDate("2026-07-16"), "16 de julio de 2026");
@@ -150,4 +158,71 @@ test("desktop interface keeps the WhatsApp label and uses no automatic attachmen
     /buildWhatsAppShareUrl\([^)]*(blob|base64|createObjectURL)/,
   );
   assert.doesNotMatch(actionsSource, /fetch\(|supabase|rpc\(|Server Action/);
+});
+
+test("PNG and WhatsApp capture only the customer-export receipt", () => {
+  assert.match(
+    receiptPageSource,
+    /id=\{receiptTargetId\}[\s\S]*variant="customer-export"/,
+  );
+  assert.match(receiptPageSource, /<ReceiptDocument receipt=\{receipt\} variant="admin" \/>/);
+  assert.match(actionsSource, /document\.getElementById\(targetId\)/);
+});
+
+test("customer export hides internal factors, base price and fiscal notice", () => {
+  assert.match(
+    documentSource,
+    /!isCustomerExport \? \(\s*<th[^>]*>Precio base<\/th>/,
+  );
+  assert.match(
+    documentSource,
+    /!isCustomerExport \? \(\s*<div>\s*<p[^>]*>\s*Factores aplicados/,
+  );
+  assert.match(
+    documentSource,
+    /!isCustomerExport \? \(\s*<p[^>]*>\s*No constituye factura fiscal/,
+  );
+});
+
+test("customer export keeps the required customer-facing receipt fields", () => {
+  for (const label of [
+    "Cliente",
+    "Periodo",
+    "Emision",
+    "Pedidos incluidos",
+    "Producto",
+    "Cantidad",
+    "Precio final",
+    "Total",
+  ]) {
+    assert.match(documentSource, new RegExp(label));
+  }
+  assert.match(documentSource, /receipt\.number/);
+  assert.match(documentSource, /QbInsumosBrand/);
+});
+
+test("admin keeps subtotal while customer export exposes only the final total", () => {
+  assert.match(
+    documentSource,
+    /!isCustomerExport \? \(\s*<div[^>]*>\s*<span>Subtotal<\/span>[\s\S]*receipt\.subtotalAmount/,
+  );
+  assert.match(documentSource, /<span>Total<\/span>[\s\S]*receipt\.totalAmount/);
+  assert.equal((documentSource.match(/receipt\.subtotalAmount/g) ?? []).length, 1);
+});
+
+test("visibleNote is rendered once for both receipt variants", () => {
+  assert.equal((documentSource.match(/receipt\.visibleNote/g) ?? []).length, 2);
+  assert.match(
+    documentSource,
+    /\{receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
+  );
+});
+
+test("export controls remain outside the captured customer receipt", () => {
+  const actionsPosition = receiptPageSource.indexOf("<ReceiptImageActions");
+  const exportPosition = receiptPageSource.indexOf('variant="customer-export"');
+
+  assert.ok(actionsPosition >= 0);
+  assert.ok(exportPosition > actionsPosition);
+  assert.doesNotMatch(documentSource, /ReceiptImageActions|PrintReceiptButton|<Button/);
 });
