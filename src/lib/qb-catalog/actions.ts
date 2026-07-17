@@ -24,6 +24,16 @@ const optionalText = (max: number) =>
     z.string().max(max).nullable(),
   );
 
+const optionalCoordinate = (min: number, max: number) =>
+  z.preprocess(
+    (value) => {
+      if (value === null || value === undefined || value === "") return null;
+      if (typeof value !== "string" && typeof value !== "number") return Number.NaN;
+      return Number(value);
+    },
+    z.number().finite().min(min).max(max).nullable(),
+  );
+
 const profileSchema = z.object({
   business_name: z.string().trim().min(2, "Ingresa el nombre del negocio.").max(120),
   responsible_name: z.string().trim().min(2, "Ingresa el nombre del responsable.").max(120),
@@ -33,17 +43,32 @@ const profileSchema = z.object({
     .refine(isValidWhatsApp, "Ingresa un número de WhatsApp válido."),
 });
 
-const locationSchema = z.object({
-  id: z.uuid().optional(),
-  label: z.string().trim().min(2, "Nombra la ubicacion.").max(80),
-  address: z.string().trim().min(5, "Ingresa una direccion o ubicacion.").max(300),
-  reference: optionalText(300),
-  phone: optionalText(25).refine(
-    (value) => !value || /^\+?[0-9\s-]{7,25}$/.test(value),
-    "Telefono de ubicacion invalido.",
-  ),
-  is_primary: z.enum(["on", "true", "1"]).optional(),
-});
+const locationSchema = z
+  .object({
+    id: z.uuid().optional(),
+    label: z.string().trim().min(2, "Nombra la ubicación.").max(80),
+    address: z.string().trim().min(5, "Ingresa una dirección o ubicación.").max(300),
+    reference: optionalText(300),
+    phone: optionalText(25).refine(
+      (value) =>
+        !value ||
+        (/^\+?[0-9\s()-]+$/.test(value) && value.replace(/\D/g, "").length >= 7 && value.replace(/\D/g, "").length <= 15),
+      "Teléfono de ubicación inválido.",
+    ),
+    latitude: optionalCoordinate(-90, 90),
+    longitude: optionalCoordinate(-180, 180),
+    google_place_id: optionalText(200),
+    is_primary: z.enum(["on", "true", "1"]).optional(),
+  })
+  .superRefine((value, context) => {
+    if ((value.latitude === null) !== (value.longitude === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Selecciona nuevamente la ubicación en el mapa.",
+        path: ["latitude"],
+      });
+    }
+  });
 
 const idSchema = z.object({
   id: z.uuid("Ubicacion invalida."),
@@ -178,50 +203,50 @@ export async function saveQbCustomerLocationAction(
     return { success: false, message: access.message ?? "Inicia sesion." };
   }
 
-  const makePrimary = Boolean(parsed.data.is_primary);
-  if (makePrimary) {
-    await access.supabase
-      .from("qb_customer_locations")
-      .update({ is_primary: false })
-      .eq("customer_account_id", access.customerId);
-  }
+  const { data, error } = await access.supabase.rpc("save_own_qb_customer_location", {
+    p_id: parsed.data.id ?? null,
+    p_label: parsed.data.label,
+    p_address: parsed.data.address,
+    p_reference: parsed.data.reference,
+    p_phone: parsed.data.phone,
+    p_latitude: parsed.data.latitude,
+    p_longitude: parsed.data.longitude,
+    p_google_place_id: parsed.data.google_place_id,
+    p_is_primary: Boolean(parsed.data.is_primary),
+  });
 
-  if (parsed.data.id) {
-    const { error } = await access.supabase
-      .from("qb_customer_locations")
-      .update({
-        label: parsed.data.label,
-        address: parsed.data.address,
-        reference: parsed.data.reference,
-        phone: parsed.data.phone,
-        is_primary: makePrimary,
-      })
-      .eq("id", parsed.data.id)
-      .eq("customer_account_id", access.customerId);
-
-    if (error) return { success: false, message: "No pudimos actualizar la ubicacion." };
-  } else {
-    const { count } = await access.supabase
-      .from("qb_customer_locations")
-      .select("id", { count: "exact", head: true })
-      .eq("customer_account_id", access.customerId)
-      .eq("is_active", true);
-
-    const { error } = await access.supabase.from("qb_customer_locations").insert({
-      customer_account_id: access.customerId,
-      label: parsed.data.label,
-      address: parsed.data.address,
-      reference: parsed.data.reference,
-      phone: parsed.data.phone,
-      is_primary: makePrimary || (count ?? 0) === 0,
-    });
-
-    if (error) return { success: false, message: "No pudimos crear la ubicacion." };
+  if (error || typeof data !== "string") {
+    return { success: false, message: "No pudimos guardar la ubicación." };
   }
 
   revalidatePath("/mi-cuenta");
   revalidatePath("/catalogo/checkout");
-  return { success: true, message: "Ubicacion guardada." };
+  return { success: true, message: "Ubicación guardada.", locationId: data };
+}
+
+export async function setPrimaryQbCustomerLocationAction(
+  _state: QbCatalogActionState,
+  formData: FormData,
+): Promise<QbCatalogActionState> {
+  const parsed = idSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { success: false, message: parsed.error.issues[0]?.message };
+
+  const access = await getAuthenticatedCustomer();
+  if (!access.supabase || !access.customerId) {
+    return { success: false, message: access.message ?? "Inicia sesión." };
+  }
+
+  const { data, error } = await access.supabase.rpc(
+    "set_own_qb_customer_location_primary",
+    { p_id: parsed.data.id },
+  );
+  if (error || data !== true) {
+    return { success: false, message: "No pudimos cambiar la ubicación principal." };
+  }
+
+  revalidatePath("/mi-cuenta");
+  revalidatePath("/catalogo/checkout");
+  return { success: true, message: "Ubicación principal actualizada." };
 }
 
 export async function deactivateQbCustomerLocationAction(
@@ -236,17 +261,18 @@ export async function deactivateQbCustomerLocationAction(
     return { success: false, message: access.message ?? "Inicia sesion." };
   }
 
-  const { error } = await access.supabase
-    .from("qb_customer_locations")
-    .update({ is_active: false, is_primary: false })
-    .eq("id", parsed.data.id)
-    .eq("customer_account_id", access.customerId);
+  const { data, error } = await access.supabase.rpc(
+    "deactivate_own_qb_customer_location",
+    { p_id: parsed.data.id },
+  );
 
-  if (error) return { success: false, message: "No pudimos desactivar la ubicacion." };
+  if (error || data !== true) {
+    return { success: false, message: "No pudimos eliminar la ubicación." };
+  }
 
   revalidatePath("/mi-cuenta");
   revalidatePath("/catalogo/checkout");
-  return { success: true, message: "Ubicacion desactivada." };
+  return { success: true, message: "Ubicación eliminada." };
 }
 
 export async function submitQbCatalogOrderAction(

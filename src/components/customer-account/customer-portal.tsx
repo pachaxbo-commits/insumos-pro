@@ -4,28 +4,21 @@ import { useActionState } from "react";
 import Link from "next/link";
 import {
   LogOut,
-  MapPin,
   PackageCheck,
-  Plus,
   RefreshCcw,
   Star,
-  Trash2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
+import { CustomerLocationsManager } from "@/components/customer-account/customer-locations-manager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { saveLocalCart } from "@/hooks/use-local-cart";
 import { customerLogoutAction } from "@/lib/customer-account/actions";
-import {
-  deactivateQbCustomerLocationAction,
-  saveQbCustomerLocationAction,
-  updateQbCustomerProfileAction,
-} from "@/lib/qb-catalog/actions";
+import { updateQbCustomerProfileAction } from "@/lib/qb-catalog/actions";
 import type {
   QbCatalogActionState,
   QbCatalogProduct,
@@ -76,14 +69,6 @@ export function CustomerPortal({
 }) {
   const [profileState, profileAction, profilePending] = useActionState(
     updateQbCustomerProfileAction,
-    initialState,
-  );
-  const [locationState, locationAction, locationPending] = useActionState(
-    saveQbCustomerLocationAction,
-    initialState,
-  );
-  const [deactivateState, deactivateAction, deactivatePending] = useActionState(
-    deactivateQbCustomerLocationAction,
     initialState,
   );
   const productMap = new Map(catalogProducts.map((product) => [product.id, product]));
@@ -293,84 +278,7 @@ export function CustomerPortal({
             </form>
           </section>
 
-          <section className="rounded-lg border bg-background p-5">
-            <div className="flex items-center gap-2">
-              <MapPin className="size-5 text-emerald-700" />
-              <h2 className="text-lg font-semibold">Ubicaciones</h2>
-            </div>
-            {locationState.message ? (
-              <p className={`mt-3 rounded-md p-3 text-sm ${locationState.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
-                {locationState.message}
-              </p>
-            ) : null}
-            {deactivateState.message ? (
-              <p className={`mt-3 rounded-md p-3 text-sm ${deactivateState.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
-                {deactivateState.message}
-              </p>
-            ) : null}
-
-            <div className="mt-4 space-y-3">
-              {locations.length ? (
-                locations.map((location) => (
-                  <article key={location.id} className="rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">
-                          {location.label}
-                          {location.isPrimary ? (
-                            <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                              Principal
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">{location.address}</p>
-                        {location.reference ? (
-                          <p className="mt-1 text-xs text-muted-foreground">{location.reference}</p>
-                        ) : null}
-                      </div>
-                      <form action={deactivateAction}>
-                        <input type="hidden" name="id" value={location.id} />
-                        <Button type="submit" variant="ghost" size="icon-sm" disabled={deactivatePending}>
-                          <Trash2 className="size-4" />
-                          <span className="sr-only">Desactivar {location.label}</span>
-                        </Button>
-                      </form>
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  Aún no tienes ubicaciones guardadas.
-                </p>
-              )}
-            </div>
-
-            <form action={locationAction} className="mt-5 space-y-3 border-t pt-4">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Plus className="size-4" />
-                Nueva ubicacion
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="location-label">Nombre</Label>
-                <Input id="location-label" name="label" placeholder="Casa, puesto, almacen" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="location-address">Ubicacion</Label>
-                <Textarea id="location-address" name="address" required rows={3} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="location-reference">Referencia</Label>
-                <Input id="location-reference" name="reference" />
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="is_primary" className="size-4" />
-                Marcar como principal
-              </label>
-              <Button type="submit" disabled={locationPending} className="w-full">
-                {locationPending ? "Guardando..." : "Guardar ubicacion"}
-              </Button>
-            </form>
-          </section>
+          <CustomerLocationsManager locations={locations} />
         </aside>
       </div>
     </main>

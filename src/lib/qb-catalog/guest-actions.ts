@@ -41,29 +41,41 @@ const guestOrderItemSchema = z.object({
   notes: optionalText(500).optional(),
 });
 
-const guestOrderSchema = z.object({
-  businessName: z.string().trim().min(2).max(120),
-  fullName: z.string().trim().min(2).max(120),
-  phone: z
-    .string()
-    .trim()
-    .min(7)
-    .max(25)
-    .regex(/^\+?[0-9\s()-]+$/),
-  email: optionalText(254).refine(
-    (value) => !value || z.email().safeParse(value).success,
-    "Correo invalido.",
-  ),
-  address: z.string().trim().min(5).max(300),
-  latitude: z.number().finite().min(-90).max(90),
-  longitude: z.number().finite().min(-180).max(180),
-  label: optionalText(80).refine((value) => !value || value.length >= 2),
-  reference: optionalText(300),
-  googlePlaceId: optionalText(200),
-  customerNotes: optionalText(1000),
-  idempotencyKey: z.string().trim().pipe(z.uuid()),
-  items: z.array(guestOrderItemSchema).min(1).max(MAX_ORDER_ITEMS),
-});
+const guestOrderSchema = z
+  .object({
+    businessName: z.string().trim().min(2).max(120),
+    fullName: z.string().trim().min(2).max(120),
+    phone: z
+      .string()
+      .trim()
+      .min(7)
+      .max(25)
+      .regex(/^\+?[0-9\s()-]+$/),
+    email: optionalText(254).refine(
+      (value) => !value || z.email().safeParse(value).success,
+      "Correo invalido.",
+    ),
+    address: z.string().trim().min(5).max(300),
+    latitude: z.number().finite().min(-90).max(90).nullable().optional(),
+    longitude: z.number().finite().min(-180).max(180).nullable().optional(),
+    label: optionalText(80).refine((value) => !value || value.length >= 2),
+    reference: optionalText(300),
+    googlePlaceId: optionalText(200),
+    customerNotes: optionalText(1000),
+    idempotencyKey: z.string().trim().pipe(z.uuid()),
+    items: z.array(guestOrderItemSchema).min(1).max(MAX_ORDER_ITEMS),
+  })
+  .superRefine((value, context) => {
+    const latitude = value.latitude ?? null;
+    const longitude = value.longitude ?? null;
+    if ((latitude === null) !== (longitude === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["latitude"],
+        message: "Las coordenadas deben enviarse juntas.",
+      });
+    }
+  });
 
 type GuestOrderRpcRow = {
   created_order_id: string | null;
@@ -203,6 +215,9 @@ export async function submitQbGuestCatalogOrderAction(
   );
   const phoneHash = secureHash(phoneNormalized, rateLimitSalt, "qb-guest-phone");
   const idempotencyKey = parsed.data.idempotencyKey.toLowerCase();
+  const latitude = parsed.data.latitude ?? null;
+  const longitude = parsed.data.longitude ?? null;
+  const googlePlaceId = latitude === null ? null : parsed.data.googlePlaceId ?? null;
   const normalizedItems = parsed.data.items.map((item) => ({
     product_id: item.productId.toLowerCase(),
     allowed_unit_id: item.allowedUnitId.toLowerCase(),
@@ -217,10 +232,10 @@ export async function submitQbGuestCatalogOrderAction(
     location: {
       label: parsed.data.label ?? null,
       address: parsed.data.address,
-      latitude: parsed.data.latitude,
-      longitude: parsed.data.longitude,
+      latitude,
+      longitude,
       reference: parsed.data.reference ?? null,
-      google_place_id: parsed.data.googlePlaceId ?? null,
+      google_place_id: googlePlaceId,
     },
     customer_notes: parsed.data.customerNotes ?? null,
     items: normalizedItems,
@@ -238,8 +253,8 @@ export async function submitQbGuestCatalogOrderAction(
     p_phone_normalized: phoneNormalized,
     p_email: canonicalPayload.email,
     p_address: parsed.data.address,
-    p_latitude: parsed.data.latitude.toString(),
-    p_longitude: parsed.data.longitude.toString(),
+    p_latitude: latitude?.toString() ?? null,
+    p_longitude: longitude?.toString() ?? null,
     p_label: canonicalPayload.location.label,
     p_reference: canonicalPayload.location.reference,
     p_google_place_id: canonicalPayload.location.google_place_id,

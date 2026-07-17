@@ -11,8 +11,8 @@ export type QbGuestOrderInput = {
   phone: string;
   email?: string | null;
   address: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number | null;
+  longitude?: number | null;
   label?: string | null;
   reference?: string | null;
   googlePlaceId?: string | null;

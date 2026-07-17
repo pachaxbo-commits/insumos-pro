@@ -42,6 +42,9 @@ export type QbCustomerLocation = {
   address: string;
   reference: string | null;
   phone: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  googlePlaceId?: string | null;
   isPrimary: boolean;
   isActive: boolean;
   sortOrder: number;
@@ -112,4 +115,5 @@ export type QbCatalogActionState = {
   success: boolean;
   message?: string;
   reference?: string;
+  locationId?: string;
 };

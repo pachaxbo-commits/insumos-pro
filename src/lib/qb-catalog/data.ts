@@ -53,6 +53,9 @@ type LocationRow = {
   address: string;
   reference: string | null;
   phone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  google_place_id: string | null;
   is_primary: boolean;
   is_active: boolean;
   sort_order: number;
@@ -215,7 +218,7 @@ async function getQbCustomerLocations(
 ): Promise<QbCustomerLocation[]> {
   const { data, error } = await supabase
     .from("qb_customer_locations")
-    .select("id, customer_account_id, label, address, reference, phone, is_primary, is_active, sort_order")
+    .select("id, customer_account_id, label, address, reference, phone, latitude, longitude, google_place_id, is_primary, is_active, sort_order")
     .eq("customer_account_id", customerId)
     .eq("is_active", true)
     .order("is_primary", { ascending: false })
@@ -231,6 +234,9 @@ async function getQbCustomerLocations(
     address: location.address,
     reference: location.reference,
     phone: location.phone,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    googlePlaceId: location.google_place_id,
     isPrimary: location.is_primary,
     isActive: location.is_active,
     sortOrder: location.sort_order,

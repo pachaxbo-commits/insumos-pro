@@ -6,13 +6,16 @@ import {
   AlertCircle,
   CheckCircle2,
   LoaderCircle,
-  LocateFixed,
   LogIn,
   Send,
   Trash2,
   UserPlus,
 } from "lucide-react";
 
+import {
+  GoogleLocationPicker,
+  type GoogleLocationSelection,
+} from "@/components/locations/google-location-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,13 +47,7 @@ type StoredGuestAttempt = {
   submittedCartSignature?: string;
 };
 
-type Coordinates = {
-  latitude: number;
-  longitude: number;
-};
-
 const GUEST_ATTEMPT_STORAGE_KEY = "qb-insumos:guest-checkout:attempt:v1";
-const ADDRESS_CHANGED_MESSAGE = "La dirección cambió. Vuelve a confirmar tu ubicación.";
 
 type GuestAttemptRef = {
   current: StoredGuestAttempt | null;
@@ -58,10 +55,6 @@ type GuestAttemptRef = {
 
 function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
-}
-
-function normalizeAddress(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es-BO");
 }
 
 function readStoredAttempt(attemptRef: GuestAttemptRef): StoredGuestAttempt | null {
@@ -125,16 +118,6 @@ function formText(formData: FormData, name: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function locationErrorMessage(error: GeolocationPositionError) {
-  if (error.code === error.PERMISSION_DENIED) {
-    return "Necesitamos tu permiso de ubicación para enviar el pedido.";
-  }
-  if (error.code === error.POSITION_UNAVAILABLE) {
-    return "No pudimos obtener tu ubicación. Revisa la señal del dispositivo e intenta nuevamente.";
-  }
-  return "La ubicación tardó demasiado. Intenta nuevamente desde un lugar con mejor señal.";
-}
-
 function GuestSuccess({ reference }: { reference: string }) {
   return (
     <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center">
@@ -153,17 +136,15 @@ function GuestSuccess({ reference }: { reference: string }) {
 
 export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
   const [showForm, setShowForm] = useState(false);
-  const [address, setAddress] = useState("");
-  const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
-  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
-  const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "confirmed" | "error">(
-    "idle",
-  );
-  const [locationMessage, setLocationMessage] = useState("");
+  const [locationSelection, setLocationSelection] = useState<GoogleLocationSelection>({
+    address: "",
+    latitude: null,
+    longitude: null,
+    googlePlaceId: null,
+  });
   const [result, setResult] = useState<QbGuestOrderActionResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const addressRef = useRef("");
   const inMemoryAttemptRef = useRef<StoredGuestAttempt | null>(null);
   const cartSignature = useMemo(
     () =>
@@ -177,64 +158,6 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
       ),
     [lines],
   );
-
-  function changeAddress(nextAddress: string) {
-    addressRef.current = nextAddress;
-    setAddress(nextAddress);
-
-    if (coordinates && confirmedAddress && normalizeAddress(nextAddress) !== confirmedAddress) {
-      setCoordinates(null);
-      setLocationStatus("error");
-      setLocationMessage(ADDRESS_CHANGED_MESSAGE);
-    }
-  }
-
-  function requestLocation() {
-    const addressAtRequest = normalizeAddress(addressRef.current);
-
-    if (addressAtRequest.length < 5) {
-      setCoordinates(null);
-      setConfirmedAddress(null);
-      setLocationStatus("error");
-      setLocationMessage("Escribe una dirección válida antes de confirmar tu ubicación.");
-      return;
-    }
-
-    setCoordinates(null);
-    setConfirmedAddress(null);
-    setLocationMessage("");
-
-    if (!("geolocation" in navigator)) {
-      setLocationStatus("error");
-      setLocationMessage("Este dispositivo no permite obtener la ubicación actual.");
-      return;
-    }
-
-    setLocationStatus("loading");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (normalizeAddress(addressRef.current) !== addressAtRequest) {
-          setCoordinates(null);
-          setLocationStatus("error");
-          setLocationMessage(ADDRESS_CHANGED_MESSAGE);
-          return;
-        }
-
-        setCoordinates({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setConfirmedAddress(addressAtRequest);
-        setLocationStatus("confirmed");
-        setLocationMessage("Ubicación confirmada");
-      },
-      (error) => {
-        setLocationStatus("error");
-        setLocationMessage(locationErrorMessage(error));
-      },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
-    );
-  }
 
   async function submitGuestOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -259,17 +182,6 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
       return;
     }
 
-    const normalizedAddress = normalizeAddress(address);
-    if (!coordinates || !confirmedAddress || normalizedAddress !== confirmedAddress) {
-      setLocationStatus("error");
-      setLocationMessage(
-        confirmedAddress && normalizedAddress !== confirmedAddress
-          ? ADDRESS_CHANGED_MESSAGE
-          : "Confirma tu ubicación actual antes de enviar el pedido.",
-      );
-      return;
-    }
-
     if (!lines.length) {
       setResult({
         success: false,
@@ -287,11 +199,11 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
       phone,
       email: email || null,
       address,
-      latitude: coordinates.latitude,
-      longitude: coordinates.longitude,
+      latitude: locationSelection.latitude,
+      longitude: locationSelection.longitude,
       label: "Ubicación actual",
       reference: reference || null,
-      googlePlaceId: null,
+      googlePlaceId: locationSelection.googlePlaceId,
       customerNotes: customerNotes || null,
       idempotencyKey,
       items: lines.map((line) => ({
@@ -408,48 +320,18 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="guest-address">Dirección</Label>
-            <Input
-              id="guest-address"
-              name="address"
-              autoComplete="street-address"
-              maxLength={300}
-              value={address}
-              onChange={(event) => changeAddress(event.target.value)}
-              required
-            />
-          </div>
+          <GoogleLocationPicker
+            idPrefix="guest"
+            mode="guest"
+            onChange={setLocationSelection}
+          />
+          <p className="text-sm text-muted-foreground">
+            Agregar el punto en el mapa ayuda a encontrar la dirección con mayor precisión.
+          </p>
 
           <div className="space-y-2">
             <Label htmlFor="guest-reference">Referencia opcional</Label>
             <Input id="guest-reference" name="reference" maxLength={300} />
-          </div>
-
-          <div className="rounded-lg border bg-muted/30 p-4">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={locationStatus === "loading" || submitting}
-              onClick={requestLocation}
-            >
-              {locationStatus === "loading" ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <LocateFixed className="size-4" />
-              )}
-              {locationStatus === "loading" ? "Obteniendo ubicación..." : "Usar mi ubicación actual"}
-            </Button>
-            {locationMessage ? (
-              <p
-                role={locationStatus === "error" ? "alert" : "status"}
-                className={`mt-3 text-sm ${
-                  locationStatus === "confirmed" ? "font-medium text-emerald-700" : "text-destructive"
-                }`}
-              >
-                {locationMessage}
-              </p>
-            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -489,9 +371,7 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
             type="submit"
             className="h-11 w-full"
             disabled={
-              submitting ||
-              locationStatus === "loading" ||
-              result?.code === "idempotency_conflict"
+              submitting || result?.code === "idempotency_conflict"
             }
           >
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, MapPin, Send, ShoppingBasket, Trash2 } from "lucide-react";
 
@@ -9,6 +9,7 @@ import {
   GuestCheckoutForm,
   type GuestCheckoutLine,
 } from "@/components/catalog/guest-checkout-form";
+import { CheckoutLocationSelector } from "@/components/catalog/checkout-location-selector";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -98,6 +99,7 @@ export function PublicCheckout({
     return [{ product, unit, item }];
   });
   const primaryLocation = locations.find((location) => location.isPrimary) ?? locations[0];
+  const [selectedLocationId, setSelectedLocationId] = useState(primaryLocation?.id ?? "");
   const guestLines: GuestCheckoutLine[] = lines.map(({ product, unit, item }) => ({
     productId: item.productId,
     allowedUnitId: item.allowedUnitId,
@@ -159,16 +161,6 @@ export function PublicCheckout({
             ) : (
               <GuestCheckoutForm lines={guestLines} onRemove={removeLine} />
             )
-          ) : !locations.length ? (
-            <div className="mt-5 rounded-lg border bg-muted/40 p-5">
-              <p className="font-medium">Agrega una ubicacion en tu cuenta.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                El pedido necesita una direccion o punto de entrega.
-              </p>
-              <Button asChild className="mt-4">
-                <Link href="/mi-cuenta">Gestionar ubicaciones</Link>
-              </Button>
-            </div>
           ) : !lines.length ? (
             <div className="mt-5 rounded-lg border bg-muted/40 p-5">
               <p className="font-medium">Tu pedido esta vacio.</p>
@@ -177,55 +169,46 @@ export function PublicCheckout({
               </Button>
             </div>
           ) : (
-            <form action={formAction} className="mt-5 space-y-5">
-              <input type="hidden" name="idempotency_key" value={idempotencyKey} />
-              <input
-                type="hidden"
-                name="items"
-                value={JSON.stringify(
-                  lines.map(({ item }) => ({
-                    productId: item.productId,
-                    allowedUnitId: item.allowedUnitId,
-                    quantity: item.quantity,
-                    notes: item.notes ?? "",
-                  })),
-                )}
+            <div className="mt-5 space-y-5">
+              <CheckoutLocationSelector
+                locations={locations}
+                selectedId={selectedLocationId}
+                onSelect={setSelectedLocationId}
               />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden"
-              >
-                <Label htmlFor="company-website">Sitio web</Label>
-                <input id="company-website" name="company_website" tabIndex={-1} />
-              </div>
 
-              {state.message ? (
-                <p
-                  role={state.success ? "status" : "alert"}
-                  className={`rounded-md p-3 text-sm ${
-                    state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"
-                  }`}
+              <form action={formAction} className="space-y-5">
+                <input type="hidden" name="idempotency_key" value={idempotencyKey} />
+                <input type="hidden" name="location_id" value={selectedLocationId} />
+                <input
+                  type="hidden"
+                  name="items"
+                  value={JSON.stringify(
+                    lines.map(({ item }) => ({
+                      productId: item.productId,
+                      allowedUnitId: item.allowedUnitId,
+                      quantity: item.quantity,
+                      notes: item.notes ?? "",
+                    })),
+                  )}
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -left-[10000px] h-px w-px overflow-hidden"
                 >
-                  {state.message}
-                </p>
-              ) : null}
+                  <Label htmlFor="company-website">Sitio web</Label>
+                  <input id="company-website" name="company_website" tabIndex={-1} />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="location-id">Ubicacion</Label>
-                <select
-                  id="location-id"
-                  name="location_id"
-                  defaultValue={primaryLocation?.id}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                  required
-                >
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.label} - {location.address}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                {state.message ? (
+                  <p
+                    role={state.success ? "status" : "alert"}
+                    className={`rounded-md p-3 text-sm ${
+                      state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"
+                    }`}
+                  >
+                    {state.message}
+                  </p>
+                ) : null}
 
               <div className="space-y-3">
                 {lines.map(({ product, unit, item }) => (
@@ -257,11 +240,12 @@ export function PublicCheckout({
                 <Textarea id="customer-notes" name="customer_notes" rows={3} />
               </div>
 
-              <Button type="submit" disabled={pending} className="h-11 w-full">
-                <Send className="size-4" />
-                {pending ? "Enviando..." : "Enviar pedido"}
-              </Button>
-            </form>
+                <Button type="submit" disabled={pending || !selectedLocationId} className="h-11 w-full">
+                  <Send className="size-4" />
+                  {pending ? "Enviando..." : "Enviar pedido"}
+                </Button>
+              </form>
+            </div>
           )}
         </section>
 
