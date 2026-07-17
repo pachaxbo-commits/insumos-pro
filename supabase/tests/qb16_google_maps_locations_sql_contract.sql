@@ -937,6 +937,9 @@ $guest_contract$;
 
 -- Escenario 39: atributos de seguridad de todas las RPC.
 do $function_security$
+declare
+  v_save_definition text;
+  v_snapshot_definition text;
 begin
   if (
     select count(*)
@@ -962,6 +965,21 @@ begin
         array['search_path=pg_catalog, extensions, private']::text[]
   ) then
     raise exception 'QB-16 escenario 39: RPC guest perdió SECURITY DEFINER/search_path.';
+  end if;
+
+  select pg_catalog.pg_get_functiondef(
+    'public.save_own_qb_customer_location(uuid,text,text,text,text,numeric,numeric,text,boolean)'::regprocedure
+  ) into v_save_definition;
+  select pg_catalog.pg_get_functiondef(
+    'public.qb16_set_registered_location_snapshot()'::regprocedure
+  ) into v_snapshot_definition;
+
+  if v_save_definition like '%pg_catalog.coalesce%'
+    or v_save_definition like '%pg_catalog.nullif%'
+    or v_snapshot_definition like '%pg_catalog.coalesce%'
+    or v_save_definition not like '%QB16_UNAUTHENTICATED%'
+  then
+    raise exception 'QB-16 escenario 39: validación de identidad o expresiones condicionales inválidas.';
   end if;
 
   if (

@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $migration = Get-Content -Raw -Encoding UTF8 (Join-Path $root "supabase\migrations\20260712092000_qb16_google_maps_locations.sql")
+$authCorrection = Get-Content -Raw -Encoding UTF8 (Join-Path $root "supabase\migrations\20260712092100_qb16_harden_customer_location_auth.sql")
 $actions = Get-Content -Raw -Encoding UTF8 (Join-Path $root "src\lib\qb-catalog\actions.ts")
 $guestActions = Get-Content -Raw -Encoding UTF8 (Join-Path $root "src\lib\qb-catalog\guest-actions.ts")
 $guestTypes = Get-Content -Raw -Encoding UTF8 (Join-Path $root "src\types\qb-guest-order.ts")
@@ -65,6 +66,11 @@ $checks = [ordered]@{
   "contrato SQL declara 40 escenarios" = $sqlContract -match "40::integer as scenarios_passed" -and $sqlContract -match "QB16_SQL_CONTRACT_OK"
   "HMAC idempotencia y rate limit conservados" = $migration -match "private\.qb_guest_order_idempotency" -and $migration -match "private\.qb_guest_order_rate_limits" -and $migration -match "least\(v_fingerprint_lock, v_phone_lock\)"
   "sin cambios de recibos o inventario" = $migration -notmatch "qb_receipts|inventory_movements|confirm_qb_order_delivery"
+  "correccion redefine solo RPC y snapshot afectados" = $authCorrection -match "create or replace function public\.save_own_qb_customer_location" -and $authCorrection -match "create or replace function public\.qb16_set_registered_location_snapshot"
+  "correccion elimina calificacion invalida de coalesce" = $authCorrection -notmatch "pg_catalog\.coalesce"
+  "correccion elimina calificacion invalida de nullif" = $authCorrection -notmatch "pg_catalog\.nullif"
+  "correccion conserva validacion sin sesion" = $authCorrection -match "v_user_id uuid := auth\.uid\(\)[\s\S]*if v_user_id is null then[\s\S]*QB16_UNAUTHENTICATED"
+  "correccion conserva seguridad y ACL" = $authCorrection -match "security definer\s+set search_path = pg_catalog" -and $authCorrection -match "revoke all on function public\.save_own_qb_customer_location[\s\S]*from public, anon;" -and $authCorrection -match "grant execute on function public\.save_own_qb_customer_location[\s\S]*to authenticated;"
 }
 
 $failed = @($checks.GetEnumerator() | Where-Object { -not $_.Value })
