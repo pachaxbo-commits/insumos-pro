@@ -5,7 +5,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { CustomerAuthActionState } from "@/types/customer-account";
 
@@ -15,10 +14,6 @@ const credentialsSchema = z.object({
     .string()
     .min(8, "La contrasena debe tener al menos 8 caracteres.")
     .max(72, "La contrasena es demasiado larga."),
-});
-
-const signupSchema = credentialsSchema.extend({
-  full_name: z.string().trim().min(2, "Ingresa tu nombre.").max(120),
 });
 
 const recoverySchema = z.object({
@@ -58,69 +53,6 @@ async function getSiteOrigin() {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   return host ? `${protocol}://${host}` : "http://localhost:3000";
-}
-
-export async function customerSignupAction(
-  _state: CustomerAuthActionState,
-  formData: FormData,
-): Promise<CustomerAuthActionState> {
-  const parsed = signupSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { success: false, message: parsed.error.issues[0]?.message };
-  }
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return { success: false, message: "El acceso no esta configurado." };
-  const admin = createSupabaseAdminClient();
-  if (!admin) {
-    return { success: false, message: "El registro no esta disponible temporalmente." };
-  }
-
-  const origin = await getSiteOrigin();
-  const { data, error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      emailRedirectTo: `${origin}/mi-cuenta/auth/callback`,
-      data: {
-        full_name: parsed.data.full_name,
-      },
-    },
-  });
-
-  if (error) {
-    return {
-      success: false,
-      message: "No pudimos crear la cuenta. Revisa el correo o intenta mas tarde.",
-    };
-  }
-
-  if (!data.user) {
-    return { success: false, message: "No pudimos crear la cuenta." };
-  }
-
-  const { error: accountError } = await admin.from("customer_accounts").insert({
-    id: data.user.id,
-    email: parsed.data.email,
-    full_name: parsed.data.full_name,
-  });
-
-  if (accountError) {
-    if (data.user.identities?.length) {
-      await admin.auth.admin.deleteUser(data.user.id);
-    }
-    return {
-      success: false,
-      message: "No pudimos crear la cuenta. Revisa el correo o intenta mas tarde.",
-    };
-  }
-
-  if (data.session) redirect("/mi-cuenta");
-
-  return {
-    success: true,
-    message: "Cuenta creada. Revisa tu correo para confirmar el acceso.",
-  };
 }
 
 export async function customerLoginAction(

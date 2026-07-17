@@ -40,6 +40,8 @@ type AccountRow = {
   id: string;
   email: string;
   full_name: string;
+  business_name: string;
+  responsible_name: string;
   phone: string | null;
   is_active: boolean;
 };
@@ -190,7 +192,7 @@ export async function getOptionalQbCustomerAccount(): Promise<QbCustomerAccount 
 
   const { data, error } = await supabase
     .from("customer_accounts")
-    .select("id, email, full_name, phone, is_active")
+    .select("id, email, full_name, business_name, responsible_name, phone, is_active")
     .eq("id", customerId)
     .maybeSingle<AccountRow>();
 
@@ -200,6 +202,8 @@ export async function getOptionalQbCustomerAccount(): Promise<QbCustomerAccount 
     id: data.id,
     email: data.email,
     fullName: data.full_name,
+    businessName: data.business_name,
+    responsibleName: data.responsible_name,
     phone: data.phone,
     isActive: data.is_active,
   };

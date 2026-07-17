@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { getAuthContext } from "@/lib/auth/session";
 import { hasSupabaseEnv } from "@/lib/supabase/server";
+import { getSafeCustomerReturnPath } from "@/lib/customer-registration/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const params = await searchParams;
   const reasonMessage = getReasonMessage(params.reason);
-  const returnTo = params.returnTo === "/catalogo/checkout" ? params.returnTo : undefined;
+  const returnTo = params.returnTo
+    ? getSafeCustomerReturnPath(params.returnTo)
+    : undefined;
   const hasEnv = hasSupabaseEnv();
 
   return (

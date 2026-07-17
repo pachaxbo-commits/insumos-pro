@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
 
+import {
+  isValidWhatsApp,
+  normalizeRegistrationText,
+} from "@/lib/customer-registration/validation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { QbCatalogActionState } from "@/types/qb-catalog";
 
@@ -21,11 +25,12 @@ const optionalText = (max: number) =>
   );
 
 const profileSchema = z.object({
-  full_name: z.string().trim().min(2, "Ingresa tu nombre.").max(120),
-  phone: optionalText(25).refine(
-    (value) => !value || /^\+?[0-9\s-]{7,25}$/.test(value),
-    "Telefono invalido.",
-  ),
+  business_name: z.string().trim().min(2, "Ingresa el nombre del negocio.").max(120),
+  responsible_name: z.string().trim().min(2, "Ingresa el nombre del responsable.").max(120),
+  phone: z
+    .string()
+    .transform(normalizeRegistrationText)
+    .refine(isValidWhatsApp, "Ingresa un número de WhatsApp válido."),
 });
 
 const locationSchema = z.object({
@@ -148,7 +153,8 @@ export async function updateQbCustomerProfileAction(
   }
 
   const { error } = await access.supabase.rpc("update_qb_customer_profile", {
-    p_full_name: parsed.data.full_name,
+    p_business_name: parsed.data.business_name,
+    p_responsible_name: parsed.data.responsible_name,
     p_phone: parsed.data.phone,
   });
 

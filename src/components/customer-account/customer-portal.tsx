@@ -151,7 +151,8 @@ export function CustomerPortal({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">Hola,</p>
-                <h1 className="text-2xl font-semibold">{account.fullName}</h1>
+                <h1 className="text-2xl font-semibold">{account.responsibleName}</h1>
+                <p className="mt-1 text-sm text-muted-foreground">{account.businessName}</p>
               </div>
               {lastOrder ? (
                 <Button type="button" onClick={() => repeatOrder(lastOrder)}>
@@ -261,12 +262,30 @@ export function CustomerPortal({
             ) : null}
             <form action={profileAction} className="mt-4 space-y-3">
               <div className="space-y-2">
-                <Label htmlFor="full-name">Nombre</Label>
-                <Input id="full-name" name="full_name" defaultValue={account.fullName} required />
+                <Label htmlFor="business-name">Nombre del negocio</Label>
+                <Input
+                  id="business-name"
+                  name="business_name"
+                  defaultValue={account.businessName}
+                  required
+                />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Telefono</Label>
-                <Input id="phone" name="phone" defaultValue={account.phone ?? ""} />
+                <Label htmlFor="responsible-name">Nombre del responsable</Label>
+                <Input
+                  id="responsible-name"
+                  name="responsible_name"
+                  defaultValue={account.responsibleName}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">WhatsApp</Label>
+                <Input id="phone" name="phone" defaultValue={account.phone ?? ""} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="customer-email">Correo</Label>
+                <Input id="customer-email" value={account.email} readOnly disabled />
               </div>
               <Button type="submit" disabled={profilePending} className="w-full">
                 {profilePending ? "Guardando..." : "Guardar datos"}
@@ -291,33 +310,39 @@ export function CustomerPortal({
             ) : null}
 
             <div className="mt-4 space-y-3">
-              {locations.map((location) => (
-                <article key={location.id} className="rounded-lg border p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">
-                        {location.label}
-                        {location.isPrimary ? (
-                          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                            Principal
-                          </span>
+              {locations.length ? (
+                locations.map((location) => (
+                  <article key={location.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">
+                          {location.label}
+                          {location.isPrimary ? (
+                            <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                              Principal
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">{location.address}</p>
+                        {location.reference ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{location.reference}</p>
                         ) : null}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">{location.address}</p>
-                      {location.reference ? (
-                        <p className="mt-1 text-xs text-muted-foreground">{location.reference}</p>
-                      ) : null}
+                      </div>
+                      <form action={deactivateAction}>
+                        <input type="hidden" name="id" value={location.id} />
+                        <Button type="submit" variant="ghost" size="icon-sm" disabled={deactivatePending}>
+                          <Trash2 className="size-4" />
+                          <span className="sr-only">Desactivar {location.label}</span>
+                        </Button>
+                      </form>
                     </div>
-                    <form action={deactivateAction}>
-                      <input type="hidden" name="id" value={location.id} />
-                      <Button type="submit" variant="ghost" size="icon-sm" disabled={deactivatePending}>
-                        <Trash2 className="size-4" />
-                        <span className="sr-only">Desactivar {location.label}</span>
-                      </Button>
-                    </form>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                ))
+              ) : (
+                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Aún no tienes ubicaciones guardadas.
+                </p>
+              )}
             </div>
 
             <form action={locationAction} className="mt-5 space-y-3 border-t pt-4">

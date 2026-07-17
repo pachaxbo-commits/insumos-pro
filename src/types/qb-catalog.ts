@@ -51,6 +51,8 @@ export type QbCustomerAccount = {
   id: string;
   email: string;
   fullName: string;
+  businessName: string;
+  responsibleName: string;
   phone: string | null;
   isActive: boolean;
 };

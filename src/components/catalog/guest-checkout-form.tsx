@@ -10,6 +10,7 @@ import {
   LogIn,
   Send,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -343,7 +344,7 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
 
   return (
     <div className="mt-5 space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Button type="button" className="h-11" onClick={() => setShowForm(true)}>
           Continuar sin cuenta
         </Button>
@@ -351,6 +352,12 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
           <Link href="/login?returnTo=%2Fcatalogo%2Fcheckout">
             <LogIn className="size-4" />
             Ingresar a mi cuenta
+          </Link>
+        </Button>
+        <Button asChild variant="outline" className="h-11">
+          <Link href="/registro?returnTo=%2Fcatalogo%2Fcheckout">
+            <UserPlus className="size-4" />
+            Crear una cuenta
           </Link>
         </Button>
       </div>

@@ -3,13 +3,18 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { completeOwnCustomerAccount } from "@/lib/customer-registration/account";
+import {
+  CUSTOMER_REGISTRATION_RETURN_PATHS,
+  getSafeCustomerReturnPath,
+} from "@/lib/customer-registration/validation";
 import { createSupabaseServerClient, hasSupabaseEnv } from "@/lib/supabase/server";
 import { USER_ROLES } from "@/types/auth";
 
 const loginSchema = z.object({
   email: z.email("Ingresa un correo valido."),
   password: z.string().min(6, "La contrasena debe tener al menos 6 caracteres."),
-  return_to: z.literal("/catalogo/checkout").optional(),
+  return_to: z.enum(CUSTOMER_REGISTRATION_RETURN_PATHS).optional(),
 });
 
 export type LoginActionState = {
@@ -113,7 +118,7 @@ export async function loginAction(
     .eq("id", data.user.id)
     .maybeSingle<{ id: string; is_active: boolean }>();
 
-  if (customerAccountError || !customerAccount?.is_active) {
+  if (customerAccountError) {
     await supabase.auth.signOut({ scope: "local" });
 
     return {
@@ -123,7 +128,41 @@ export async function loginAction(
     };
   }
 
-  redirect(payload.data.return_to ?? "/mi-cuenta");
+  if (customerAccount?.is_active) {
+    redirect(getSafeCustomerReturnPath(payload.data.return_to));
+  }
+
+  const metadata = data.user.user_metadata;
+  const completion = await completeOwnCustomerAccount(supabase, {
+    businessName: metadata.business_name,
+    responsibleName: metadata.responsible_name,
+    phone: metadata.phone,
+  });
+
+  if (completion.completed) {
+    redirect(getSafeCustomerReturnPath(payload.data.return_to));
+  }
+
+  if (completion.code === "inactive_account") {
+    await supabase.auth.signOut({ scope: "local" });
+    return {
+      success: false,
+      message: "Esta cuenta no está activa. Comunícate con QB Insumos para revisarla.",
+    };
+  }
+
+  if (completion.code === "internal_user") {
+    await supabase.auth.signOut({ scope: "local" });
+    return {
+      success: false,
+      message: "Este correo pertenece a un acceso interno.",
+    };
+  }
+
+  const registrationUrl = new URLSearchParams({
+    returnTo: getSafeCustomerReturnPath(payload.data.return_to),
+  });
+  redirect(`/registro?${registrationUrl.toString()}`);
 }
 
 export async function logoutAction() {

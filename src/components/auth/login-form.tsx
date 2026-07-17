@@ -2,13 +2,15 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { AlertCircle, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, LoaderCircle, LockKeyhole, Mail, UserPlus } from "lucide-react";
 
 import { loginAction, type LoginActionState } from "@/lib/auth/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { CustomerRegistrationReturnPath } from "@/lib/customer-registration/validation";
 
 const initialState: LoginActionState = {
   success: false,
@@ -31,8 +33,11 @@ function SubmitButton() {
   );
 }
 
-export function LoginForm({ returnTo }: { returnTo?: "/catalogo/checkout" }) {
+export function LoginForm({ returnTo }: { returnTo?: CustomerRegistrationReturnPath }) {
   const [state, formAction] = useActionState(loginAction, initialState);
+  const registrationHref = returnTo
+    ? `/registro?returnTo=${encodeURIComponent(returnTo)}`
+    : "/registro";
 
   return (
     <form action={formAction} className="space-y-5">
@@ -85,6 +90,18 @@ export function LoginForm({ returnTo }: { returnTo?: "/catalogo/checkout" }) {
       </div>
 
       <SubmitButton />
+
+      <div className="grid gap-2 pt-1 sm:grid-cols-2">
+        <Button asChild variant="outline" className="h-11 rounded-xl">
+          <Link href={registrationHref}>
+            <UserPlus className="size-4" />
+            Crear una cuenta
+          </Link>
+        </Button>
+        <Button asChild variant="ghost" className="h-11 rounded-xl">
+          <Link href="/mi-cuenta/recuperar">Olvidé mi contraseña</Link>
+        </Button>
+      </div>
     </form>
   );
 }
