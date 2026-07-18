@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { InternalOrderCreator } from "@/components/qb-orders/internal-order-creator";
+import { LazyInternalOrderCreator } from "@/components/qb-orders/lazy-internal-order-creator";
 import {
   useQbOrdersSynchronization,
   type QbOrdersSyncStatus,
@@ -870,8 +870,8 @@ export function QbOrdersManagement({
         </Alert>
       ) : null}
 
-      {canCreateOrder && creation ? (
-        <InternalOrderCreator {...creation} />
+      {canCreateOrder ? (
+        <LazyInternalOrderCreator initialData={creation} />
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-4">

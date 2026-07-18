@@ -72,21 +72,26 @@ function numberOrNull(value: string) {
 export function InternalOrderCreator({
   customers,
   products,
-}: QbInternalOrderCreationData) {
-  const [open, setOpen] = useState(false);
+  initiallyOpen = false,
+}: QbInternalOrderCreationData & { initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const [mode, setMode] = useState<"registered" | "guest">("registered");
   const [customerId, setCustomerId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [guest, setGuest] = useState<GuestDraft>(blankGuestDraft);
   const [customerNotes, setCustomerNotes] = useState("");
-  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState(() =>
+    initiallyOpen ? crypto.randomUUID() : "",
+  );
   const [nextLineKey, setNextLineKey] = useState(2);
   const [lines, setLines] = useState<DraftLine[]>([blankLine(1)]);
   const [state, setState] = useState<QbOrderActionState>(initialState);
   const [pending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const submissionInFlightRef = useRef(false);
-  const selectedCustomer = customers.find((customer) => customer.id === customerId);
+  const selectedCustomer = customers.find(
+    (customer) => customer.id === customerId,
+  );
 
   const itemsPayload = useMemo(
     () =>
@@ -119,7 +124,9 @@ export function InternalOrderCreator({
 
   function selectProduct(key: number, productId: string) {
     const product = products.find((item) => item.id === productId);
-    const defaultUnit = product?.allowedUnits.find((unit) => unit.isDefault) ?? product?.allowedUnits[0];
+    const defaultUnit =
+      product?.allowedUnits.find((unit) => unit.isDefault) ??
+      product?.allowedUnits[0];
     updateLine(key, {
       productId,
       allowedUnitId: defaultUnit?.id ?? "",
@@ -208,7 +215,12 @@ export function InternalOrderCreator({
             Registra el pedido y envíalo al checklist de preparación.
           </p>
         </div>
-        <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setOpen(false)}
+          disabled={pending}
+        >
           Cerrar
         </Button>
       </CardHeader>
@@ -224,7 +236,9 @@ export function InternalOrderCreator({
               <select
                 id="internal-order-mode"
                 value={mode}
-                onChange={(event) => setMode(event.target.value as "registered" | "guest")}
+                onChange={(event) =>
+                  setMode(event.target.value as "registered" | "guest")
+                }
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
                 <option value="registered">Cliente registrado</option>
@@ -280,7 +294,9 @@ export function InternalOrderCreator({
                   id="guest-business"
                   name="business_name"
                   value={guest.businessName}
-                  onChange={(event) => updateGuest({ businessName: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ businessName: event.target.value })
+                  }
                   required
                   minLength={2}
                   maxLength={120}
@@ -292,7 +308,9 @@ export function InternalOrderCreator({
                   id="guest-responsible"
                   name="responsible_name"
                   value={guest.responsibleName}
-                  onChange={(event) => updateGuest({ responsibleName: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ responsibleName: event.target.value })
+                  }
                   required
                   minLength={2}
                   maxLength={120}
@@ -304,7 +322,9 @@ export function InternalOrderCreator({
                   id="guest-phone"
                   name="phone"
                   value={guest.phone}
-                  onChange={(event) => updateGuest({ phone: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ phone: event.target.value })
+                  }
                   required
                   maxLength={25}
                 />
@@ -315,7 +335,9 @@ export function InternalOrderCreator({
                   id="guest-email"
                   name="email"
                   value={guest.email}
-                  onChange={(event) => updateGuest({ email: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ email: event.target.value })
+                  }
                   type="email"
                   maxLength={254}
                 />
@@ -326,19 +348,25 @@ export function InternalOrderCreator({
                   id="guest-address"
                   name="address"
                   value={guest.address}
-                  onChange={(event) => updateGuest({ address: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ address: event.target.value })
+                  }
                   required
                   minLength={5}
                   maxLength={300}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="guest-location-label">Nombre de la ubicación</Label>
+                <Label htmlFor="guest-location-label">
+                  Nombre de la ubicación
+                </Label>
                 <Input
                   id="guest-location-label"
                   name="location_label"
                   value={guest.locationLabel}
-                  onChange={(event) => updateGuest({ locationLabel: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ locationLabel: event.target.value })
+                  }
                   maxLength={80}
                   placeholder="Principal"
                 />
@@ -349,7 +377,9 @@ export function InternalOrderCreator({
                   id="guest-reference"
                   name="location_reference"
                   value={guest.locationReference}
-                  onChange={(event) => updateGuest({ locationReference: event.target.value })}
+                  onChange={(event) =>
+                    updateGuest({ locationReference: event.target.value })
+                  }
                   maxLength={300}
                 />
               </div>
@@ -359,21 +389,36 @@ export function InternalOrderCreator({
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <h3 className="font-medium">Productos</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addLine} disabled={lines.length >= 30}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addLine}
+                disabled={lines.length >= 30}
+              >
                 <Plus className="size-4" />
                 Agregar producto
               </Button>
             </div>
 
             {lines.map((line, index) => {
-              const product = products.find((item) => item.id === line.productId);
-              const allowedUnit = product?.allowedUnits.find((unit) => unit.id === line.allowedUnitId);
+              const product = products.find(
+                (item) => item.id === line.productId,
+              );
+              const allowedUnit = product?.allowedUnits.find(
+                (unit) => unit.id === line.allowedUnitId,
+              );
               return (
-                <div key={line.key} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_150px_180px_130px_1fr_auto]">
+                <div
+                  key={line.key}
+                  className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_150px_180px_130px_1fr_auto]"
+                >
                   <ProductCombobox
                     ariaLabel={`Producto ${index + 1}`}
                     value={line.productId}
-                    onValueChange={(productId) => selectProduct(line.key, productId)}
+                    onValueChange={(productId) =>
+                      selectProduct(line.key, productId)
+                    }
                     options={products.map((item) => ({
                       id: item.id,
                       name: item.name,
@@ -387,7 +432,8 @@ export function InternalOrderCreator({
                     value={line.inputMode}
                     onChange={(event) =>
                       updateLine(line.key, {
-                        inputMode: event.target.value as "quantity" | "amount_bs",
+                        inputMode: event.target.value as
+                          "quantity" | "amount_bs",
                       })
                     }
                     className="h-10 rounded-md border bg-background px-3 text-sm"
@@ -398,33 +444,41 @@ export function InternalOrderCreator({
                     ) : null}
                   </select>
                   {line.inputMode === "quantity" ? (
-                  <select
-                    aria-label={`Unidad ${index + 1}`}
-                    value={line.allowedUnitId}
-                    onChange={(event) => updateLine(line.key, { allowedUnitId: event.target.value })}
-                    required
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                  >
-                    <option value="">Unidad</option>
-                    {(product?.allowedUnits ?? []).map((unit) => (
-                      <option key={unit.id} value={unit.id}>{unit.label}</option>
-                    ))}
-                  </select>
+                    <select
+                      aria-label={`Unidad ${index + 1}`}
+                      value={line.allowedUnitId}
+                      onChange={(event) =>
+                        updateLine(line.key, {
+                          allowedUnitId: event.target.value,
+                        })
+                      }
+                      required
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                    >
+                      <option value="">Unidad</option>
+                      {(product?.allowedUnits ?? []).map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.label}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
                       Unidad física calculada por el servidor
                     </div>
                   )}
                   {line.inputMode === "quantity" ? (
-                  <Input
-                    aria-label={`Cantidad ${index + 1}`}
-                    type="number"
-                    min={allowedUnit?.minQuantity ?? 0.001}
-                    step={allowedUnit?.quantityStep ?? 0.001}
-                    value={line.quantity}
-                    onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
-                    required
-                  />
+                    <Input
+                      aria-label={`Cantidad ${index + 1}`}
+                      type="number"
+                      min={allowedUnit?.minQuantity ?? 0.001}
+                      step={allowedUnit?.quantityStep ?? 0.001}
+                      value={line.quantity}
+                      onChange={(event) =>
+                        updateLine(line.key, { quantity: event.target.value })
+                      }
+                      required
+                    />
                   ) : (
                     <Input
                       aria-label={`Importe en Bs ${index + 1}`}
@@ -433,7 +487,9 @@ export function InternalOrderCreator({
                       step="0.01"
                       value={line.requestedAmountBs}
                       onChange={(event) =>
-                        updateLine(line.key, { requestedAmountBs: event.target.value })
+                        updateLine(line.key, {
+                          requestedAmountBs: event.target.value,
+                        })
                       }
                       placeholder="Bs"
                       required
@@ -442,7 +498,9 @@ export function InternalOrderCreator({
                   <Input
                     aria-label={`Nota ${index + 1}`}
                     value={line.notes}
-                    onChange={(event) => updateLine(line.key, { notes: event.target.value })}
+                    onChange={(event) =>
+                      updateLine(line.key, { notes: event.target.value })
+                    }
                     placeholder="Nota opcional"
                     maxLength={500}
                   />
@@ -451,7 +509,11 @@ export function InternalOrderCreator({
                     variant="ghost"
                     size="icon"
                     disabled={lines.length === 1}
-                    onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}
+                    onClick={() =>
+                      setLines((current) =>
+                        current.filter((item) => item.key !== line.key),
+                      )
+                    }
                   >
                     <Minus className="size-4" />
                     <span className="sr-only">Quitar producto</span>
@@ -474,8 +536,11 @@ export function InternalOrderCreator({
           </div>
 
           {state.message ? (
-            <p className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
-              {state.message}{state.reference ? ` Referencia: ${state.reference}` : ""}
+            <p
+              className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
+            >
+              {state.message}
+              {state.reference ? ` Referencia: ${state.reference}` : ""}
             </p>
           ) : null}
 

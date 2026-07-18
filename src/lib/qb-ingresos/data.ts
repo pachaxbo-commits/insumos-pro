@@ -1,7 +1,10 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import { getProductsCatalogData } from "@/lib/products/data";
-import { calculateMarginPercentage, getStockStatus } from "@/lib/products/utils";
+import {
+  calculateMarginPercentage,
+  getStockStatus,
+} from "@/lib/products/utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Profile } from "@/types/auth";
 import type {
@@ -57,8 +60,12 @@ type ReceiptQueryRow = Omit<
 };
 
 function normalizeProduct(product: ProductQueryRow): ProductWithRelations {
-  const category = Array.isArray(product.category) ? product.category[0] ?? null : product.category;
-  const unit = Array.isArray(product.unit) ? product.unit[0] ?? null : product.unit;
+  const category = Array.isArray(product.category)
+    ? (product.category[0] ?? null)
+    : product.category;
+  const unit = Array.isArray(product.unit)
+    ? (product.unit[0] ?? null)
+    : product.unit;
 
   return {
     ...product,
@@ -95,12 +102,13 @@ function getQbIngresosWarning(message: string) {
 export async function getQbIngresosData(): Promise<QbIngresosData> {
   noStore();
 
-  const catalogData = await getProductsCatalogData(
-    { status: "active" },
-    { includeQbParametrization: true },
-  );
-
-  const supabase = await createSupabaseServerClient();
+  const [catalogData, supabase] = await Promise.all([
+    getProductsCatalogData(
+      { status: "active" },
+      { includeQbParametrization: true },
+    ),
+    createSupabaseServerClient(),
+  ]);
 
   const baseData: QbIngresosData = {
     receipts: [],
@@ -118,7 +126,9 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
   if (!supabase) {
     return {
       ...baseData,
-      error: catalogData.error ?? "No pudimos cargar los ingresos en este momento. Comunícate con el administrador de QB Insumos.",
+      error:
+        catalogData.error ??
+        "No pudimos cargar los ingresos en este momento. Comunícate con el administrador de QB Insumos.",
     };
   }
 
@@ -152,7 +162,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
     ...baseData,
     receipts: rows.map((receipt) => {
       const createdByProfile = Array.isArray(receipt.created_by_profile)
-        ? receipt.created_by_profile[0] ?? null
+        ? (receipt.created_by_profile[0] ?? null)
         : receipt.created_by_profile;
 
       return {
@@ -160,7 +170,9 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
         created_by_profile: createdByProfile,
         lines: (receipt.lines ?? [])
           .map((line) => {
-            const product = Array.isArray(line.product) ? line.product[0] ?? null : line.product;
+            const product = Array.isArray(line.product)
+              ? (line.product[0] ?? null)
+              : line.product;
 
             return {
               ...line,
@@ -168,23 +180,31 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
               classification_results: (line.classification_results ?? [])
                 .map((result) => {
                   const outputProduct = Array.isArray(result.output_product)
-                    ? result.output_product[0] ?? null
+                    ? (result.output_product[0] ?? null)
                     : result.output_product;
 
                   return {
                     ...result,
-                    output_product: outputProduct ? normalizeProduct(outputProduct) : null,
+                    output_product: outputProduct
+                      ? normalizeProduct(outputProduct)
+                      : null,
                   };
                 })
-                .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at)),
+                .sort(
+                  (a, b) =>
+                    a.sort_order - b.sort_order ||
+                    a.created_at.localeCompare(b.created_at),
+                ),
               movements: (line.movements ?? []).map((movement) => {
                 const movementProduct = Array.isArray(movement.product)
-                  ? movement.product[0] ?? null
+                  ? (movement.product[0] ?? null)
                   : movement.product;
 
                 return {
                   ...movement,
-                  product: movementProduct ? normalizeProduct(movementProduct) : null,
+                  product: movementProduct
+                    ? normalizeProduct(movementProduct)
+                    : null,
                 };
               }),
             };

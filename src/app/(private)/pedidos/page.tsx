@@ -9,7 +9,7 @@ export default async function PedidosPage() {
   const auth = await requireRoleAccess("/pedidos");
   const canCreateOrder = auth.user.role === "administrador";
   const [data, settings] = await Promise.all([
-    getQbInternalOrdersData(canCreateOrder),
+    getQbInternalOrdersData(false),
     getQbOperationalSettingsData(),
   ]);
 

@@ -159,8 +159,28 @@ export function useQbOrdersSynchronization({
 
   useEffect(() => {
     const poll = () => requestRefresh("poll");
-    const intervalId = window.setInterval(poll, POLLING_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
+    let intervalId: number | null = null;
+
+    const stopPolling = () => {
+      if (intervalId !== null) window.clearInterval(intervalId);
+      intervalId = null;
+    };
+    const syncPollingWithVisibility = () => {
+      stopPolling();
+      if (document.visibilityState === "visible") {
+        intervalId = window.setInterval(poll, POLLING_INTERVAL_MS);
+      }
+    };
+
+    syncPollingWithVisibility();
+    document.addEventListener("visibilitychange", syncPollingWithVisibility);
+    return () => {
+      stopPolling();
+      document.removeEventListener(
+        "visibilitychange",
+        syncPollingWithVisibility,
+      );
+    };
   }, [requestRefresh]);
 
   useEffect(() => {

@@ -44,7 +44,11 @@ export type Product = {
   updated_at: string;
 };
 
-export const CATALOG_AVAILABILITIES = ["disponible", "consultar", "agotado"] as const;
+export const CATALOG_AVAILABILITIES = [
+  "disponible",
+  "consultar",
+  "agotado",
+] as const;
 
 export type CatalogAvailability = (typeof CATALOG_AVAILABILITIES)[number];
 
@@ -143,7 +147,12 @@ export const QB_ALLOWED_UNIT_CONTEXTS = [
 
 export type QbAllowedUnitContext = (typeof QB_ALLOWED_UNIT_CONTEXTS)[number];
 
-export const QB_CLASSIFICATION_MODES = ["none", "manual", "percentage", "weight"] as const;
+export const QB_CLASSIFICATION_MODES = [
+  "none",
+  "manual",
+  "percentage",
+  "weight",
+] as const;
 
 export type QbClassificationMode = (typeof QB_CLASSIFICATION_MODES)[number];
 
@@ -181,4 +190,21 @@ export type QbProductClassificationOutput = {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type QbClassificationProductOption = {
+  id: string;
+  name: string;
+  categoryName: string | null;
+  isActive: boolean;
+  baseUnitId: string | null;
+  isQbActive: boolean;
+};
+
+export type QbClassificationEditorData = {
+  products: QbClassificationProductOption[];
+  settings: QbProductUnitSettings | null;
+  presentations: QbProductPresentation[];
+  outputs: QbProductClassificationOutput[];
+  units: QbUnit[];
 };

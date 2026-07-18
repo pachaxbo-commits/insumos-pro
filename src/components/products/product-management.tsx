@@ -3,16 +3,15 @@
 import type { ChangeEventHandler, ReactNode } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Archive,
   Boxes,
   Edit3,
   Eye,
-  PackagePlus,
   Plus,
   Ruler,
   Save,
-  Search,
   Tags,
 } from "lucide-react";
 
@@ -25,8 +24,8 @@ import {
   updateProductAction,
   updateUnitAction,
 } from "@/lib/products/actions";
-import { QbProductConfigPanel } from "@/components/products/qb-product-config-panel";
-import { ProductClassificationConfiguration } from "@/components/products/product-classification-configuration";
+import { ProductFiltersBar } from "@/components/products/product-filters-bar";
+import { LazyProductClassificationConfiguration } from "@/components/products/lazy-product-classification-configuration";
 import { ProductAmountModeControl } from "@/components/products/product-amount-mode-control";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,12 +34,8 @@ import type {
   ProductCategory,
   ProductFilters,
   ProductWithRelations,
-  QbProductAllowedUnit,
-  QbProductClassificationOutput,
-  QbProductPresentation,
   QbProductUnitSettings,
   QbUnit,
-  QbUnitDimension,
   UnitOfMeasure,
 } from "@/types/products";
 import { Badge } from "@/components/ui/badge";
@@ -78,19 +73,41 @@ type ProductManagementProps = {
   units: UnitOfMeasure[];
   productIdsWithMovements: string[];
   filters: ProductFilters;
-  qbUnitDimensions: QbUnitDimension[];
   qbUnits: QbUnit[];
   qbProductUnitSettings: QbProductUnitSettings[];
-  qbProductPresentations: QbProductPresentation[];
-  qbProductAllowedUnits: QbProductAllowedUnit[];
-  qbProductClassificationOutputs: QbProductClassificationOutput[];
   qbParametrizationWarning?: string;
   canManage: boolean;
   canManagePrice: boolean;
   strictStockControl: boolean;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    activeProducts: number;
+    lowStockProducts: number;
+    publicProducts: number;
+  };
 };
 
 const initialState: ActionState = { success: false };
+
+function productPageHref(filters: ProductFilters, page: number) {
+  const params = new URLSearchParams();
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.category && filters.category !== "all") {
+    params.set("category", filters.category);
+  }
+  if (filters.status && filters.status !== "all")
+    params.set("status", filters.status);
+  if (filters.stock && filters.stock !== "all")
+    params.set("stock", filters.stock);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `/productos?${query}` : "/productos";
+}
 
 function StatusBadge({ active }: { active: boolean }) {
   return (
@@ -774,21 +791,17 @@ export function ProductManagement({
   units,
   productIdsWithMovements,
   filters,
-  qbUnitDimensions,
   qbUnits,
   qbProductUnitSettings,
-  qbProductPresentations,
-  qbProductAllowedUnits,
-  qbProductClassificationOutputs,
   qbParametrizationWarning,
   canManage,
   canManagePrice,
   strictStockControl,
+  pagination,
+  summary,
 }: ProductManagementProps) {
-  const activeProducts = products.filter((product) => product.is_active).length;
-  const lowStock = products.filter(
-    (product) => product.stock_status !== "ok",
-  ).length;
+  const activeProducts = summary.activeProducts;
+  const lowStock = summary.lowStockProducts;
   const qbVisibleProductIds = new Set(
     qbProductUnitSettings
       .filter(
@@ -797,9 +810,7 @@ export function ProductManagement({
       )
       .map((settings) => settings.product_id),
   );
-  const publicProducts = products.filter(
-    (product) => product.is_active && qbVisibleProductIds.has(product.id),
-  ).length;
+  const publicProducts = summary.publicProducts;
   const qbConfiguredProductIds = new Set(
     qbProductUnitSettings.map((settings) => settings.product_id),
   );
@@ -860,77 +871,19 @@ export function ProductManagement({
                 base.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {canManage ? (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button className="rounded-xl">
-                      <PackagePlus className="size-4" />
-                      Nuevo producto
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-                    <DialogHeader>
-                      <DialogTitle>Nuevo producto</DialogTitle>
-                      <DialogDescription>
-                        Registra un producto base sin movimientos de inventario.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <ProductForm
-                      mode="create"
-                      categories={categories}
-                      qbUnits={qbUnits}
-                    />
-                  </DialogContent>
-                </Dialog>
-              ) : (
+            {!canManage ? (
+              <div className="flex flex-wrap gap-2">
                 <Badge
                   variant="outline"
                   className="rounded-full border-slate-200 bg-slate-50 text-slate-600"
                 >
                   Solo lectura
                 </Badge>
-              )}
-            </div>
+              </div>
+            ) : null}
           </div>
 
-          <form
-            className="grid gap-3 lg:grid-cols-[1.3fr_0.8fr_0.7fr_0.7fr_auto]"
-            action="/productos"
-          >
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                name="q"
-                defaultValue={filters.q ?? ""}
-                placeholder="Buscar por nombre o SKU"
-                className="h-10 rounded-xl pl-10"
-              />
-            </div>
-            <NativeSelect
-              name="category"
-              defaultValue={filters.category ?? "all"}
-            >
-              <option value="all">Todas las categorias</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </NativeSelect>
-            <NativeSelect name="status" defaultValue={filters.status ?? "all"}>
-              <option value="all">Todos</option>
-              <option value="active">Activos</option>
-              <option value="inactive">Inactivos</option>
-            </NativeSelect>
-            <NativeSelect name="stock" defaultValue={filters.stock ?? "all"}>
-              <option value="all">Todo stock</option>
-              <option value="low">Stock bajo</option>
-            </NativeSelect>
-            <Button type="submit" variant="outline" className="rounded-xl">
-              Filtrar
-            </Button>
-          </form>
+          <ProductFiltersBar categories={categories} filters={filters} />
         </CardHeader>
         <CardContent>
           <div className="overflow-hidden rounded-2xl border border-border/70">
@@ -954,22 +907,17 @@ export function ProductManagement({
                   <TableRow key={product.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div
-                          role={product.image_url ? "img" : undefined}
-                          aria-label={
-                            product.image_url
-                              ? `Fotografia de ${product.name}`
-                              : undefined
-                          }
-                          className="size-11 shrink-0 rounded-xl border bg-slate-100 bg-cover bg-center"
-                          style={
-                            product.image_url
-                              ? {
-                                  backgroundImage: `url(${JSON.stringify(product.image_url)})`,
-                                }
-                              : undefined
-                          }
-                        />
+                        <div className="relative size-11 shrink-0 overflow-hidden rounded-xl border bg-slate-100">
+                          {product.image_url ? (
+                            <Image
+                              src={product.image_url}
+                              alt={`Fotografía de ${product.name}`}
+                              fill
+                              sizes="44px"
+                              className="object-cover"
+                            />
+                          ) : null}
+                        </div>
                         <div>
                           <p className="font-medium">{product.name}</p>
                           <p className="text-xs text-muted-foreground">
@@ -1081,16 +1029,8 @@ export function ProductManagement({
                                   canManage={canManagePrice}
                                 />
                                 {product.requires_classification ? (
-                                  <ProductClassificationConfiguration
+                                  <LazyProductClassificationConfiguration
                                     sourceProduct={product}
-                                    products={products}
-                                    settings={qbSettingsByProduct.get(
-                                      product.id,
-                                    )}
-                                    allSettings={qbProductUnitSettings}
-                                    presentations={qbProductPresentations}
-                                    outputs={qbProductClassificationOutputs}
-                                    units={qbUnits}
                                     canManage={canManage}
                                   />
                                 ) : null}
@@ -1129,21 +1069,54 @@ export function ProductManagement({
               </Button>
             </div>
           ) : null}
+
+          {pagination.totalPages > 1 ? (
+            <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Mostrando {(pagination.page - 1) * pagination.pageSize + 1}–
+                {Math.min(
+                  pagination.page * pagination.pageSize,
+                  pagination.total,
+                )}{" "}
+                de {pagination.total}
+              </p>
+              <div className="flex items-center gap-2">
+                {pagination.page > 1 ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      href={productPageHref(filters, pagination.page - 1)}
+                      scroll={false}
+                    >
+                      Anterior
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" disabled>
+                    Anterior
+                  </Button>
+                )}
+                <span className="px-2 text-sm text-muted-foreground">
+                  Página {pagination.page} de {pagination.totalPages}
+                </span>
+                {pagination.page < pagination.totalPages ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      href={productPageHref(filters, pagination.page + 1)}
+                      scroll={false}
+                    >
+                      Siguiente
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" disabled>
+                    Siguiente
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
-
-      <QbProductConfigPanel
-        products={products}
-        qbUnitDimensions={qbUnitDimensions}
-        qbUnits={qbUnits}
-        qbProductUnitSettings={qbProductUnitSettings}
-        qbProductPresentations={qbProductPresentations}
-        qbProductAllowedUnits={qbProductAllowedUnits}
-        qbProductClassificationOutputs={qbProductClassificationOutputs}
-        qbParametrizationWarning={qbParametrizationWarning}
-        canManage={canManage}
-        canManagePrice={canManagePrice}
-      />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <CatalogList
