@@ -14,8 +14,8 @@ declare
   v_audit_before bigint;
   v_available boolean;
 begin
-  select id into v_admin_id from public.profiles where role in ('admin', 'administrador') and active order by id limit 1;
-  select id into v_inventory_id from public.profiles where role = 'inventario' and active order by id limit 1;
+  select id into v_admin_id from public.profiles where role in ('admin', 'administrador') and is_active order by id limit 1;
+  select id into v_inventory_id from public.profiles where role = 'inventario' and is_active order by id limit 1;
   if v_admin_id is null then raise exception 'QA_REQUIRES_ACTIVE_ADMIN'; end if;
 
   select p.id, s.base_sale_price, p.stock_current
