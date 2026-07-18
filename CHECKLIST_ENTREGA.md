@@ -1,9 +1,12 @@
 # CHECKLIST_ENTREGA
 
+> Checklist histórico. Para la aceptación vigente use
+> [docs/QB_CHECKLIST_ACEPTACION_CLIENTE.md](docs/QB_CHECKLIST_ACEPTACION_CLIENTE.md).
+
 ## Tecnico
 
 - [ ] Variables de entorno configuradas en Vercel.
-- [ ] `SUPABASE_SCHEMA.sql` ejecutado completo o con bloque Fase 10 aplicado.
+- [ ] Historial canónico de `supabase/migrations/` sincronizado; no ejecutar SQL general.
 - [ ] `SUPABASE_MIGRATION_FASE_12A_SECURITY.sql` aplicado y probado en staging si la base ya existia.
 - [ ] `SUPABASE_SEED_DEMO.sql` no aplicado en produccion.
 - [ ] Usuario administrador creado.

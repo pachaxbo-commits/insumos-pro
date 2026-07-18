@@ -1,5 +1,9 @@
 # CONFIGURACION_PRODUCCION
 
+> Referencia histórica de infraestructura. La guía operativa vigente es
+> [docs/QB_GUIA_ENTREGA_FINAL.md](docs/QB_GUIA_ENTREGA_FINAL.md). Nunca ejecute
+> `SUPABASE_SCHEMA.sql` en QB Insumos Production.
+
 ## Vercel
 
 - Proyecto: completar con nombre final.
@@ -40,7 +44,7 @@ No subir `.env.local` al repositorio.
 ## Supabase
 
 - Proyecto correcto confirmado.
-- SQL `SUPABASE_SCHEMA.sql` aplicado para proyecto limpio, o migraciones incrementales aplicadas en staging existente antes de produccion.
+- Historial canónico de `supabase/migrations/` aplicado y sincronizado en el proyecto autorizado.
 - Si staging ya tenia Fase 12A, aplicar `SUPABASE_MIGRATION_FASE_12C_USERS_AUDIT.sql` y validar `PLAN_PRUEBAS_STAGING_FASE_12C.md`.
 - Para anulaciones seguras, aplicar `SUPABASE_MIGRATION_FASE_12D_SAFE_CANCELLATIONS.sql` y validar `PLAN_PRUEBAS_STAGING_FASE_12D.md`.
 - Para pedidos moviles, aplicar `SUPABASE_MIGRATION_FASE_13_ORDERS.sql` y validar `PLAN_PRUEBAS_STAGING_FASE_13.md`.

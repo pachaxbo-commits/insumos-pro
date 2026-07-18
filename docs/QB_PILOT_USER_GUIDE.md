@@ -1,5 +1,8 @@
 # Guía operativa del piloto de QB Insumos
 
+> Documento histórico del piloto. Para operación y entrega vigentes use
+> [QB_GUIA_ENTREGA_FINAL.md](QB_GUIA_ENTREGA_FINAL.md), que es la guía canónica.
+
 Esta guía resume el flujo disponible para el piloto. QB Insumos organiza productos, pedidos, preparación, entregas, inventario informativo y recibos acumulativos. No registra caja, cobros, pagos ni comprobantes fiscales.
 
 ## Administrador

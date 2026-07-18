@@ -1,9 +1,12 @@
 # GUIA_ADMIN
 
+> Guía histórica sustituida por
+> [docs/QB_GUIA_ENTREGA_FINAL.md](docs/QB_GUIA_ENTREGA_FINAL.md).
+
 ## Configuracion inicial
 
 1. Crear proyecto Supabase.
-2. Ejecutar `SUPABASE_SCHEMA.sql`.
+2. Verificar el historial canónico de `supabase/migrations/`; no ejecutar SQL general.
 3. Configurar `.env.local`.
 4. Crear usuarios en Supabase Auth.
 5. Asignar roles en `public.profiles`.

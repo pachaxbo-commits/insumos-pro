@@ -1,5 +1,10 @@
 # README_SETUP
 
+> Documento histórico de desarrollo. Para la operación y entrega de QB Insumos
+> use [docs/QB_GUIA_ENTREGA_FINAL.md](docs/QB_GUIA_ENTREGA_FINAL.md). No ejecute
+> `SUPABASE_SCHEMA.sql` ni los SQL históricos enumerados abajo en Production; el
+> único historial canónico es `supabase/migrations/`.
+
 ## Requisitos
 
 - Node.js 20 o superior
@@ -37,7 +42,7 @@ recuperacion. Usar `http://localhost:3000` localmente y la URL HTTPS exacta en s
 
 Si las variables no estan definidas, la aplicacion sigue compilando y `/login` muestra un mensaje claro indicando que falta configuracion.
 
-## Supabase
+## Supabase (referencia histórica; no ejecutar en Production)
 
 1. Ir al SQL Editor del proyecto.
 2. Para produccion o staging limpio, ejecutar completo [`SUPABASE_SCHEMA.sql`](/C:/dev/insumos-pro/SUPABASE_SCHEMA.sql).

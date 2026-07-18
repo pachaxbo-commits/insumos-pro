@@ -1,5 +1,9 @@
 # PLAN_PUESTA_EN_PRODUCCION
 
+> Plan histórico sustituido por
+> [docs/QB_GUIA_ENTREGA_FINAL.md](docs/QB_GUIA_ENTREGA_FINAL.md) y
+> [docs/QB_CHECKLIST_ACEPTACION_CLIENTE.md](docs/QB_CHECKLIST_ACEPTACION_CLIENTE.md).
+
 ## Objetivo
 
 Preparar Insumos Pro para operar con datos reales del cliente, separando el entorno de demo del entorno de produccion y reduciendo riesgos antes del primer uso comercial.
@@ -30,7 +34,7 @@ No mezclar datos reales en el entorno de demo si el cliente no autorizo expresam
 - `npm run lint` pasa sin errores.
 - `npm run build` pasa sin errores.
 - Variables de entorno configuradas en Vercel.
-- SQL de `SUPABASE_SCHEMA.sql` aplicado en el proyecto correcto.
+- Historial canónico de `supabase/migrations/` sincronizado en el proyecto autorizado.
 - Usuario administrador real creado.
 - Datos demo limpiados o claramente separados.
 - Datos maestros reales cargados y revisados.
@@ -55,4 +59,3 @@ No mezclar datos reales en el entorno de demo si el cliente no autorizo expresam
 ## Ventana de salida
 
 Se recomienda hacer la puesta en produccion fuera de horas pico, con una ventana minima de 2 a 4 horas para carga, pruebas y ajustes menores.
-

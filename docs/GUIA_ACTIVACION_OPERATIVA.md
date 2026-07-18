@@ -1,5 +1,8 @@
 # Guía de activación operativa
 
+> Complemento técnico. El orden operativo canónico está en
+> [QB_GUIA_ENTREGA_FINAL.md](QB_GUIA_ENTREGA_FINAL.md).
+
 La herramienta está disponible para administradores en **Configuración → Activación operativa**.
 
 1. Descargue la plantilla actualizada del tipo requerido.

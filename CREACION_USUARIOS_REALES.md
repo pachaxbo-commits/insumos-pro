@@ -1,77 +1,37 @@
-# CREACION_USUARIOS_REALES
+# Creación segura de usuarios reales
 
-## Roles disponibles
+Los usuarios internos son identidades de Supabase Auth vinculadas a
+`public.profiles`. Los clientes externos usan `customer_accounts`; nunca se les
+asigna un rol interno.
 
-- `administrador`: acceso total, configuracion y bitacora.
-- `ventas`: ventas, clientes y reportes comerciales permitidos.
-- `inventario`: productos, inventario, proveedores y compras.
-- `finanzas`: cuentas, pagos, caja, finanzas y reportes financieros.
+## Primer administrador
 
-## Crear usuario en Supabase Auth
+1. Confirmar visualmente el proyecto `tekfwbhvqtojpfqusosg`.
+2. En Supabase Dashboard, enviar una invitación al correo real del responsable;
+   no definir ni compartir una contraseña manualmente.
+3. Vincular una sola vez esa identidad a un perfil `administrador` mediante el
+   bootstrap revisado de `README_SETUP.md`.
+4. La persona abre el enlace, define su contraseña y prueba `/login`.
+5. Verificar perfil activo, rol y acceso a Configuración. Mantener dos
+   administradores reales antes de retirar la cuenta de bootstrap.
 
-Opcion recomendada despues de Fase 12C:
+## Usuarios posteriores
 
-1. Ingresar a la app con un usuario `administrador`.
-2. Abrir `/configuracion`.
-3. Usar "Nuevo usuario".
-4. Elegir nombre, email y rol.
-5. Confirmar que el usuario recibe invitacion o restablecimiento segun configuracion SMTP/Auth de Supabase.
+1. Ingresar como administrador.
+2. Abrir **Configuración → Invitar usuario**.
+3. Indicar correo, nombre y el rol mínimo: `administrador`, `ventas`,
+   `inventario` o `finanzas`.
+4. La aplicación crea el perfil y envía un enlace para que la persona defina su
+   propia contraseña. No genera ni muestra contraseñas temporales.
+5. Verificar membresía activa y probar el acceso permitido y denegado del rol.
 
-Esta opcion requiere `SUPABASE_SERVICE_ROLE_KEY` configurada como variable privada del servidor.
+## Desactivación
 
-## Crear primer usuario administrador en Supabase Auth
+No borrar identidades con historial. Un administrador cambia `is_active` a
+`false`, comprueba que el acceso queda restringido y conserva auditoría. Las
+cuentas demo solo se desactivan con autorización explícita y una lista exacta.
+La aplicación impide que un administrador se desactive a sí mismo o elimine el
+último administrador activo.
 
-1. Entrar a Supabase Dashboard.
-2. Ir a Authentication > Users.
-3. Seleccionar Add user.
-4. Ingresar email real del usuario.
-5. Definir contrasena temporal segura o enviar invitacion si el flujo esta habilitado.
-6. Insertar una unica vez su perfil `administrador` con el SQL de bootstrap documentado en `README_SETUP.md`.
-
-## Asignar rol
-
-El trigger no crea perfiles internos ni asigna roles. Esto es intencional: evita que
-el registro publico de clientes pueda escalar a personal. Para usuarios posteriores,
-usar exclusivamente `/configuracion`, que crea Auth y `profiles` desde servidor.
-
-La RPC protegida se usa para administrar perfiles internos ya existentes:
-
-```sql
-select public.admin_update_profile(
-  'UUID_DEL_USUARIO',
-  'Nombre Apellido',
-  'ventas',
-  true
-);
-```
-
-Cambiar `role` por `administrador`, `ventas`, `inventario` o `finanzas`.
-
-Las cuentas creadas desde `/mi-cuenta` viven en `customer_accounts`, no tienen rol
-interno y no deben administrarse como personal.
-
-## Desactivar usuario operativo
-
-No borrar perfiles historicos si ya tuvieron actividad. Desactivar con administrador:
-
-```sql
-select public.admin_update_profile(
-  'UUID_DEL_USUARIO',
-  'Nombre Apellido',
-  'ventas',
-  false
-);
-```
-
-Tambien se recomienda deshabilitar o eliminar el usuario en Supabase Auth si ya no debe ingresar.
-
-Desde Fase 12C, la app bloquea que un administrador se desactive a si mismo o deje el sistema sin al menos un administrador activo.
-
-## Buenas practicas
-
-- No usar cuentas compartidas.
-- No publicar contrasenas en documentos.
-- Exigir contrasenas largas y unicas.
-- Revocar accesos cuando una persona deje de operar.
-- Mantener al menos dos administradores reales.
-- Probar cada rol antes de entregar credenciales.
+No compartir contraseñas, tokens, cookies, enlaces de recuperación ni secretos
+en documentos o canales de soporte.
