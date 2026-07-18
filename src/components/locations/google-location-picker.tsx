@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 const COCHABAMBA = { lat: -17.3935, lng: -66.157 };
 const MAP_UNAVAILABLE_MESSAGE =
   "El mapa no está disponible en este momento. Puedes escribir la dirección manualmente.";
+const MAP_PROMPT_MESSAGE = "Escribe una dirección para ubicarla en el mapa.";
 const PLACE_SELECTION_ERROR_MESSAGE =
   "No pudimos completar esa dirección. Selecciona el punto en el mapa o escríbela manualmente.";
 
@@ -129,7 +130,9 @@ export function GoogleLocationPicker({
   const [locationStatus, setLocationStatus] = useState<"idle" | "loading" | "error" | "ready">(
     "idle",
   );
-  const [message, setMessage] = useState(apiKey ? "" : MAP_UNAVAILABLE_MESSAGE);
+  const [message, setMessage] = useState(
+    apiKey ? (selection.address ? "" : MAP_PROMPT_MESSAGE) : MAP_UNAVAILABLE_MESSAGE,
+  );
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const autocompleteContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -164,6 +167,7 @@ export function GoogleLocationPicker({
       const result = response?.results?.[0];
       if (result?.formatted_address) address = result.formatted_address;
       if (!resolvedPlaceId && result?.place_id) resolvedPlaceId = result.place_id;
+      if (requestId === selectionRequestRef.current) setMessage("");
     } catch {
       if (requestId === selectionRequestRef.current) {
         setMessage("Seleccionamos el punto. Verifica o escribe la dirección manualmente.");
@@ -317,6 +321,7 @@ export function GoogleLocationPicker({
                   longitude: position.lng,
                   googlePlaceId: place.id?.trim() || null,
                 });
+                setMessage("");
               } catch {
                 if (requestId === selectionRequestRef.current) {
                   setMessage(PLACE_SELECTION_ERROR_MESSAGE);
@@ -325,7 +330,7 @@ export function GoogleLocationPicker({
             })();
           });
           autocomplete.addEventListener("gmp-error", () => {
-            setMessage(MAP_UNAVAILABLE_MESSAGE);
+            setMessage("La búsqueda visual no está disponible. Puedes usar el mapa o escribir la dirección.");
           });
           autocompleteContainerRef.current.replaceChildren(autocomplete);
         } catch {
@@ -410,7 +415,11 @@ export function GoogleLocationPicker({
           required={!readOnly}
           onChange={(event) => {
             selectionRequestRef.current += 1;
-            publish({ ...selectionRef.current, address: event.target.value });
+            const address = event.target.value;
+            publish({ ...selectionRef.current, address });
+            if (mapStatus !== "unavailable") {
+              setMessage(address.trim() ? "" : MAP_PROMPT_MESSAGE);
+            }
           }}
         />
       </div>

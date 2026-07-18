@@ -26,7 +26,6 @@ import { getRoleLabel } from "@/lib/auth/roles";
 import { getAuditLogsData } from "@/lib/audit/data";
 import {
   getActiveTransitionalModules,
-  getFutureQbModules,
   getSuspendedLegacyModules,
 } from "@/lib/qb-insumos/transition-policy";
 import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, type AuditFilters } from "@/types/audit";
@@ -55,9 +54,9 @@ const settings = [
     icon: ShieldCheck,
   },
   {
-    title: "Funciones no disponibles",
-    description: "Las funciones que no forman parte de la operación actual permanecen bloqueadas.",
-    status: "Bloqueadas",
+    title: "Alcance operativo",
+    description: "Distingue las funciones gestionadas desde otros módulos y las que no forman parte de esta versión.",
+    status: "Definido",
     icon: LockKeyhole,
   },
   {
@@ -183,7 +182,12 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
   const audit = await getAuditLogsData(filters);
   const activeModules = getActiveTransitionalModules();
   const suspendedModules = getSuspendedLegacyModules();
-  const futureModules = getFutureQbModules();
+  const managedModules = suspendedModules.filter((module) =>
+    ["inventario", "ventas", "compras", "confirmacion-publica"].includes(module.id),
+  );
+  const unavailableModules = suspendedModules.filter((module) =>
+    ["proveedores", "finanzas"].includes(module.id),
+  );
 
   return (
     <div className="space-y-6">
@@ -261,12 +265,12 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Funciones no disponibles</CardTitle>
+            <CardTitle>Funciones gestionadas desde otros módulos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {suspendedModules.map((module) => (
+            {managedModules.map((module) => (
               <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
-                <p className="font-medium">{module.href ?? module.title}</p>
+                <p className="font-medium">{module.title}</p>
                 <p className="mt-1 text-muted-foreground">{module.reason}</p>
               </div>
             ))}
@@ -275,10 +279,10 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
 
         <Card className="border-white/60 bg-card/92 shadow-sm">
           <CardHeader>
-            <CardTitle>Otras funciones</CardTitle>
+            <CardTitle>Funciones no incluidas en esta versión</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {futureModules.map((module) => (
+            {unavailableModules.map((module) => (
               <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
                 <p className="font-medium">{module.title}</p>
                 <p className="mt-1 text-muted-foreground">{module.reason}</p>

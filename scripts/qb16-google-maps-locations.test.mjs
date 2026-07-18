@@ -159,7 +159,10 @@ test("44 readOnly sin coordenadas no muestra un mapa genérico", () => {
   assert.match(picker, /Esta ubicación fue guardada sin un punto en el mapa/);
 });
 test("45 gmp-error activa el fallback", () => {
-  assert.match(picker, /addEventListener\("gmp-error"[\s\S]*MAP_UNAVAILABLE_MESSAGE/);
+  assert.match(
+    picker,
+    /addEventListener\("gmp-error"[\s\S]*La búsqueda visual no está disponible\. Puedes usar el mapa o escribir la dirección\./,
+  );
 });
 test("46 la carga usa idioma español, región Bolivia y Map ID configurable", () => {
   assert.match(picker, /language=es&region=BO/);
@@ -205,10 +208,25 @@ test("54 una respuesta antigua no reemplaza una selección reciente", () => {
     gmpSelectHandler.indexOf("requestId !== selectionRequestRef.current") <
       gmpSelectHandler.indexOf("const position = coordinatesFrom(place.location)"),
   );
-  assert.match(picker, /selectionRequestRef\.current \+= 1;[\s\S]*address: event\.target\.value/);
+  assert.match(
+    picker,
+    /selectionRequestRef\.current \+= 1;[\s\S]*const address = event\.target\.value;[\s\S]*publish\(\{ \.\.\.selectionRef\.current, address \}\)/,
+  );
 });
 test("55 gmp-error continúa implementado", () => {
-  assert.match(picker, /addEventListener\("gmp-error"[\s\S]*MAP_UNAVAILABLE_MESSAGE/);
+  assert.match(
+    picker,
+    /addEventListener\("gmp-error"[\s\S]*La búsqueda visual no está disponible\. Puedes usar el mapa o escribir la dirección\./,
+  );
+});
+
+test("56 el selector orienta antes de escribir una dirección", () => {
+  assert.match(picker, /MAP_PROMPT_MESSAGE = "Escribe una dirección para ubicarla en el mapa\."/);
+  assert.match(picker, /selection\.address \? "" : MAP_PROMPT_MESSAGE/);
+});
+
+test("57 una selección válida elimina mensajes residuales", () => {
+  assert.match(picker, /publish\(\{[\s\S]*googlePlaceId: place\.id\?\.trim\(\) \|\| null,[\s\S]*\}\);[\s\S]*setMessage\(""\)/);
 });
 test("56 la RPC cambia la principal mediante dos UPDATE separados", () => {
   assert.match(
