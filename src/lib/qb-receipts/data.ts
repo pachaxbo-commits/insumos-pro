@@ -76,6 +76,17 @@ type ReceiptEventRow = {
   created_at: string;
 };
 
+type ProductPriceRow = {
+  product_id: string;
+  base_sale_price: number | string | null;
+  base_price_unit_id: string | null;
+};
+
+type UnitSymbolRow = {
+  id: string;
+  symbol: string;
+};
+
 type PendingOrderRow = {
   id: string;
   public_reference: string;
@@ -192,6 +203,39 @@ async function getReceiptParts(
       .order("created_at", { ascending: false }),
   ]);
 
+  const lineRows = (linesResult.data ?? []) as ReceiptLineRow[];
+  const productIds = [...new Set(lineRows.map((line) => line.product_id))];
+  const priceByProduct = new Map<string, ProductPriceRow>();
+  const symbolByUnit = new Map<string, string>();
+
+  if (productIds.length) {
+    const { data: priceData } = await supabase
+      .from("qb_product_unit_settings")
+      .select("product_id, base_sale_price, base_price_unit_id")
+      .in("product_id", productIds);
+
+    for (const price of (priceData ?? []) as ProductPriceRow[]) {
+      priceByProduct.set(price.product_id, price);
+    }
+
+    const unitIds = [...new Set(
+      [...priceByProduct.values()]
+        .map((price) => price.base_price_unit_id)
+        .filter((unitId): unitId is string => Boolean(unitId)),
+    )];
+
+    if (unitIds.length) {
+      const { data: unitData } = await supabase
+        .from("qb_units")
+        .select("id, symbol")
+        .in("id", unitIds);
+
+      for (const unit of (unitData ?? []) as UnitSymbolRow[]) {
+        symbolByUnit.set(unit.id, unit.symbol);
+      }
+    }
+  }
+
   const ordersByReceipt = new Map<string, QbReceiptOrder[]>();
   if (!ordersResult.error) {
     for (const row of (ordersResult.data ?? []) as ReceiptOrderRow[]) {
@@ -209,8 +253,9 @@ async function getReceiptParts(
 
   const linesByReceipt = new Map<string, QbReceiptLine[]>();
   if (!linesResult.error) {
-    for (const row of (linesResult.data ?? []) as ReceiptLineRow[]) {
+    for (const row of lineRows) {
       const order = single(row.order);
+      const currentPrice = priceByProduct.get(row.product_id);
       const items = linesByReceipt.get(row.receipt_id) ?? [];
       items.push({
         id: row.id,
@@ -222,6 +267,10 @@ async function getReceiptParts(
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
         originalBasePrice: nullableNumberValue(row.original_base_price),
+        currentBasePrice: nullableNumberValue(currentPrice?.base_sale_price),
+        currentBasePriceUnitSymbol: currentPrice?.base_price_unit_id
+          ? symbolByUnit.get(currentPrice.base_price_unit_id) ?? null
+          : null,
         basePriceUsed: nullableNumberValue(row.base_price_used),
         basePriceEdited: row.base_price_edited,
         saveAsNewBasePrice: row.save_as_new_base_price,

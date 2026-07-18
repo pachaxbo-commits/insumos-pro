@@ -12,6 +12,8 @@ export type QbReceiptLine = {
   baseUnitSymbol: string;
   visibleUnitLabel: string;
   originalBasePrice: number | null;
+  currentBasePrice: number | null;
+  currentBasePriceUnitSymbol: string | null;
   basePriceUsed: number | null;
   basePriceEdited: boolean;
   saveAsNewBasePrice: boolean;

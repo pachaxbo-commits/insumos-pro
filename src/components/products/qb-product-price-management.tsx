@@ -136,17 +136,17 @@ export function QbProductPriceManagement({
   };
 
   const labels: Record<PriceStatus, string> = {
-    available: "Disponible para pedidos por Bs",
-    missing_price: "Bloqueado por precio",
-    invalid_unit: "Bloqueado por unidad",
-    not_backed: "No respaldado por modalidad BS",
+    available: "Habilitado",
+    missing_price: "Falta precio",
+    invalid_unit: "Unidad inválida",
+    not_backed: "No respaldado por BS",
   };
 
   return (
     <Card className="border-white/60 bg-card/92 shadow-sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 font-heading text-xl"><BadgeDollarSign className="size-5" />Precios y preparación operativa</CardTitle>
-        <CardDescription>Los precios son internos. Un precio positivo habilita pedidos por Bs solo cuando el producto y su unidad cumplen el contrato QB-17.</CardDescription>
+        <CardTitle className="flex items-center gap-2 font-heading text-xl"><BadgeDollarSign className="size-5" />Precios base</CardTitle>
+        <CardDescription>Busca un producto para consultar, actualizar o retirar su precio base. Los precios se aplican a pedidos futuros; los recibos emitidos conservan sus importes originales.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -161,7 +161,7 @@ export function QbProductPriceManagement({
           <select aria-label="Filtrar por estado" value={status} onChange={(event) => setStatus(event.target.value as PriceStatus | "all")} className="h-10 rounded-xl border bg-white px-3 text-sm"><option value="all">Todos los estados</option>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         </div>
         <div className="overflow-x-auto rounded-2xl border">
-          <Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>Unidad física</TableHead><TableHead>Unidad de precio</TableHead><TableHead>Precio actual</TableHead><TableHead>Modalidad BS</TableHead><TableHead>Estado QB-17</TableHead><TableHead>Actualizar</TableHead></TableRow></TableHeader>
+          <Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>Unidad física</TableHead><TableHead>Unidad de precio</TableHead><TableHead>Precio actual</TableHead><TableHead>Modalidad BS</TableHead><TableHead>Pedidos por Bs</TableHead><TableHead>Nuevo precio</TableHead></TableRow></TableHeader>
             <TableBody>{visibleProducts.map((product) => { const item = settingsByProduct.get(product.id); const currentPrice = item?.base_sale_price ?? null; const priceUnit = item?.base_price_unit_id ? unitsById.get(item.base_price_unit_id) : undefined; const baseUnitId = item?.base_inventory_unit_id ?? item?.inventory_unit_id ?? item?.base_unit_id; const baseUnit = baseUnitId ? unitsById.get(baseUnitId) : undefined; const currentStatus = statusFor(product); return <TableRow key={product.id}><TableCell><p className="font-medium">{product.name}</p><p className="text-xs text-muted-foreground">{product.category?.name ?? "Sin categoría"}</p></TableCell><TableCell>{baseUnit?.symbol ?? "Sin configurar"}</TableCell><TableCell>{priceUnit?.symbol ?? "Sin configurar"}</TableCell><TableCell>{currentPrice !== null ? `${formatNumber(currentPrice)} Bs` : "Sin precio"}</TableCell><TableCell>{item?.supports_amount_bs ? "Sí" : "No"}</TableCell><TableCell><Badge variant="outline" className="whitespace-nowrap rounded-full">{labels[currentStatus]}</Badge></TableCell><TableCell><PriceEditor productId={product.id} currentPrice={currentPrice} canManagePrice={canManagePrice} /></TableCell></TableRow>; })}</TableBody>
           </Table>
         </div>

@@ -30,6 +30,7 @@ const receiptLineUpdateSchema = z
   .object({
     lineId: z.string().uuid(),
     basePriceUsed: nullableReceiptPriceSchema,
+    expectedBasePrice: nullableReceiptPriceSchema,
     saveAsNewBasePrice: z.coerce.boolean().optional().default(false),
     notes: z.string().max(500).optional().default(""),
   })
@@ -39,6 +40,17 @@ const receiptLineUpdateSchema = z
         code: "custom",
         path: ["saveAsNewBasePrice"],
         message: "Ingresa un precio positivo antes de guardarlo como precio base.",
+      });
+    }
+    if (
+      line.saveAsNewBasePrice
+      && line.basePriceUsed !== null
+      && Math.abs(line.basePriceUsed * 100 - Math.round(line.basePriceUsed * 100)) > 0.00000001
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["basePriceUsed"],
+        message: "El precio base admite como máximo dos decimales.",
       });
     }
   });
@@ -63,6 +75,19 @@ function errorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function receiptUpdateErrorMessage(error: unknown) {
+  const message = errorMessage(error, "No se pudo actualizar el recibo QB.");
+  const messages: Record<string, string> = {
+    QB_PRICE_CONCURRENT_CHANGE: "El precio base cambió mientras editabas. Actualiza la página y revisa el precio antes de volver a guardarlo.",
+    QB_PRICE_INVALID: "El precio base debe ser positivo y tener como máximo dos decimales.",
+    QB_PRICE_PRODUCT_INACTIVE: "No se puede guardar un precio base para un producto inactivo.",
+    QB_PRICE_UNIT_INVALID: "La unidad configurada no permite guardar este precio como precio base.",
+    QB_PRICE_ADMIN_REQUIRED: "Solo un administrador puede cambiar precios base.",
+  };
+  const code = Object.keys(messages).find((candidate) => message.includes(candidate));
+  return code ? messages[code] : message;
 }
 
 async function getSupabaseOrState() {
@@ -155,13 +180,14 @@ export async function updateQbReceiptDraftAction(
     p_lines: parsed.data.lines.map((line) => ({
       line_id: line.lineId,
       base_price_used: line.basePriceUsed,
+      expected_base_price: line.expectedBasePrice,
       save_as_new_base_price: line.saveAsNewBasePrice,
       notes: line.notes,
     })),
   });
 
   if (error) {
-    return initialFailure(errorMessage(error, "No se pudo actualizar el recibo QB."));
+    return initialFailure(receiptUpdateErrorMessage(error));
   }
 
   revalidatePath("/recibos");

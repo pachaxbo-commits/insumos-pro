@@ -91,7 +91,7 @@ type LineDraft = {
 function buildLineDraft(line: QbReceiptLine): LineDraft {
   return {
     basePriceUsed: line.basePriceUsed === null ? "" : String(line.basePriceUsed),
-    saveAsNewBasePrice: line.saveAsNewBasePrice,
+    saveAsNewBasePrice: line.currentBasePrice === null && line.saveAsNewBasePrice,
     notes: line.notes ?? "",
   };
 }
@@ -100,6 +100,17 @@ function getDraftPriceState(value: string): "pending" | "invalid" | "valid" {
   if (!value.trim()) return "pending";
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 99999999 ? "valid" : "invalid";
+}
+
+function pricesMatch(left: number | null, right: string) {
+  if (left === null || getDraftPriceState(right) !== "valid") return false;
+  return Math.abs(left - Number(right)) < 0.000001;
+}
+
+function hasAtMostTwoDecimals(value: string) {
+  if (getDraftPriceState(value) !== "valid") return false;
+  const price = Number(value);
+  return Math.abs(price * 100 - Math.round(price * 100)) < 0.00000001;
 }
 
 function CreateReceiptPanel({
@@ -231,7 +242,10 @@ function DraftEditor({
           return {
             lineId: line.id,
             basePriceUsed: draft.basePriceUsed,
-            saveAsNewBasePrice: draft.saveAsNewBasePrice,
+            expectedBasePrice: line.currentBasePrice,
+            saveAsNewBasePrice:
+              draft.saveAsNewBasePrice
+              && !pricesMatch(line.currentBasePrice, draft.basePriceUsed),
             notes: draft.notes,
           };
         }),
@@ -244,6 +258,12 @@ function DraftEditor({
   const hasInvalidDraftLines = receipt.lines.some(
     (line) => getDraftPriceState((lines[line.id] ?? buildLineDraft(line)).basePriceUsed) === "invalid",
   );
+  const hasInvalidBasePriceUpdates = receipt.lines.some((line) => {
+    const draft = lines[line.id] ?? buildLineDraft(line);
+    return draft.saveAsNewBasePrice
+      && !pricesMatch(line.currentBasePrice, draft.basePriceUsed)
+      && !hasAtMostTwoDecimals(draft.basePriceUsed);
+  });
   const canEmit =
     !receipt.hasPendingPrices &&
     !hasPendingDraftLines &&
@@ -261,12 +281,14 @@ function DraftEditor({
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-      {receipt.hasPendingPrices || hasPendingDraftLines || hasInvalidDraftLines ? (
+      {receipt.hasPendingPrices || hasPendingDraftLines || hasInvalidDraftLines || hasInvalidBasePriceUpdates ? (
         <Alert>
-          <AlertTitle>{hasInvalidDraftLines ? "Revisa los precios" : "Precios pendientes"}</AlertTitle>
+          <AlertTitle>{hasInvalidDraftLines || hasInvalidBasePriceUpdates ? "Revisa los precios" : "Precios pendientes"}</AlertTitle>
           <AlertDescription>
             {hasInvalidDraftLines
               ? "Cada precio escrito debe ser un número positivo válido."
+              : hasInvalidBasePriceUpdates
+                ? "Un precio que se guardará como precio base debe tener como máximo dos decimales."
               : "Puedes guardar el borrador con precios pendientes y completarlos posteriormente."}
           </AlertDescription>
         </Alert>
@@ -295,19 +317,24 @@ function DraftEditor({
         </div>
 
         <div className="rounded-md border bg-background">
-          <div className="grid gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground md:grid-cols-[1fr_120px_170px_110px_110px]">
+          <div className="grid gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground lg:grid-cols-[1.2fr_130px_150px_180px_1.4fr_120px]">
             <span>Producto</span>
-            <span>Cantidad</span>
-            <span>Precio manual</span>
-            <span>Nuevo precio base</span>
-            <span>Total</span>
+            <span>Cantidad entregada</span>
+            <span>Precio base actual</span>
+            <span>Precio aplicado</span>
+            <span>Uso futuro</span>
+            <span>Subtotal final</span>
           </div>
           <div className="divide-y">
             {receipt.lines.map((line) => {
               const draft = lines[line.id] ?? buildLineDraft(line);
               const priceState = getDraftPriceState(draft.basePriceUsed);
+              const matchesCurrentPrice = pricesMatch(line.currentBasePrice, draft.basePriceUsed);
+              const savedPriceMatchesDraft =
+                line.basePriceUsed !== null
+                && pricesMatch(line.basePriceUsed, draft.basePriceUsed);
               return (
-                <div key={line.id} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[1fr_120px_170px_110px_110px]">
+                <div key={line.id} className="grid gap-3 px-3 py-4 text-sm lg:grid-cols-[1.2fr_130px_150px_180px_1.4fr_120px]">
                   <div className="min-w-0">
                     <p className="font-medium">{line.productName}</p>
                     <p className="text-xs text-muted-foreground">{line.orderReference}</p>
@@ -315,40 +342,73 @@ function DraftEditor({
                   <p className="text-muted-foreground">
                     {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
                   </p>
-                  <Input
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    placeholder="Ingresa el precio"
-                    value={draft.basePriceUsed}
-                    onChange={(event) => {
-                      const basePriceUsed = event.target.value;
-                      updateLine(line.id, {
-                        basePriceUsed,
-                        ...(getDraftPriceState(basePriceUsed) === "valid"
-                          ? {}
-                          : { saveAsNewBasePrice: false }),
-                      });
-                    }}
-                  />
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={draft.saveAsNewBasePrice}
-                      disabled={priceState !== "valid"}
-                      onChange={(event) => updateLine(line.id, { saveAsNewBasePrice: event.target.checked })}
-                      className="size-4"
+                  <div className="text-xs">
+                    {line.currentBasePrice === null ? (
+                      <p className="font-medium text-amber-700">Este producto todavía no tiene precio base.</p>
+                    ) : (
+                      <>
+                        <p className="font-medium">{money(line.currentBasePrice)}</p>
+                        <p className="text-muted-foreground">por {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Input
+                      aria-label={`Precio aplicado para ${line.productName}`}
+                      type="number"
+                      min="0.0001"
+                      step="0.0001"
+                      placeholder="Ingresa el precio"
+                      value={draft.basePriceUsed}
+                      onChange={(event) => {
+                        const basePriceUsed = event.target.value;
+                        const wasValid = getDraftPriceState(draft.basePriceUsed) === "valid";
+                        const isValid = getDraftPriceState(basePriceUsed) === "valid";
+                        updateLine(line.id, {
+                          basePriceUsed,
+                          ...(isValid
+                            ? line.currentBasePrice === null && !wasValid
+                              ? { saveAsNewBasePrice: true }
+                              : {}
+                            : { saveAsNewBasePrice: false }),
+                        });
+                      }}
                     />
-                    Guardar como precio base
-                  </label>
+                    <p className="text-xs text-muted-foreground">Bs por {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}</p>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    {matchesCurrentPrice ? (
+                      <p className="font-medium text-emerald-700">El precio aplicado ya coincide con el precio base.</p>
+                    ) : (
+                      <>
+                        <label className="flex items-start gap-2 text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={draft.saveAsNewBasePrice}
+                            disabled={priceState !== "valid"}
+                            onChange={(event) => updateLine(line.id, { saveAsNewBasePrice: event.target.checked })}
+                            className="mt-0.5 size-4"
+                          />
+                          <span>Guardar este precio como precio base para próximos pedidos.</span>
+                        </label>
+                        {line.currentBasePrice !== null && priceState === "valid" ? (
+                          <p className={draft.saveAsNewBasePrice ? "font-medium text-amber-700" : "text-muted-foreground"}>
+                            {draft.saveAsNewBasePrice
+                              ? `Confirmas reemplazar ${money(line.currentBasePrice)} por ${money(Number(draft.basePriceUsed))}.`
+                              : "Precio excepcional: se usará solo en este recibo."}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                   <p className="font-medium">
                     {priceState === "invalid"
                       ? "Precio inválido"
                       : priceState === "pending"
                         ? "Precio pendiente"
-                        : line.lineTotal !== null && line.lineTotal > 0
+                        : savedPriceMatchesDraft && line.lineTotal !== null && line.lineTotal > 0
                           ? money(line.lineTotal)
-                          : "Precio pendiente"}
+                          : "Se calcula al guardar"}
                   </p>
                 </div>
               );
@@ -367,7 +427,7 @@ function DraftEditor({
           </div>
         </div>
 
-        <Button type="submit" disabled={updatePending || hasInvalidDraftLines}>
+        <Button type="submit" disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates}>
           <Save className="size-4" />
           {updatePending ? "Guardando..." : "Guardar borrador"}
         </Button>

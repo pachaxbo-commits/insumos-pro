@@ -23,8 +23,8 @@ $checks = [ordered]@{
   "Replacement confirmation is required" = $actions -match "confirm_replacement"
   "UI exposes search" = $component -match "Buscar producto"
   "UI exposes category filter" = $component -match "Todas las categorías"
-  "UI exposes QB-17 states" = $component -match "Bloqueado por precio" -and $component -match "Bloqueado por unidad"
-  "UI keeps prices internal" = $component -match "Los precios son internos"
+  "UI exposes operational price states" = $component -match "Falta precio" -and $component -match "Unidad inválida" -and $component -match "No respaldado por BS"
+  "UI explains historical price preservation" = $component -match "los recibos emitidos conservan sus importes originales"
   "Migration changes no stock" = $migration -notmatch "stock_current\s*="
 }
 

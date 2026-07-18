@@ -817,7 +817,7 @@ export async function updateQbProductBasePriceAction(
   ) {
     return { success: false, message: "El precio admite como maximo dos decimales." };
   }
-  if (input.expected_price !== null && !input.confirm_replacement) {
+  if (!input.remove_price && input.expected_price !== null && !input.confirm_replacement) {
     return { success: false, message: "Confirma el reemplazo del precio actual." };
   }
 
