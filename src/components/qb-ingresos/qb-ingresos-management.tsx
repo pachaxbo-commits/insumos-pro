@@ -44,6 +44,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ProductCombobox } from "@/components/products/product-combobox";
 
 type ActionState = {
   success: boolean;
@@ -220,23 +221,25 @@ function CreateReceiptForm({
             </div>
             <div className="space-y-2">
               <Label>Producto recibido</Label>
-              <NativeSelect
+              <ProductCombobox
+                options={activeQbProducts.map((product) => ({
+                  id: product.id,
+                  name: product.name,
+                  category: product.category?.name,
+                  unit: product.unit?.abbreviation,
+                }))}
                 name="product_id"
                 value={selectedProductId}
-                onChange={(event) => setSelectedProductId(event.target.value)}
+                onValueChange={setSelectedProductId}
                 disabled={!canManage || !activeQbProducts.length}
-              >
-                <option value="">Seleccionar</option>
-                {activeQbProducts.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </NativeSelect>
+                placeholder="Buscar por nombre o categoría"
+                ariaLabel="Producto recibido"
+              />
             </div>
             <div className="space-y-2">
               <Label>Unidad o presentacion de recepcion</Label>
               <NativeSelect
+                key={selectedProductId}
                 name="allowed_unit_id"
                 defaultValue={receptionUnits[0]?.id ?? ""}
                 disabled={!canManage || !receptionUnits.length}
@@ -332,10 +335,37 @@ function ClassificationForm({
       .filter((result) => result.configured_output_id)
       .map((result) => [result.configured_output_id, result]),
   );
-  const classifiedTotal = line.classification_results.reduce(
-    (sum, result) => sum + Number(result.base_quantity),
-    0,
+  const [percentages, setPercentages] = useState<Record<string, string>>(() =>
+    Object.fromEntries(outputs.map((output) => {
+      const existing = resultByOutputId.get(output.id);
+      const derived = existing
+        ? Number(existing.assigned_percentage ?? (Number(existing.base_quantity) / Number(line.base_quantity)) * 100)
+        : null;
+      return [output.id, derived === null ? "" : String(derived)];
+    })),
   );
+  const percentageTotal = outputs.reduce((sum, output) => sum + Number(percentages[output.id] || 0), 0);
+  const percentagesValid = outputs.length > 0
+    && outputs.every((output) => {
+      const value = Number(percentages[output.id]);
+      return Number.isFinite(value) && value >= 0 && value <= 100;
+    })
+    && Math.abs(percentageTotal - 100) < 0.000001;
+  const lastPositiveIndex = outputs.reduce(
+    (lastIndex, output, index) => Number(percentages[output.id] || 0) > 0 ? index : lastIndex,
+    -1,
+  );
+  const previewQuantities = outputs.map((output, index) => {
+    const percentage = Number(percentages[output.id] || 0);
+    const previous = outputs.slice(0, index).reduce((sum, previousOutput) => {
+      const previousPercentage = Number(percentages[previousOutput.id] || 0);
+      return sum + Math.round(Number(line.base_quantity) * previousPercentage * 10_000) / 1_000_000;
+    }, 0);
+    const receivesResidual = index === lastPositiveIndex;
+    return receivesResidual && percentagesValid
+      ? Math.round((Number(line.base_quantity) - previous) * 1_000_000) / 1_000_000
+      : Math.round(Number(line.base_quantity) * percentage * 10_000) / 1_000_000;
+  });
 
   return (
     <form action={formAction} className="mt-4 rounded-2xl border border-border/70 bg-slate-50/70 p-4">
@@ -343,7 +373,7 @@ function ClassificationForm({
       <input type="hidden" name="result_count" value={outputs.length} />
       <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="font-medium">Clasificacion opcional</p>
+          <p className="font-medium">Distribución por porcentajes</p>
           <p className="text-sm text-muted-foreground">
             Base recibida: {formatNumber(line.base_quantity)} {line.base_unit_symbol}
           </p>
@@ -352,50 +382,57 @@ function ClassificationForm({
           variant="outline"
           className={cn(
             "w-fit rounded-full",
-            Math.abs(classifiedTotal - line.base_quantity) <= 0.001
+            percentagesValid
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-amber-200 bg-amber-50 text-amber-700",
           )}
         >
-          Asignado: {formatNumber(classifiedTotal)} {line.base_unit_symbol}
+          Total: {formatNumber(percentageTotal)}%
         </Badge>
       </div>
       <FormMessage state={state} />
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {outputs.map((output, index) => {
-          const existing = resultByOutputId.get(output.id);
-
           return (
             <div key={output.id} className="space-y-2 rounded-xl border border-border/60 bg-white/70 p-3">
               <input type="hidden" name={`output_id_${index}`} value={output.id} />
-              <Label>
-                {output.output_type === "loss" ? "Merma" : output.label}
-                {output.expected_percentage !== null && output.expected_percentage !== undefined
-                  ? ` (${formatNumber(output.expected_percentage)}%)`
-                  : ""}
-              </Label>
+              <Label>{output.label}</Label>
               <Input
-                name={`quantity_${index}`}
+                name={`percentage_${index}`}
                 type="number"
                 min="0"
-                step="0.001"
-                defaultValue={existing?.base_quantity ?? ""}
-                placeholder={`Cantidad en ${line.base_unit_symbol}`}
+                max="100"
+                step="0.0001"
+                value={percentages[output.id] ?? ""}
+                onChange={(event) => setPercentages((current) => ({
+                  ...current,
+                  [output.id]: event.target.value,
+                }))}
+                placeholder="Porcentaje"
                 className="rounded-xl"
                 disabled={!canManage}
               />
+              <p className="text-xs text-muted-foreground">
+                Vista previa: {formatNumber(previewQuantities[index] ?? 0)} {line.base_unit_symbol}
+              </p>
             </div>
           );
         })}
       </div>
       {!outputs.length ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Este producto no tiene salidas de clasificación configuradas en Productos.
+          Este producto no tiene productos resultado configurados en Productos.
         </p>
       ) : null}
-      <Button type="submit" disabled={pending || !canManage || !outputs.length} className="mt-4 rounded-xl">
+      {!percentagesValid && outputs.length ? (
+        <p className="mt-3 text-sm font-medium text-amber-700">Los porcentajes deben sumar exactamente 100%.</p>
+      ) : null}
+      <p className="mt-3 text-xs text-muted-foreground">
+        No se registra merma en esta versión. El residuo decimal se asigna al último resultado para conservar exactamente la cantidad recibida.
+      </p>
+      <Button type="submit" disabled={pending || !canManage || !percentagesValid} className="mt-4 rounded-xl">
         <Split className="size-4" />
-        {pending ? "Guardando..." : "Guardar clasificacion"}
+        {pending ? "Guardando..." : "Guardar distribución"}
       </Button>
     </form>
   );
@@ -492,7 +529,9 @@ function ReceiptCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {receipt.lines.map((line) => {
-          const outputs = outputsByProductId.get(line.product_id) ?? [];
+          const outputs = (outputsByProductId.get(line.product_id) ?? []).filter(
+            (output) => output.is_active && output.output_type === "product",
+          );
           const hasClassificationReady =
             !line.requires_classification ||
             Math.abs(

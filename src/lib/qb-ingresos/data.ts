@@ -132,7 +132,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
        created_by_profile:profiles!qb_merchandise_receipts_created_by_fkey(id, full_name, role),
        lines:qb_merchandise_receipt_lines(id, receipt_id, product_id, allowed_unit_id, source_kind, source_unit_id, product_presentation_id, source_label, source_quantity, base_unit_id, base_unit_symbol, base_quantity, conversion_factor_to_base, conversion_snapshot_id, unit_cost, total_cost, requires_classification, notes, created_by, updated_by, created_at, updated_at,
          product:products(${productSelect}),
-         classification_results:qb_merchandise_receipt_classification_results(id, line_id, configured_output_id, output_type, output_product_id, label, base_quantity, assigned_cost, notes, sort_order, created_by, updated_by, created_at, updated_at, output_product:products!qb_merchandise_receipt_classification_re_output_product_id_fkey(${productSelect})),
+         classification_results:qb_merchandise_receipt_classification_results(id, line_id, configured_output_id, output_type, output_product_id, label, assigned_percentage, base_quantity, assigned_cost, calculation_snapshot, notes, sort_order, created_by, updated_by, created_at, updated_at, output_product:products!qb_merchandise_receipt_classification_re_output_product_id_fkey(${productSelect})),
          movements:qb_merchandise_receipt_movements(id, receipt_id, line_id, classification_result_id, inventory_movement_id, product_id, movement_type, movement_role, movement_quantity, created_at, product:products(${productSelect}))
        )`,
     )

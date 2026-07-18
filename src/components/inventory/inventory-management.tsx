@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownLeft,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { createInventoryMovementAction } from "@/lib/inventory/actions";
+import { ProductCombobox } from "@/components/products/product-combobox";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -197,6 +198,7 @@ function MovementForm({ products }: { products: ProductWithRelations[] }) {
     createInventoryMovementAction,
     initialState,
   );
+  const [productId, setProductId] = useState("");
   useActionToast(state);
 
   return (
@@ -206,14 +208,23 @@ function MovementForm({ products }: { products: ProductWithRelations[] }) {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <Label>Producto</Label>
-          <NativeSelect name="product_id" required>
-            <option value="">Seleccionar producto</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name} - stock actual {formatNumber(Number(product.stock_current))}
-              </option>
-            ))}
-          </NativeSelect>
+          <ProductCombobox
+            name="product_id"
+            value={productId}
+            onValueChange={setProductId}
+            options={products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              category: product.category?.name,
+              unit: product.unit?.abbreviation,
+            }))}
+            placeholder="Buscar por nombre, categoria o unidad"
+          />
+          {productId ? (
+            <p className="text-xs text-muted-foreground">
+              Stock informativo: {formatNumber(Number(products.find((product) => product.id === productId)?.stock_current ?? 0))}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { AlertTriangle, Edit3, ListChecks, PackageCheck, Plus, Save } from "lucide-react";
 
 import {
@@ -27,6 +27,7 @@ import type {
 } from "@/types/products";
 import { QB_ALLOWED_UNIT_CONTEXTS } from "@/types/products";
 import { QbProductPriceManagement } from "@/components/products/qb-product-price-management";
+import { ProductCombobox } from "@/components/products/product-combobox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,6 +177,7 @@ function ProductQbSettingsForm({
   );
   useActionToast(state);
   const defaultProductId = settings?.product_id ?? productId ?? "";
+  const [selectedProductId, setSelectedProductId] = useState(defaultProductId);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -183,14 +185,18 @@ function ProductQbSettingsForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <Label>Producto</Label>
-          <NativeSelect name="product_id" defaultValue={defaultProductId}>
-            <option value="">Seleccionar</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <ProductCombobox
+            name="product_id"
+            value={selectedProductId}
+            onValueChange={setSelectedProductId}
+            options={products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              category: product.category?.name,
+              unit: product.unit?.abbreviation,
+            }))}
+            placeholder="Buscar por nombre, categoria o unidad"
+          />
         </div>
         <div className="space-y-2">
           <Label>Unidad base inventario</Label>
@@ -300,6 +306,7 @@ function ProductAllowedUnitForm({
   );
   useActionToast(state);
   const defaultProductId = allowedUnit?.product_id ?? productId ?? "";
+  const [selectedProductId, setSelectedProductId] = useState(defaultProductId);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -308,14 +315,18 @@ function ProductAllowedUnitForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Producto</Label>
-          <NativeSelect name="product_id" defaultValue={defaultProductId}>
-            <option value="">Seleccionar</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <ProductCombobox
+            name="product_id"
+            value={selectedProductId}
+            onValueChange={setSelectedProductId}
+            options={products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              category: product.category?.name,
+              unit: product.unit?.abbreviation,
+            }))}
+            placeholder="Buscar producto"
+          />
         </div>
         <div className="space-y-2">
           <Label>Contexto</Label>
@@ -429,6 +440,14 @@ function ProductClassificationOutputForm({
   );
   useActionToast(state);
   const defaultProductId = output?.source_product_id ?? productId ?? "";
+  const [sourceProductId, setSourceProductId] = useState(defaultProductId);
+  const [outputProductId, setOutputProductId] = useState(output?.output_product_id ?? "");
+  const productOptions = products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    category: product.category?.name,
+    unit: product.unit?.abbreviation,
+  }));
 
   return (
     <form action={formAction} className="space-y-4">
@@ -437,32 +456,36 @@ function ProductClassificationOutputForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label>Producto clasificable</Label>
-          <NativeSelect name="source_product_id" defaultValue={defaultProductId}>
-            <option value="">Seleccionar</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <ProductCombobox
+            name="source_product_id"
+            options={productOptions}
+            value={sourceProductId}
+            onValueChange={setSourceProductId}
+            placeholder="Buscar producto de entrada"
+            ariaLabel="Producto clasificable"
+          />
         </div>
         <div className="space-y-2">
           <Label>Tipo de salida</Label>
-          <NativeSelect name="output_type" defaultValue={output?.output_type ?? "product"}>
-            <option value="product">Producto resultado</option>
-            <option value="loss">Merma</option>
-          </NativeSelect>
+          <input type="hidden" name="output_type" value={output?.output_type ?? "product"} />
+          <p className="flex h-10 items-center rounded-xl border bg-slate-50 px-3 text-sm">
+            {output?.output_type === "loss" ? "Merma histórica" : "Producto resultado"}
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Producto resultado</Label>
-          <NativeSelect name="output_product_id" defaultValue={output?.output_product_id ?? ""}>
-            <option value="">Sin producto resultado</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </NativeSelect>
+          {output?.output_type === "loss" ? (
+            <input type="hidden" name="output_product_id" value="" />
+          ) : (
+            <ProductCombobox
+              name="output_product_id"
+              options={productOptions.filter((product) => product.id !== sourceProductId)}
+              value={outputProductId}
+              onValueChange={setOutputProductId}
+              placeholder="Buscar producto resultado"
+              ariaLabel="Producto resultado"
+            />
+          )}
         </div>
         <div className="space-y-2">
           <Label>Etiqueta</Label>
@@ -474,18 +497,10 @@ function ProductClassificationOutputForm({
             className="rounded-xl"
           />
         </div>
-        <div className="space-y-2">
-          <Label>Porcentaje esperado</Label>
-          <Input
-            name="expected_percentage"
-            type="number"
-            min="0"
-            max="100"
-            step="0.0001"
-            defaultValue={output?.expected_percentage ?? ""}
-            className="rounded-xl"
-          />
-        </div>
+        <input type="hidden" name="expected_percentage" value="" />
+        <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground">
+          El porcentaje se introduce en cada ingreso y no queda fijado como valor predeterminado.
+        </p>
         <div className="space-y-2">
           <Label>Estado</Label>
           <NativeSelect name="is_active" defaultValue={String(output?.is_active ?? true)}>

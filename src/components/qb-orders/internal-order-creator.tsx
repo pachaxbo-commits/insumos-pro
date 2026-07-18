@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ProductCombobox } from "@/components/products/product-combobox";
 import { createQbInternalOrderAction } from "@/lib/qb-orders/actions";
 import type {
   QbInternalOrderCreationData,
@@ -369,18 +370,18 @@ export function InternalOrderCreator({
               const allowedUnit = product?.allowedUnits.find((unit) => unit.id === line.allowedUnitId);
               return (
                 <div key={line.key} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_150px_180px_130px_1fr_auto]">
-                  <select
-                    aria-label={`Producto ${index + 1}`}
+                  <ProductCombobox
+                    ariaLabel={`Producto ${index + 1}`}
                     value={line.productId}
-                    onChange={(event) => selectProduct(line.key, event.target.value)}
-                    required
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                  >
-                    <option value="">Seleccionar producto</option>
-                    {products.map((item) => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
+                    onValueChange={(productId) => selectProduct(line.key, productId)}
+                    options={products.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      category: item.categoryName,
+                      unit: item.allowedUnits[0]?.label,
+                    }))}
+                    placeholder="Buscar producto"
+                  />
                   <select
                     aria-label={`Forma de pedido ${index + 1}`}
                     value={line.inputMode}

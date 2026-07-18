@@ -13,7 +13,6 @@ type ActionState = {
   message?: string;
 };
 
-const mutationRoles = new Set(["administrador", "inventario"]);
 const booleanField = z.union([
   z.boolean(),
   z.enum(["true", "false"]).transform((value) => value === "true"),
@@ -66,15 +65,10 @@ const productSchema = z.object({
     sku: optionalText,
     category_id: z.uuid("Selecciona una categoria."),
     unit_id: z.uuid("Selecciona una unidad."),
-    stock_current: z.coerce
-      .number()
-      .finite("El stock actual debe ser valido."),
     stock_min: z.coerce
       .number()
       .finite("El stock minimo debe ser valido.")
       .min(0, "El stock minimo no puede ser negativo."),
-    purchase_price: z.coerce.number().min(0, "El precio de compra no puede ser negativo."),
-    sale_price: z.coerce.number().min(0, "El precio de venta no puede ser negativo."),
     supplier_name: optionalText,
     image_url: optionalText,
     requires_classification: booleanField,
@@ -101,6 +95,60 @@ const productSchema = z.object({
       .positive("El incremento debe ser mayor a cero."),
     is_active: booleanField,
   });
+
+const PRODUCT_IMAGE_BUCKET = "product-images";
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function detectProductImage(bytes: Uint8Array) {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return { mime: "image/jpeg", extension: "jpg" };
+  }
+  if (bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+    .every((value, index) => bytes[index] === value)) {
+    return { mime: "image/png", extension: "png" };
+  }
+  if (
+    bytes.length >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+  ) {
+    return { mime: "image/webp", extension: "webp" };
+  }
+  return null;
+}
+
+async function uploadProductImage(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+  productId: string,
+  value: FormDataEntryValue | null,
+) {
+  if (!(value instanceof File) || value.size === 0) return { path: null, publicUrl: null };
+  if (value.size > MAX_PRODUCT_IMAGE_BYTES) throw new Error("La imagen no puede superar 5 MB.");
+
+  const bytes = new Uint8Array(await value.arrayBuffer());
+  const detected = detectProductImage(bytes);
+  if (!detected || value.type !== detected.mime) {
+    throw new Error("Selecciona una imagen JPEG, PNG o WebP válida.");
+  }
+
+  const path = `${productId}/${crypto.randomUUID()}.${detected.extension}`;
+  const { error } = await supabase.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .upload(path, bytes, { contentType: detected.mime, cacheControl: "0", upsert: true });
+  if (error) throw new Error("No se pudo subir la fotografía del producto.");
+
+  return {
+    path,
+    publicUrl: supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl,
+  };
+}
+
+function productImagePath(publicUrl: string | null | undefined) {
+  if (!publicUrl) return null;
+  const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
+  const markerIndex = publicUrl.indexOf(marker);
+  return markerIndex >= 0 ? decodeURIComponent(publicUrl.slice(markerIndex + marker.length)) : null;
+}
 
 const catalogSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
@@ -322,10 +370,10 @@ function getCategoryPayload(category: z.infer<typeof catalogSchema>) {
 async function assertCanMutateProducts() {
   const auth = await requireAuthenticatedUser();
 
-  if (!auth.user.role || !mutationRoles.has(auth.user.role)) {
+  if (auth.user.role !== "administrador") {
     return {
       allowed: false as const,
-      message: "Tu rol solo permite lectura en este modulo.",
+      message: "Solo un administrador puede configurar productos.",
     };
   }
 
@@ -392,13 +440,24 @@ export async function createProductAction(
     };
   }
 
+  const productId = crypto.randomUUID();
+  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = { path: null, publicUrl: null };
+  try {
+    uploaded = await uploadProductImage(access.supabase, productId, formData.get("image_file"));
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
+  }
+
   const { data, error } = await access.supabase
     .from("products")
-    .insert(parsed.data)
+    .insert({ ...parsed.data, id: productId, image_url: uploaded.publicUrl, stock_current: 0, purchase_price: 0, sale_price: 0 })
     .select("id")
     .single<{ id: string }>();
 
-  if (error) return { success: false, message: error.message };
+  if (error) {
+    if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
+    return { success: false, message: error.message };
+  }
 
   await writeAuditLog({
     supabase: access.supabase,
@@ -439,9 +498,38 @@ export async function updateProductAction(
     };
   }
 
-  const { error } = await access.supabase.from("products").update(parsed.data).eq("id", id);
+  const existingProductResult = await access.supabase
+    .from("products")
+    .select("image_url")
+    .eq("id", id)
+    .maybeSingle<{ image_url: string | null }>();
 
-  if (error) return { success: false, message: error.message };
+  if (existingProductResult.error || !existingProductResult.data) {
+    return { success: false, message: "No se pudo cargar el producto que deseas editar." };
+  }
+
+  const existingImageUrl = existingProductResult.data.image_url;
+  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = { path: null, publicUrl: null };
+  try {
+    uploaded = await uploadProductImage(access.supabase, id, formData.get("image_file"));
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
+  }
+
+  const { error } = await access.supabase
+    .from("products")
+    .update({ ...parsed.data, image_url: uploaded.publicUrl ?? existingImageUrl })
+    .eq("id", id);
+
+  if (error) {
+    if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
+    return { success: false, message: error.message };
+  }
+
+  const previousPath = productImagePath(existingImageUrl);
+  if (uploaded.path && previousPath && previousPath !== uploaded.path) {
+    await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([previousPath]);
+  }
 
   await writeAuditLog({
     supabase: access.supabase,

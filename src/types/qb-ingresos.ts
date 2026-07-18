@@ -72,8 +72,10 @@ export type QbMerchandiseReceiptClassificationResult = {
   output_type: "product" | "loss";
   output_product_id: string | null;
   label: string;
+  assigned_percentage: number | null;
   base_quantity: number;
   assigned_cost: number;
+  calculation_snapshot: Record<string, unknown> | null;
   notes: string | null;
   sort_order: number;
   created_by: string | null;

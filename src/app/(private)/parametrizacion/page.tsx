@@ -7,7 +7,7 @@ import { getProductsCatalogData } from "@/lib/products/data";
 export default async function ParametrizacionPage() {
   const auth = await requireRoleAccess("/parametrizacion");
   const data = await getProductsCatalogData({}, { includeQbParametrization: true });
-  const canManage = auth.user.role === "administrador" || auth.user.role === "inventario";
+  const canManage = auth.user.role === "administrador";
 
   return (
     <div className="space-y-6">

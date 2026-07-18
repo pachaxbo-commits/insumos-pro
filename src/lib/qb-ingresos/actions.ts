@@ -56,16 +56,6 @@ type QbProductUnitSettingsRow = {
   is_qb_active: boolean;
 };
 
-type QbClassificationOutputRow = {
-  id: string;
-  source_product_id: string;
-  output_type: "product" | "loss";
-  output_product_id: string | null;
-  label: string;
-  is_active: boolean;
-  sort_order: number;
-};
-
 const mutationRoles = new Set(["administrador", "inventario"]);
 const initialState: ActionState = { success: false };
 
@@ -123,10 +113,11 @@ const annulReceiptSchema = z.object({
   reason: z.string().trim().min(4, "El motivo debe tener al menos 4 caracteres."),
 });
 
-const resultQuantitySchema = z.coerce
+const resultPercentageSchema = z.coerce
   .number()
-  .finite("La cantidad debe ser valida.")
-  .min(0, "La cantidad no puede ser negativa.");
+  .finite("El porcentaje debe ser válido.")
+  .min(0, "El porcentaje no puede ser negativo.")
+  .max(100, "El porcentaje no puede superar 100%.");
 
 async function assertCanManageQbIngresos() {
   const auth = await requireAuthenticatedUser();
@@ -172,6 +163,26 @@ function roundMoney(value: number) {
 
 function normalizeBusinessMessage(message?: string) {
   if (!message) return "No se pudo completar la operacion.";
+
+  const classificationMessages: Array<[string, string]> = [
+    ["QB_CLASSIFICATION_AUTH_REQUIRED", "Inicia sesion nuevamente para guardar la clasificacion."],
+    ["QB_CLASSIFICATION_ROLE_REQUIRED", "Tu usuario no puede registrar clasificaciones."],
+    ["QB_CLASSIFICATION_LINE_NOT_FOUND", "No se encontro la linea de ingreso."],
+    ["QB_CLASSIFICATION_DRAFT_REQUIRED", "Solo se puede clasificar un ingreso en borrador."],
+    ["QB_CLASSIFICATION_NOT_REQUIRED", "Esta linea no requiere clasificacion."],
+    ["QB_CLASSIFICATION_RESULTS_REQUIRED", "Agrega los productos resultado de la clasificacion."],
+    ["QB_CLASSIFICATION_INVALID_PERCENTAGE", "Revisa los porcentajes ingresados."],
+    ["QB_CLASSIFICATION_DUPLICATE_OUTPUT", "Un producto resultado esta repetido."],
+    ["QB_CLASSIFICATION_OUTPUT_INVALID", "La configuracion contiene un resultado no permitido."],
+    ["QB_CLASSIFICATION_PRODUCT_INACTIVE", "Uno de los productos resultado no esta activo."],
+    ["QB_CLASSIFICATION_PERCENTAGE_TOTAL", "Los porcentajes deben sumar exactamente 100%."],
+    ["QB_CLASSIFICATION_POSITIVE_RESULT_REQUIRED", "Al menos un resultado debe tener porcentaje positivo."],
+    ["QB_CLASSIFICATION_NON_POSITIVE_QUANTITY", "Un porcentaje positivo produjo una cantidad no valida."],
+    ["QB_CLASSIFICATION_CONSERVATION_FAILED", "No se pudo conservar exactamente la cantidad recibida."],
+  ];
+
+  const classificationMessage = classificationMessages.find(([code]) => message.includes(code));
+  if (classificationMessage) return classificationMessage[1];
 
   if (message.includes("clasificacion debe sumar")) {
     return "La clasificacion debe sumar exactamente la cantidad base recibida.";
@@ -550,114 +561,55 @@ export async function saveQbMerchandiseClassificationAction(
   const lineResult = await loadReceiptLine(access.supabase, parsed.data.line_id);
   if (!lineResult.ok) return { success: false, message: lineResult.message };
 
-  const { data: configuredOutputs, error: outputsError } = await access.supabase
-    .from("qb_product_classification_outputs")
-    .select("id, source_product_id, output_type, output_product_id, label, is_active, sort_order")
-    .eq("source_product_id", lineResult.data.product_id)
-    .eq("is_active", true)
-    .order("sort_order", { ascending: true })
-    .returns<QbClassificationOutputRow[]>();
-
-  if (outputsError) return { success: false, message: outputsError.message };
-
-  const outputsById = new Map((configuredOutputs ?? []).map((output) => [output.id, output]));
   const parsedCount = z.coerce.number().int().min(1).max(30).safeParse(formData.get("result_count"));
 
   if (!parsedCount.success) {
     return { success: false, message: "La clasificacion tiene una cantidad de filas invalida." };
   }
 
-  const rows: Array<{
-    line_id: string;
-    configured_output_id: string;
-    output_type: "product" | "loss";
-    output_product_id: string | null;
-    label: string;
-    base_quantity: number;
-    assigned_cost: number;
-    sort_order: number;
-    created_by: string;
-    updated_by: string;
-  }> = [];
+  const rows: Array<{ output_id: string; percentage: number }> = [];
 
   for (let index = 0; index < parsedCount.data; index += 1) {
     const outputId = formData.get(`output_id_${index}`);
-    const quantity = formData.get(`quantity_${index}`);
+    const percentage = formData.get(`percentage_${index}`);
 
     if (typeof outputId !== "string" || !outputId.trim()) continue;
 
-    const output = outputsById.get(outputId);
-    if (!output) {
-      return { success: false, message: `Fila ${index + 1}: salida de clasificacion invalida.` };
-    }
-
-    const parsedQuantity = resultQuantitySchema.safeParse(quantity);
-    if (!parsedQuantity.success) {
+    const parsedPercentage = resultPercentageSchema.safeParse(percentage);
+    if (!parsedPercentage.success) {
       return {
         success: false,
-        message: `Fila ${index + 1}: ${parsedQuantity.error.issues[0]?.message ?? "cantidad invalida."}`,
+        message: `Fila ${index + 1}: ${parsedPercentage.error.issues[0]?.message ?? "porcentaje inválido."}`,
       };
     }
 
-    if (parsedQuantity.data <= 0) continue;
-
     rows.push({
-      line_id: lineResult.data.id,
-      configured_output_id: output.id,
-      output_type: output.output_type,
-      output_product_id: output.output_type === "loss" ? null : output.output_product_id,
-      label: output.label,
-      base_quantity: parsedQuantity.data,
-      assigned_cost: roundMoney(
-        Number(lineResult.data.total_cost) *
-          (parsedQuantity.data / Number(lineResult.data.base_quantity)),
-      ),
-      sort_order: output.sort_order,
-      created_by: access.userId,
-      updated_by: access.userId,
+      output_id: outputId,
+      percentage: parsedPercentage.data,
     });
   }
 
   if (!rows.length) {
-    return { success: false, message: "Agrega al menos un resultado o merma." };
+    return { success: false, message: "Agrega al menos un producto resultado." };
   }
 
-  const total = rows.reduce((sum, row) => sum + row.base_quantity, 0);
-  if (Math.abs(total - Number(lineResult.data.base_quantity)) > 0.001) {
+  const total = rows.reduce((sum, row) => sum + row.percentage, 0);
+  if (Math.abs(total - 100) > 0.000001) {
     return {
       success: false,
-      message: "La suma de resultados y merma debe coincidir con la cantidad base recibida.",
+      message: "Los porcentajes deben sumar exactamente 100%.",
     };
   }
 
-  const { error: deleteError } = await access.supabase
-    .from("qb_merchandise_receipt_classification_results")
-    .delete()
-    .eq("line_id", lineResult.data.id);
-
-  if (deleteError) return { success: false, message: deleteError.message };
-
-  const { error: insertError } = await access.supabase
-    .from("qb_merchandise_receipt_classification_results")
-    .insert(rows);
-
-  if (insertError) return { success: false, message: insertError.message };
-
-  await writeAuditLog({
-    supabase: access.supabase,
-    userId: access.userId,
-    action: "save_qb_merchandise_classification",
-    entityType: "qb_merchandise_receipt",
-    entityId: lineResult.data.receipt_id,
-    metadata: {
-      line_id: lineResult.data.id,
-      result_count: rows.length,
-      total_quantity: total,
-    },
+  const { error } = await access.supabase.rpc("save_qb_merchandise_classification_percentages", {
+    p_line_id: lineResult.data.id,
+    p_results: rows,
   });
 
+  if (error) return { success: false, message: normalizeBusinessMessage(error.message) };
+
   revalidateQbIngresos();
-  return { success: true, message: "Clasificacion QB guardada." };
+  return { success: true, message: "Distribución porcentual guardada." };
 }
 
 export async function confirmQbMerchandiseReceiptAction(

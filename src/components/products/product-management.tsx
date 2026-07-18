@@ -192,9 +192,8 @@ function ProductForm({
   useActionToast(state);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} encType="multipart/form-data" className="space-y-4">
       {product ? <input type="hidden" name="id" value={product.id} /> : null}
-
       <FormMessage state={state} />
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -272,19 +271,6 @@ function ProductForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`${mode}-stock-current`}>Stock actual</Label>
-          <Input
-            id={`${mode}-stock-current`}
-            name="stock_current"
-            type="number"
-            step="0.001"
-            defaultValue={product?.stock_current ?? 0}
-            required
-            className="rounded-xl"
-          />
-        </div>
-
-        <div className="space-y-2">
           <Label htmlFor={`${mode}-stock-min`}>Stock minimo</Label>
           <Input
             id={`${mode}-stock-min`}
@@ -293,34 +279,6 @@ function ProductForm({
             min="0"
             step="0.001"
             defaultValue={product?.stock_min ?? 0}
-            required
-            className="rounded-xl"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${mode}-purchase-price`}>Precio compra</Label>
-          <Input
-            id={`${mode}-purchase-price`}
-            name="purchase_price"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={product?.purchase_price ?? 0}
-            required
-            className="rounded-xl"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${mode}-sale-price`}>Precio venta</Label>
-          <Input
-            id={`${mode}-sale-price`}
-            name="sale_price"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={product?.sale_price ?? 0}
             required
             className="rounded-xl"
           />
@@ -337,15 +295,26 @@ function ProductForm({
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor={`${mode}-image`}>Imagen URL</Label>
+        <div className="space-y-2 md:col-span-2">
+          <Label htmlFor={`${mode}-image`}>Fotografia del producto</Label>
           <Input
             id={`${mode}-image`}
-            name="image_url"
-            defaultValue={product?.image_url ?? ""}
-            placeholder="https://..."
+            name="image_file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
             className="rounded-xl"
           />
+          <p className="text-xs text-muted-foreground">
+            JPEG, PNG o WebP, hasta 5 MB. Al subir una nueva fotografia se reemplaza la anterior.
+          </p>
+          {product?.image_url ? (
+            <div
+              role="img"
+              aria-label={`Fotografia actual de ${product.name}`}
+              className="h-24 w-24 rounded-xl border bg-cover bg-center"
+              style={{ backgroundImage: `url(${JSON.stringify(product.image_url)})` }}
+            />
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -414,8 +383,9 @@ function ProductForm({
         </div>
 
         <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground md:col-span-2">
-          Para publicar, la categoria tambien debe ser visible. El catalogo nunca muestra costo,
-          stock exacto, proveedor ni margen.
+          El stock se modifica mediante Ingresos y Entregas. El precio base, la unidad de precio,
+          las presentaciones y la visibilidad se configuran despues de guardar el producto. El
+          catalogo nunca muestra costo, stock exacto, proveedor ni margen.
         </p>
       </div>
 
@@ -750,11 +720,21 @@ export function ProductManagement({
                 {products.map((product) => (
                   <TableRow key={product.id}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {product.sku || "Sin SKU"}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <div
+                          role={product.image_url ? "img" : undefined}
+                          aria-label={product.image_url ? `Fotografia de ${product.name}` : undefined}
+                          className="size-11 shrink-0 rounded-xl border bg-slate-100 bg-cover bg-center"
+                          style={product.image_url
+                            ? { backgroundImage: `url(${JSON.stringify(product.image_url)})` }
+                            : undefined}
+                        />
+                        <div>
+                          <p className="font-medium">{product.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {product.sku || "Sin SKU"}
+                          </p>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{product.category?.name ?? "Sin categoria"}</TableCell>

@@ -34,8 +34,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
   const auth = await requireRoleAccess("/productos");
   const filters = normalizeFilters(await searchParams);
   const data = await getProductsCatalogData(filters, { includeQbParametrization: true });
-  const canManage =
-    auth.user.role === "administrador" || auth.user.role === "inventario";
+  const canManage = auth.user.role === "administrador";
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Edit3, PackageOpen, Plus, Ruler, Save, Settings2 } from "lucide-react";
 
 import {
@@ -13,6 +14,7 @@ import {
   updateQbUnitDimensionAction,
 } from "@/lib/products/actions";
 import { formatNumber } from "@/lib/format";
+import { ProductCombobox } from "@/components/products/product-combobox";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
 import type {
@@ -298,6 +300,7 @@ function ProductPresentationForm({
     presentation ? updateQbProductPresentationAction : createQbProductPresentationAction,
     initialState,
   );
+  const [productId, setProductId] = useState(presentation?.product_id ?? "");
   useActionToast(state);
 
   return (
@@ -307,14 +310,21 @@ function ProductPresentationForm({
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <Label>Producto</Label>
-          <NativeSelect name="product_id" defaultValue={presentation?.product_id ?? ""}>
-            <option value="">Seleccionar</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <ProductCombobox
+            name="product_id"
+            value={productId}
+            onValueChange={setProductId}
+            options={products.map((product) => ({
+              id: product.id,
+              name: product.name,
+              category: product.category?.name,
+              unit: product.unit?.abbreviation,
+            }))}
+            placeholder="Buscar por nombre, categoria o unidad"
+          />
+          <Link href="/productos" className="inline-block text-xs font-medium text-primary hover:underline">
+            Crear nuevo producto
+          </Link>
         </div>
         <div className="space-y-2">
           <Label>Nombre</Label>
