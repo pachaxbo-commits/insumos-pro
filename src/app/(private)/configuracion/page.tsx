@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   Activity,
   CheckCircle2,
@@ -196,6 +197,11 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
         title="Configuración y auditoría"
         description="Consulta las funciones disponibles, los accesos por rol y la actividad registrada en QB Insumos."
       />
+
+      <Card className="border-emerald-200 bg-emerald-50/70">
+        <CardHeader><CardTitle>Activación operativa</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Descarga y valida plantillas de precios, conversiones y stock inicial antes de aplicar datos del cliente.</p><Button asChild className="rounded-xl"><Link href="/configuracion/activacion-operativa">Abrir herramienta</Link></Button></CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-4">
         {settings.map((item) => {
