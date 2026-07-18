@@ -25,6 +25,7 @@ export type QbCatalogProduct = {
   categorySlug: string | null;
   sortOrder: number;
   allowedUnits: QbCatalogAllowedUnit[];
+  amountBsAvailable?: boolean;
   isFrequent?: boolean;
 };
 
@@ -32,6 +33,8 @@ export type QbLocalCartItem = {
   productId: string;
   allowedUnitId: string;
   quantity: number;
+  inputMode?: "quantity" | "amount_bs";
+  requestedAmountBs?: number;
   notes?: string;
 };
 
@@ -76,6 +79,8 @@ export type QbCustomerOrderItem = {
   allowedUnitId: string;
   sourceLabel: string;
   requestedQuantity: number;
+  inputMode?: "quantity" | "amount_bs";
+  requestedAmountBs?: number | null;
   notes: string | null;
 };
 

@@ -31,6 +31,10 @@ export type QbInternalOrderItem = {
   productName: string;
   sourceLabel: string;
   requestedQuantity: number;
+  inputMode: "quantity" | "amount_bs";
+  requestedAmountBs: number | null;
+  estimatedRequestedQuantity: number | null;
+  estimatedBaseQuantity: number | null;
   requestedBaseQuantity: number;
   baseUnitSymbol: string;
   stockCurrent: number;

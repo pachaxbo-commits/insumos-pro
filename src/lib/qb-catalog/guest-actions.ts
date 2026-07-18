@@ -26,20 +26,32 @@ const optionalText = (max: number) =>
     z.string().max(max).nullable(),
   );
 
-const guestOrderItemSchema = z.object({
-  productId: z.uuid(),
-  allowedUnitId: z.uuid(),
-  quantity: z
-    .number()
-    .finite()
-    .positive()
-    .max(MAX_LINE_QUANTITY)
-    .refine(
-      (quantity) => Math.abs(quantity * 1000 - Math.round(quantity * 1000)) < 0.000001,
-      "Cada cantidad admite como maximo tres decimales.",
-    ),
-  notes: optionalText(500).optional(),
-});
+const guestOrderItemSchema = z
+  .object({
+    productId: z.uuid(),
+    inputMode: z.enum(["quantity", "amount_bs"]).optional().default("quantity"),
+    allowedUnitId: z.uuid().optional(),
+    quantity: z.number().finite().positive().max(MAX_LINE_QUANTITY).optional(),
+    requestedAmountBs: z.number().finite().positive().max(1000000).optional(),
+    notes: optionalText(500).optional(),
+  })
+  .superRefine((item, context) => {
+    if (item.inputMode === "amount_bs") {
+      if (
+        item.requestedAmountBs === undefined ||
+        Math.abs(item.requestedAmountBs * 100 - Math.round(item.requestedAmountBs * 100)) > 0.000001
+      ) {
+        context.addIssue({ code: "custom", path: ["requestedAmountBs"], message: "Importe invalido." });
+      }
+      return;
+    }
+
+    if (!item.allowedUnitId || item.quantity === undefined) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "Cantidad invalida." });
+    } else if (Math.abs(item.quantity * 1000 - Math.round(item.quantity * 1000)) > 0.000001) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "Cantidad invalida." });
+    }
+  });
 
 const guestOrderSchema = z
   .object({
@@ -218,12 +230,22 @@ export async function submitQbGuestCatalogOrderAction(
   const latitude = parsed.data.latitude ?? null;
   const longitude = parsed.data.longitude ?? null;
   const googlePlaceId = latitude === null ? null : parsed.data.googlePlaceId ?? null;
-  const normalizedItems = parsed.data.items.map((item) => ({
-    product_id: item.productId.toLowerCase(),
-    allowed_unit_id: item.allowedUnitId.toLowerCase(),
-    quantity: item.quantity,
-    notes: item.notes ?? null,
-  }));
+  const normalizedItems = parsed.data.items.map((item) =>
+    item.inputMode === "amount_bs"
+      ? {
+          product_id: item.productId.toLowerCase(),
+          input_mode: "amount_bs" as const,
+          requested_amount_bs: item.requestedAmountBs,
+          notes: item.notes ?? null,
+        }
+      : {
+          product_id: item.productId.toLowerCase(),
+          input_mode: "quantity" as const,
+          allowed_unit_id: item.allowedUnitId?.toLowerCase(),
+          quantity: item.quantity,
+          notes: item.notes ?? null,
+        },
+  );
   const canonicalPayload = {
     business_name: parsed.data.businessName,
     full_name: parsed.data.fullName,
@@ -246,7 +268,7 @@ export async function submitQbGuestCatalogOrderAction(
     "qb-guest-payload-v1",
   );
 
-  const { data, error } = await admin.rpc("create_qb_guest_catalog_order", {
+  const { data, error } = await admin.rpc("create_qb17_guest_catalog_order", {
     p_business_name: parsed.data.businessName,
     p_full_name: parsed.data.fullName,
     p_phone: parsed.data.phone,

@@ -31,11 +31,21 @@ type DraftLine = {
   productId: string;
   allowedUnitId: string;
   quantity: string;
+  inputMode: "quantity" | "amount_bs";
+  requestedAmountBs: string;
   notes: string;
 };
 
 function blankLine(key: number): DraftLine {
-  return { key, productId: "", allowedUnitId: "", quantity: "", notes: "" };
+  return {
+    key,
+    productId: "",
+    allowedUnitId: "",
+    quantity: "",
+    inputMode: "quantity",
+    requestedAmountBs: "",
+    notes: "",
+  };
 }
 
 export function InternalOrderCreator({
@@ -61,8 +71,11 @@ export function InternalOrderCreator({
       JSON.stringify(
         lines.map((line) => ({
           productId: line.productId,
+          inputMode: line.inputMode,
           allowedUnitId: line.allowedUnitId,
           quantity: Number(line.quantity),
+          requestedAmountBs:
+            line.inputMode === "amount_bs" ? Number(line.requestedAmountBs) : undefined,
           notes: line.notes,
         })),
       ),
@@ -82,6 +95,8 @@ export function InternalOrderCreator({
       productId,
       allowedUnitId: defaultUnit?.id ?? "",
       quantity: defaultUnit ? String(defaultUnit.minQuantity) : "",
+      inputMode: "quantity",
+      requestedAmountBs: "",
     });
   }
 
@@ -228,7 +243,7 @@ export function InternalOrderCreator({
               const product = products.find((item) => item.id === line.productId);
               const allowedUnit = product?.allowedUnits.find((unit) => unit.id === line.allowedUnitId);
               return (
-                <div key={line.key} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_180px_130px_1fr_auto]">
+                <div key={line.key} className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_150px_180px_130px_1fr_auto]">
                   <select
                     aria-label={`Producto ${index + 1}`}
                     value={line.productId}
@@ -242,6 +257,22 @@ export function InternalOrderCreator({
                     ))}
                   </select>
                   <select
+                    aria-label={`Forma de pedido ${index + 1}`}
+                    value={line.inputMode}
+                    onChange={(event) =>
+                      updateLine(line.key, {
+                        inputMode: event.target.value as "quantity" | "amount_bs",
+                      })
+                    }
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="quantity">Por cantidad</option>
+                    {product?.amountBsAvailable ? (
+                      <option value="amount_bs">Por importe en Bs</option>
+                    ) : null}
+                  </select>
+                  {line.inputMode === "quantity" ? (
+                  <select
                     aria-label={`Unidad ${index + 1}`}
                     value={line.allowedUnitId}
                     onChange={(event) => updateLine(line.key, { allowedUnitId: event.target.value })}
@@ -253,6 +284,12 @@ export function InternalOrderCreator({
                       <option key={unit.id} value={unit.id}>{unit.label}</option>
                     ))}
                   </select>
+                  ) : (
+                    <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
+                      Unidad física calculada por el servidor
+                    </div>
+                  )}
+                  {line.inputMode === "quantity" ? (
                   <Input
                     aria-label={`Cantidad ${index + 1}`}
                     type="number"
@@ -262,6 +299,20 @@ export function InternalOrderCreator({
                     onChange={(event) => updateLine(line.key, { quantity: event.target.value })}
                     required
                   />
+                  ) : (
+                    <Input
+                      aria-label={`Importe en Bs ${index + 1}`}
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={line.requestedAmountBs}
+                      onChange={(event) =>
+                        updateLine(line.key, { requestedAmountBs: event.target.value })
+                      }
+                      placeholder="Bs"
+                      required
+                    />
+                  )}
                   <Input
                     aria-label={`Nota ${index + 1}`}
                     value={line.notes}

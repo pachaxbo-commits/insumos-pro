@@ -34,6 +34,7 @@ type CatalogRow = {
   quantity_step: number | string | null;
   is_default: boolean | null;
   allowed_sort_order: number | string | null;
+  amount_bs_available: boolean | null;
 };
 
 type AccountRow = {
@@ -77,6 +78,8 @@ type OrderItemRow = {
   allowed_unit_id: string;
   source_label: string;
   requested_quantity: number | string;
+  order_input_mode: "quantity" | "amount_bs";
+  requested_amount_bs: number | string | null;
   customer_notes: string | null;
 };
 
@@ -135,6 +138,7 @@ function buildCatalog(rows: CatalogRow[], frequentProducts: QbFrequentProduct[] 
       categorySlug: row.category_slug,
       sortOrder: Number(row.product_sort_order) || 0,
       allowedUnits: [unit],
+      amountBsAvailable: Boolean(row.amount_bs_available),
       isFrequent: frequentIds.has(row.product_id),
     });
 
@@ -181,7 +185,7 @@ async function getCurrentCustomerId(supabase: SupabaseServerClient) {
 }
 
 async function getCatalogRows(supabase: SupabaseServerClient) {
-  const { data, error } = await supabase.rpc("get_qb_public_catalog");
+  const { data, error } = await supabase.rpc("get_qb17_public_catalog");
   if (error) throw error;
   return (data ?? []) as CatalogRow[];
 }
@@ -260,14 +264,14 @@ async function getQbCustomerOrders(
   const orderIds = orders.map((order) => order.id);
   if (!orderIds.length) return [];
 
-  const { data: catalogData } = await supabase.rpc("get_qb_public_catalog");
+  const { data: catalogData } = await supabase.rpc("get_qb17_public_catalog");
   const catalogNames = new Map(
     ((catalogData ?? []) as CatalogRow[]).map((row) => [row.product_id, row.product_name]),
   );
 
   const { data: itemsData, error: itemsError } = await supabase
     .from("qb_order_items")
-    .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, customer_notes")
+    .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, customer_notes")
     .in("order_id", orderIds)
     .order("sort_order", { ascending: true });
 
@@ -295,6 +299,9 @@ async function getQbCustomerOrders(
       allowedUnitId: item.allowed_unit_id,
       sourceLabel: item.source_label,
       requestedQuantity: Number(item.requested_quantity) || 0,
+      inputMode: item.order_input_mode,
+      requestedAmountBs:
+        item.requested_amount_bs === null ? null : Number(item.requested_amount_bs),
       notes: item.customer_notes,
     })),
   }));

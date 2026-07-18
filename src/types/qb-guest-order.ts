@@ -1,7 +1,9 @@
 export type QbGuestOrderItemInput = {
   productId: string;
-  allowedUnitId: string;
-  quantity: number;
+  allowedUnitId?: string;
+  quantity?: number;
+  inputMode?: "quantity" | "amount_bs";
+  requestedAmountBs?: number;
   notes?: string | null;
 };
 

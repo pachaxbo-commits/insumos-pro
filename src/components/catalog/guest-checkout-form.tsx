@@ -34,6 +34,8 @@ export type GuestCheckoutLine = {
   productName: string;
   unitLabel: string;
   quantity: number;
+  inputMode?: "quantity" | "amount_bs";
+  requestedAmountBs?: number;
   notes?: string;
 };
 
@@ -55,6 +57,13 @@ type GuestAttemptRef = {
 
 function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+}
+
+function bolivianos(value: number) {
+  return new Intl.NumberFormat("es-BO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function readStoredAttempt(attemptRef: GuestAttemptRef): StoredGuestAttempt | null {
@@ -149,10 +158,12 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
   const cartSignature = useMemo(
     () =>
       JSON.stringify(
-        lines.map(({ productId, allowedUnitId, quantity: lineQuantity, notes }) => ({
+        lines.map(({ productId, allowedUnitId, quantity: lineQuantity, inputMode, requestedAmountBs, notes }) => ({
           productId,
           allowedUnitId,
           quantity: lineQuantity,
+          inputMode,
+          requestedAmountBs,
           notes: notes ?? "",
         })),
       ),
@@ -208,8 +219,10 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
       idempotencyKey,
       items: lines.map((line) => ({
         productId: line.productId,
+        inputMode: line.inputMode,
         allowedUnitId: line.allowedUnitId,
         quantity: line.quantity,
+        requestedAmountBs: line.requestedAmountBs,
         notes: line.notes ?? null,
       })),
     };
@@ -346,7 +359,9 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
                   <div>
                     <p className="font-medium">{line.productName}</p>
                     <p className="text-sm text-muted-foreground">
-                      {quantity(line.quantity)} {line.unitLabel}
+                      {line.inputMode === "amount_bs"
+                        ? `Solicitado por importe: Bs ${bolivianos(line.requestedAmountBs ?? 0)}`
+                        : `Solicitado por cantidad: ${quantity(line.quantity)} ${line.unitLabel}`}
                     </p>
                     {line.notes ? (
                       <p className="mt-1 text-xs text-muted-foreground">{line.notes}</p>

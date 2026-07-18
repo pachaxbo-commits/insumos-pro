@@ -38,7 +38,7 @@ test("la acción valida autenticación, autorización e inputs en servidor", () 
   assert.match(actions, /requireRoleAccess\("\/pedidos"\)/);
   assert.match(actions, /createInternalOrderSchema\.safeParse/);
   assert.match(actions, /parseInternalOrderItems/);
-  assert.match(actions, /create_qb_internal_catalog_order/);
+  assert.match(actions, /create_qb(?:17)?_internal_catalog_order/);
 });
 
 test("la RPC es SECURITY DEFINER con search_path seguro y rol administrativo", () => {

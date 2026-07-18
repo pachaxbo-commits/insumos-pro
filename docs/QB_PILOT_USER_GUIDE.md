@@ -25,7 +25,8 @@ Esta guía resume el flujo disponible para el piloto. QB Insumos organiza produc
 - Crear o preparar un pedido no modifica stock; la entrega confirmada sí lo modifica.
 - No se registran pagos, caja ni métodos de pago.
 - Los pedidos de clientes registrados se consolidan en recibos acumulativos.
-- Los pedidos por importe en bolivianos (**BS**) no están disponibles en esta versión.
+- Cuando un producto muestre **Por importe en Bs**, el cliente puede indicar el importe objetivo. QB Insumos calcula internamente una cantidad física estimada; si la opción no aparece, falta completar el precio o la configuración física del producto.
+- En preparación siempre se registra la cantidad física real. El importe solicitado se conserva como referencia y no obliga al recibo a cobrar exactamente ese valor.
 - No deben inventarse saldos iniciales. Cuando existan conversiones de recepción confiables, el stock se regulariza mediante Ingresos.
 - Google Maps ayuda a ubicar una dirección, pero nunca sustituye el formulario manual.
 - Si un precio aparece pendiente, el recibo no puede emitirse hasta completar un precio positivo.

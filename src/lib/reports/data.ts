@@ -345,7 +345,7 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     orderIds.length
       ? supabase
           .from("qb_order_items")
-          .select("id, order_id, product_id, source_label, requested_quantity, base_quantity, base_unit_symbol, customer_notes")
+          .select("id, order_id, product_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, base_quantity, base_unit_symbol, customer_notes")
           .in("order_id", orderIds)
           .limit(2500)
       : Promise.resolve({ data: [], error: null }),
@@ -573,7 +573,9 @@ function buildOrders(bundle: Bundle, filters: QbReportFilters): QbOrderReportRow
       const requestedProducts = (itemsByOrder.get(getId(order.id)) ?? [])
         .map((item) => {
           const product = products.get(getId(item.product_id));
-          return `${str(product?.name, "Producto")} ${num(item.requested_quantity)} ${str(item.source_label)}`;
+          return str(item.order_input_mode) === "amount_bs"
+            ? `${str(product?.name, "Producto")} solicitado por Bs ${num(item.requested_amount_bs)}`
+            : `${str(product?.name, "Producto")} ${num(item.requested_quantity)} ${str(item.source_label)}`;
         })
         .join(", ");
       const preparedProducts = prepItems

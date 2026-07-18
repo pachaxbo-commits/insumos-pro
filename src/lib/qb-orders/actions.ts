@@ -14,12 +14,29 @@ const actionState = (success: boolean, message: string): QbOrderActionState => (
 
 const uuidSchema = z.string().uuid();
 
-const internalOrderItemSchema = z.object({
-  productId: z.string().uuid(),
-  allowedUnitId: z.string().uuid(),
-  quantity: z.number().finite().positive().max(10000),
-  notes: z.string().trim().max(500).optional().default(""),
-});
+const internalOrderItemSchema = z
+  .object({
+    productId: z.string().uuid(),
+    inputMode: z.enum(["quantity", "amount_bs"]).optional().default("quantity"),
+    allowedUnitId: z.string().uuid().optional(),
+    quantity: z.number().finite().positive().max(10000).optional(),
+    requestedAmountBs: z.number().finite().positive().max(1000000).optional(),
+    notes: z.string().trim().max(500).optional().default(""),
+  })
+  .superRefine((item, context) => {
+    if (item.inputMode === "amount_bs") {
+      if (
+        item.requestedAmountBs === undefined ||
+        Math.abs(item.requestedAmountBs * 100 - Math.round(item.requestedAmountBs * 100)) > 0.000001
+      ) {
+        context.addIssue({ code: "custom", path: ["requestedAmountBs"], message: "Ingresa un importe valido." });
+      }
+      return;
+    }
+    if (!item.allowedUnitId || item.quantity === undefined) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "Selecciona unidad y cantidad." });
+    }
+  });
 
 const createInternalOrderSchema = z
   .object({
@@ -141,7 +158,7 @@ export async function createQbInternalOrderAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { data, error } = await supabase.rpc("create_qb_internal_catalog_order", {
+  const { data, error } = await supabase.rpc("create_qb17_internal_catalog_order", {
     p_order_mode: parsed.data.orderMode,
     p_customer_account_id: parsed.data.customerAccountId,
     p_customer_location_id: parsed.data.customerLocationId,
@@ -153,12 +170,22 @@ export async function createQbInternalOrderAction(
     p_location_label: parsed.data.locationLabel || null,
     p_location_reference: parsed.data.locationReference || null,
     p_customer_notes: parsed.data.customerNotes || null,
-    p_items: parsed.data.items.map((item) => ({
-      product_id: item.productId,
-      allowed_unit_id: item.allowedUnitId,
-      quantity: item.quantity,
-      notes: item.notes || null,
-    })),
+    p_items: parsed.data.items.map((item) =>
+      item.inputMode === "amount_bs"
+        ? {
+            product_id: item.productId,
+            input_mode: "amount_bs",
+            requested_amount_bs: item.requestedAmountBs,
+            notes: item.notes || null,
+          }
+        : {
+            product_id: item.productId,
+            input_mode: "quantity",
+            allowed_unit_id: item.allowedUnitId,
+            quantity: item.quantity,
+            notes: item.notes || null,
+          },
+    ),
     p_idempotency_key: parsed.data.idempotencyKey,
   });
 

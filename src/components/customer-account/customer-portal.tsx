@@ -85,6 +85,18 @@ export function CustomerPortal({
       const allowedUnit = product.allowedUnits.find((unit) => unit.id === item.allowedUnitId);
       if (!allowedUnit) return [];
 
+      if (item.inputMode === "amount_bs") {
+        if (!product.amountBsAvailable || !item.requestedAmountBs) return [];
+        return [{
+          productId: product.id,
+          allowedUnitId: allowedUnit.id,
+          quantity: allowedUnit.minQuantity,
+          inputMode: "amount_bs",
+          requestedAmountBs: item.requestedAmountBs,
+          notes: item.notes ?? undefined,
+        }];
+      }
+
       const quantityValue = Math.max(item.requestedQuantity, allowedUnit.minQuantity);
       return [{
         productId: product.id,
@@ -212,7 +224,9 @@ export function CustomerPortal({
                         <div key={item.id} className="flex justify-between gap-3 text-sm">
                           <span className="min-w-0 truncate">{item.productName}</span>
                           <span className="shrink-0 text-muted-foreground">
-                            {quantity(item.requestedQuantity)} {item.sourceLabel}
+                            {item.inputMode === "amount_bs"
+                              ? `Bs ${new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.requestedAmountBs ?? 0)}`
+                              : `${quantity(item.requestedQuantity)} ${item.sourceLabel}`}
                           </span>
                         </div>
                       ))}

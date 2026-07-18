@@ -32,6 +32,10 @@ type ItemRow = {
   product_id: string;
   source_label: string;
   requested_quantity: number | string;
+  order_input_mode: "quantity" | "amount_bs";
+  requested_amount_bs: number | string | null;
+  estimated_requested_quantity: number | string | null;
+  estimated_base_quantity: number | string | null;
   base_unit_symbol: string;
   base_quantity: number | string;
   customer_notes: string | null;
@@ -277,7 +281,7 @@ export async function getQbInternalOrdersData(
 
   const { data: itemsData, error: itemsError } = await supabase
     .from("qb_order_items")
-    .select("id, order_id, product_id, source_label, requested_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)")
+    .select("id, order_id, product_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)")
     .in("order_id", orderIds)
     .order("sort_order", { ascending: true });
 
@@ -336,6 +340,15 @@ export async function getQbInternalOrdersData(
         productName: productName(item),
         sourceLabel: item.source_label,
         requestedQuantity: Number(item.requested_quantity) || 0,
+        inputMode: item.order_input_mode,
+        requestedAmountBs:
+          item.requested_amount_bs === null ? null : Number(item.requested_amount_bs),
+        estimatedRequestedQuantity:
+          item.estimated_requested_quantity === null
+            ? null
+            : Number(item.estimated_requested_quantity),
+        estimatedBaseQuantity:
+          item.estimated_base_quantity === null ? null : Number(item.estimated_base_quantity),
         requestedBaseQuantity: Number(item.base_quantity) || 0,
         baseUnitSymbol: item.base_unit_symbol,
         stockCurrent: productStock(item),

@@ -51,6 +51,13 @@ function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
 }
 
+function bolivianos(value: number) {
+  return new Intl.NumberFormat("es-BO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function CheckoutSuccess({ reference }: { reference?: string }) {
   useEffect(() => {
     currentIdempotencyKey = "";
@@ -106,6 +113,8 @@ export function PublicCheckout({
     productName: product.name,
     unitLabel: unit.label,
     quantity: item.quantity,
+    inputMode: item.inputMode ?? "quantity",
+    requestedAmountBs: item.requestedAmountBs,
     notes: item.notes,
   }));
 
@@ -185,8 +194,10 @@ export function PublicCheckout({
                   value={JSON.stringify(
                     lines.map(({ item }) => ({
                       productId: item.productId,
+                      inputMode: item.inputMode ?? "quantity",
                       allowedUnitId: item.allowedUnitId,
                       quantity: item.quantity,
+                      requestedAmountBs: item.requestedAmountBs,
                       notes: item.notes ?? "",
                     })),
                   )}
@@ -217,7 +228,9 @@ export function PublicCheckout({
                       <div>
                         <p className="font-medium">{product.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          {quantity(item.quantity)} {unit.label}
+                          {item.inputMode === "amount_bs"
+                            ? `Solicitado por importe: Bs ${bolivianos(item.requestedAmountBs ?? 0)}`
+                            : `Solicitado por cantidad: ${quantity(item.quantity)} ${unit.label}`}
                         </p>
                         {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
                       </div>
@@ -275,7 +288,9 @@ export function PublicCheckout({
                 <div key={line.productId} className="rounded-md bg-muted/50 p-3 text-sm">
                   <p className="font-medium">{line.productName}</p>
                   <p className="text-muted-foreground">
-                    {quantity(line.quantity)} {line.unitLabel}
+                    {line.inputMode === "amount_bs"
+                      ? `Solicitado por importe: Bs ${bolivianos(line.requestedAmountBs ?? 0)}`
+                      : `${quantity(line.quantity)} ${line.unitLabel}`}
                   </p>
                 </div>
               ))}

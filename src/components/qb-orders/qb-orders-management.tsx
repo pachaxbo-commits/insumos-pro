@@ -65,6 +65,13 @@ function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
 }
 
+function bolivianos(value: number) {
+  return new Intl.NumberFormat("es-BO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function shortDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -210,7 +217,9 @@ function PreparationEditor({
               <div className="min-w-0">
                 <p className="font-medium">{item.productName}</p>
                 <p className="text-sm text-muted-foreground">
-                  Pedido: {quantity(item.requestedQuantity)} {item.sourceLabel}
+                  {item.inputMode === "amount_bs"
+                    ? `Importe solicitado: Bs ${bolivianos(item.requestedAmountBs ?? 0)} | Estimado: ${quantity(item.estimatedRequestedQuantity ?? item.requestedQuantity)} ${item.sourceLabel}`
+                    : `Pedido: ${quantity(item.requestedQuantity)} ${item.sourceLabel}`}
                   {" | "}
                   Base: {quantity(item.requestedBaseQuantity)} {item.baseUnitSymbol}
                 </p>
@@ -388,7 +397,9 @@ function OrderCard({
                   ) : null}
                 </div>
                 <p className="font-medium text-muted-foreground">
-                  {quantity(item.requestedQuantity)} {item.sourceLabel}
+                  {item.inputMode === "amount_bs"
+                    ? `Bs ${bolivianos(item.requestedAmountBs ?? 0)} · estimado ${quantity(item.estimatedRequestedQuantity ?? item.requestedQuantity)} ${item.sourceLabel}`
+                    : `${quantity(item.requestedQuantity)} ${item.sourceLabel}`}
                 </p>
               </div>
             ))}

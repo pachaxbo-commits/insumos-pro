@@ -74,20 +74,32 @@ const idSchema = z.object({
   id: z.uuid("Ubicacion invalida."),
 });
 
-const orderItemSchema = z.object({
-  productId: z.uuid(),
-  allowedUnitId: z.uuid(),
-  quantity: z
-    .number()
-    .finite()
-    .positive()
-    .max(MAX_LINE_QUANTITY)
-    .refine(
-      (quantity) => Math.abs(quantity * 1000 - Math.round(quantity * 1000)) < 0.000001,
-      "Cada cantidad admite como maximo tres decimales.",
-    ),
-  notes: z.string().trim().max(500).optional().default(""),
-});
+const orderItemSchema = z
+  .object({
+    productId: z.uuid(),
+    inputMode: z.enum(["quantity", "amount_bs"]).optional().default("quantity"),
+    allowedUnitId: z.uuid().optional(),
+    quantity: z.number().finite().positive().max(MAX_LINE_QUANTITY).optional(),
+    requestedAmountBs: z.number().finite().positive().max(1000000).optional(),
+    notes: z.string().trim().max(500).optional().default(""),
+  })
+  .superRefine((item, context) => {
+    if (item.inputMode === "amount_bs") {
+      if (
+        item.requestedAmountBs === undefined ||
+        Math.abs(item.requestedAmountBs * 100 - Math.round(item.requestedAmountBs * 100)) > 0.000001
+      ) {
+        context.addIssue({ code: "custom", path: ["requestedAmountBs"], message: "Ingresa un importe valido con hasta dos decimales." });
+      }
+      return;
+    }
+
+    if (!item.allowedUnitId || item.quantity === undefined) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "Selecciona una unidad y cantidad validas." });
+    } else if (Math.abs(item.quantity * 1000 - Math.round(item.quantity * 1000)) > 0.000001) {
+      context.addIssue({ code: "custom", path: ["quantity"], message: "Cada cantidad admite como maximo tres decimales." });
+    }
+  });
 
 const submitOrderSchema = z.object({
   location_id: z.uuid("Selecciona una ubicacion."),
@@ -306,22 +318,32 @@ export async function submitQbCatalogOrderAction(
     return { success: false, message: access.message ?? "Inicia sesion." };
   }
 
-  const { data, error } = await access.supabase.rpc("create_qb_catalog_order", {
+  const { data, error } = await access.supabase.rpc("create_qb17_catalog_order", {
     p_location_id: parsed.data.location_id,
     p_customer_notes: parsed.data.customer_notes,
-    p_items: items.map((item) => ({
-      product_id: item.productId,
-      allowed_unit_id: item.allowedUnitId,
-      quantity: item.quantity,
-      notes: item.notes || null,
-    })),
+    p_items: items.map((item) =>
+      item.inputMode === "amount_bs"
+        ? {
+            product_id: item.productId,
+            input_mode: "amount_bs",
+            requested_amount_bs: item.requestedAmountBs,
+            notes: item.notes || null,
+          }
+        : {
+            product_id: item.productId,
+            input_mode: "quantity",
+            allowed_unit_id: item.allowedUnitId,
+            quantity: item.quantity,
+            notes: item.notes || null,
+          },
+    ),
     p_idempotency_key: parsed.data.idempotency_key,
   });
 
   if (error) {
     return {
       success: false,
-      message: "No pudimos enviar el pedido. Revisa productos, unidades y cantidades.",
+      message: "No pudimos enviar el pedido. Revisa las cantidades, importes y productos disponibles.",
     };
   }
 

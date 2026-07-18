@@ -55,6 +55,13 @@ function formatQuantity(value: number) {
   }).format(value);
 }
 
+function formatBolivianos(value: number) {
+  return new Intl.NumberFormat("es-BO", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function getDefaultUnit(product: QbCatalogProduct) {
   return product.allowedUnits.find((unit) => unit.isDefault) ?? product.allowedUnits[0];
 }
@@ -118,7 +125,9 @@ function CartSummary({
                     <div className="min-w-0">
                       <p className="truncate font-medium">{product.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {formatQuantity(item.quantity)} {unit?.label ?? ""}
+                        {item.inputMode === "amount_bs"
+                          ? `Solicitado por importe: Bs ${formatBolivianos(item.requestedAmountBs ?? 0)}`
+                          : `${formatQuantity(item.quantity)} ${unit?.label ?? ""}`}
                       </p>
                     </div>
                     <Button
@@ -203,10 +212,19 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
       values.quantity ?? current?.quantity ?? defaultUnit.minQuantity,
     );
     const notes = values.notes ?? current?.notes ?? "";
+    const requestedMode = values.inputMode ?? current?.inputMode ?? "quantity";
+    const inputMode = requestedMode === "amount_bs" && product.amountBsAvailable
+      ? "amount_bs"
+      : "quantity";
+    const requestedAmountBs = Math.round(
+      Math.max(0.01, values.requestedAmountBs ?? current?.requestedAmountBs ?? 5) * 100,
+    ) / 100;
     const nextItem: QbLocalCartItem = {
       productId: product.id,
       allowedUnitId,
       quantity,
+      inputMode,
+      requestedAmountBs: inputMode === "amount_bs" ? requestedAmountBs : undefined,
       notes: notes.trim() || undefined,
     };
     const exists = cart.some((item) => item.productId === product.id);
@@ -302,6 +320,9 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                 const selectedUnitId = current?.allowedUnitId ?? getDefaultUnit(product)?.id ?? "";
                 const selectedUnit = product.allowedUnits.find((unit) => unit.id === selectedUnitId);
                 const quantity = current?.quantity ?? selectedUnit?.minQuantity ?? 1;
+                const inputMode = current?.inputMode === "amount_bs" && product.amountBsAvailable
+                  ? "amount_bs"
+                  : "quantity";
 
                 return (
                   <article key={product.id} className="overflow-hidden rounded-lg border bg-background">
@@ -328,6 +349,26 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                         ) : null}
                       </div>
 
+                      <div className="space-y-2">
+                        <Label htmlFor={`mode-${product.id}`}>Forma de pedido</Label>
+                        <select
+                          id={`mode-${product.id}`}
+                          value={inputMode}
+                          onChange={(event) =>
+                            updateProduct(product, {
+                              inputMode: event.target.value as "quantity" | "amount_bs",
+                            })
+                          }
+                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        >
+                          <option value="quantity">Por cantidad</option>
+                          {product.amountBsAvailable ? (
+                            <option value="amount_bs">Por importe en Bs</option>
+                          ) : null}
+                        </select>
+                      </div>
+
+                      {inputMode === "quantity" ? <>
                       <div className="space-y-2">
                         <Label htmlFor={`unit-${product.id}`}>Unidad</Label>
                         <select
@@ -386,6 +427,27 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                           <PackagePlus className="size-4" />
                         </Button>
                       </div>
+                      </> : (
+                        <div className="space-y-2">
+                          <Label htmlFor={`amount-${product.id}`}>Importe solicitado (Bs)</Label>
+                          <Input
+                            id={`amount-${product.id}`}
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={current?.requestedAmountBs ?? 5}
+                            onChange={(event) =>
+                              updateProduct(product, {
+                                inputMode: "amount_bs",
+                                requestedAmountBs: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            El sistema calculará internamente una cantidad física estimada para preparación.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <Label htmlFor={`notes-${product.id}`}>Observacion</Label>
