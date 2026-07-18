@@ -59,5 +59,11 @@ export async function GET(request: Request) {
     );
   }
 
+  if (next === "/mi-cuenta/restablecer") {
+    return NextResponse.redirect(
+      new URL("/mi-cuenta/recuperar?error=invalid-link", url.origin),
+    );
+  }
+
   return NextResponse.redirect(new URL("/mi-cuenta?error=auth", url.origin));
 }

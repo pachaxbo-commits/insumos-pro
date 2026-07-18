@@ -14,15 +14,21 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
   const requestedType = url.searchParams.get("type");
+  const isRecovery = requestedType === "recovery";
   const next = getConfirmationReturnPath({
     returnTo: url.searchParams.get("returnTo"),
     redirectTo: url.searchParams.get("redirect_to"),
     authorizedOrigin: getAuthorizedSiteOrigin(url.origin),
   });
 
-  if (!tokenHash || requestedType !== "email") {
+  if (!tokenHash || (requestedType !== "email" && !isRecovery)) {
     return NextResponse.redirect(
-      new URL(getLoginNoticePath("invalid-confirmation", next), url.origin),
+      new URL(
+        isRecovery
+          ? "/mi-cuenta/recuperar?error=invalid-link"
+          : getLoginNoticePath("invalid-confirmation", next),
+        url.origin,
+      ),
     );
   }
 
@@ -35,10 +41,16 @@ export async function GET(request: Request) {
 
   const { error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
-    type: "email",
+    type: isRecovery ? "recovery" : "email",
   });
 
   if (error) {
+    if (isRecovery) {
+      return NextResponse.redirect(
+        new URL("/mi-cuenta/recuperar?error=invalid-link", url.origin),
+      );
+    }
+
     return NextResponse.redirect(
       new URL(
         getLoginNoticePath(
@@ -50,6 +62,10 @@ export async function GET(request: Request) {
         url.origin,
       ),
     );
+  }
+
+  if (isRecovery) {
+    return NextResponse.redirect(new URL("/mi-cuenta/restablecer", url.origin));
   }
 
   const completion = await completeConfirmedCustomerAccount(supabase);

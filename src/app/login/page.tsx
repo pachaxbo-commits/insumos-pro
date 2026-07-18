@@ -27,6 +27,8 @@ function getReasonMessage(reason?: string) {
       return "Tu correo fue confirmado. Inicia sesión para continuar.";
     case "invalid-confirmation":
       return "El enlace de confirmación no es válido o ya venció. Solicita uno nuevo.";
+    case "password-updated":
+      return "Tu contraseña fue actualizada. Inicia sesión con tu nueva contraseña.";
     case "missing-env":
       return "El acceso no está disponible en este momento. Comunícate con el administrador de QB Insumos.";
     default:

@@ -10,16 +10,22 @@ import {
   requestCustomerPasswordResetAction,
   updateCustomerPasswordAction,
 } from "@/lib/customer-account/actions";
-import type { CustomerAuthActionState } from "@/types/customer-account";
 
-const initialState: CustomerAuthActionState = { success: false };
-
-export function CustomerRecoveryForm({ mode }: { mode: "request" | "update" }) {
+export function CustomerRecoveryForm({
+  mode,
+  initialMessage,
+}: {
+  mode: "request" | "update";
+  initialMessage?: string;
+}) {
   const action =
     mode === "request"
       ? requestCustomerPasswordResetAction
       : updateCustomerPasswordAction;
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction, pending] = useActionState(action, {
+    success: false,
+    message: initialMessage,
+  });
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f5f1e8] px-4 py-10 text-[#28372f]">

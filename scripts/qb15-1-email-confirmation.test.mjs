@@ -12,19 +12,56 @@ const confirmSource = source("../src/app/mi-cuenta/auth/confirm/route.ts");
 const callbackSource = source("../src/app/mi-cuenta/auth/callback/route.ts");
 const confirmationSource = source("../src/lib/customer-registration/confirmation.ts");
 const accountSource = source("../src/lib/customer-registration/account.ts");
+const customerAccountActionsSource = source("../src/lib/customer-account/actions.ts");
+const recoveryPageSource = source("../src/app/mi-cuenta/recuperar/page.tsx");
 const cartSource = source("../src/hooks/use-local-cart.ts");
 const loginPageSource = source("../src/app/login/page.tsx");
 const docsSource = source("../docs/QB15_1_EMAIL_CONFIRMATION_TEMPLATE.md");
+const smtpDocsSource = source("../docs/QB_SMTP_RESEND_SETUP.md");
 const migrationNames = source("../supabase/migrations/20260712091900_qb15_public_customer_registration.sql");
 
 const siteOrigin = "https://qb-insumos.vercel.app";
 
-test("token_hash confirmation accepts exclusively the email type", () => {
-  assert.match(confirmSource, /requestedType !== "email"/);
+test("token_hash confirmation accepts only email and recovery types", () => {
+  assert.match(confirmSource, /requestedType !== "email" && !isRecovery/);
   assert.doesNotMatch(confirmSource, /"signup"/);
   assert.match(confirmSource, /supabase\.auth\.verifyOtp\(\{/);
   assert.match(confirmSource, /token_hash: tokenHash/);
-  assert.match(confirmSource, /type: "email"/);
+  assert.match(confirmSource, /type: isRecovery \? "recovery" : "email"/);
+});
+
+test("password recovery token_hash works without browser PKCE state", () => {
+  assert.match(confirmSource, /requestedType === "recovery"/);
+  assert.match(confirmSource, /new URL\("\/mi-cuenta\/restablecer", url\.origin\)/);
+  assert.doesNotMatch(confirmSource, /exchangeCodeForSession/);
+});
+
+test("invalid, expired or already-used recovery links have a safe retry path", () => {
+  assert.match(confirmSource, /\/mi-cuenta\/recuperar\?error=invalid-link/);
+  assert.match(callbackSource, /next === "\/mi-cuenta\/restablecer"/);
+  assert.match(
+    recoveryPageSource,
+    /El enlace de recuperación no es válido, ya fue utilizado o venció\. Solicita uno nuevo\./,
+  );
+});
+
+test("password recovery request remains neutral and uses the production callback", () => {
+  assert.match(customerAccountActionsSource, /resetPasswordForEmail\(parsed\.data\.email/);
+  assert.match(
+    customerAccountActionsSource,
+    /Si el correo pertenece a una cuenta, recibiras un enlace de recuperacion\./,
+  );
+  assert.match(
+    customerAccountActionsSource,
+    /\/mi-cuenta\/auth\/callback\?next=\/mi-cuenta\/restablecer/,
+  );
+});
+
+test("successful password update closes the recovery session and returns to login", () => {
+  assert.match(customerAccountActionsSource, /updateUser\(\{ password: parsed\.data\.password \}\)/);
+  assert.match(customerAccountActionsSource, /signOut\(\{ scope: "local" \}\)/);
+  assert.match(customerAccountActionsSource, /redirect\("\/login\?reason=password-updated"\)/);
+  assert.match(loginPageSource, /Tu contraseña fue actualizada\. Inicia sesión con tu nueva contraseña\./);
 });
 
 test("the SSR client persists the verified session through server cookies", () => {
@@ -135,9 +172,11 @@ test("confirmation does not touch the local cart", () => {
   assert.doesNotMatch(confirmSource + callbackSource + confirmationSource, /localStorage|removeItem|saveLocalCart/);
 });
 
-test("confirmation sources do not log credentials or authentication parameters", () => {
-  const authSources = confirmSource + callbackSource + confirmationSource;
-  assert.doesNotMatch(authSources, /console\.(log|info|debug|error)|password|service_role/i);
+test("confirmation and recovery sources do not log credentials or authentication parameters", () => {
+  const authSources =
+    confirmSource + callbackSource + confirmationSource + customerAccountActionsSource;
+  assert.doesNotMatch(authSources, /console\.(log|info|debug|error)|service_role/i);
+  assert.doesNotMatch(authSources, /message:\s*(error|tokenHash|code)\b/);
 });
 
 test("documentation contains the future token_hash template and production URLs", () => {
@@ -151,6 +190,20 @@ test("documentation contains the future token_hash template and production URLs"
   );
   assert.match(docsSource, /No se debe\s+agregar manualmente un `returnTo`/);
   assert.match(docsSource, /Reenvío de confirmación/);
+});
+
+test("SMTP guide documents token_hash recovery and exact production URLs without secrets", () => {
+  assert.match(
+    smtpDocsSource,
+    /token_hash=\{\{ \.TokenHash \}\}&type=recovery/,
+  );
+  assert.match(smtpDocsSource, /Site URL \| `https:\/\/qb-insumos\.vercel\.app`/);
+  assert.match(
+    smtpDocsSource,
+    /https:\/\/qb-insumos\.vercel\.app\/mi-cuenta\/auth\/callback/,
+  );
+  assert.doesNotMatch(smtpDocsSource, /epxmrfwtssbcqsytuwhf|wfhvuzigmkgojdoofjib/);
+  assert.doesNotMatch(smtpDocsSource, /re_[A-Za-z0-9]{16,}|service_role/);
 });
 
 test("QB-15.1 adds no migration or SQL execution path", () => {

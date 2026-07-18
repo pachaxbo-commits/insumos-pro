@@ -138,7 +138,8 @@ export async function updateCustomerPasswordAction(
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return { success: false, message: "No pudimos actualizar la contrasena." };
 
-  return { success: true, message: "Contrasena actualizada correctamente." };
+  await supabase.auth.signOut({ scope: "local" });
+  redirect("/login?reason=password-updated");
 }
 
 export async function updateCustomerAccountAction(
