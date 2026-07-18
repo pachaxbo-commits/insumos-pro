@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { Minus, Plus, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,16 +21,6 @@ import type {
 } from "@/types/qb-orders";
 
 const initialState: QbOrderActionState = { success: false };
-let currentInternalOrderKey = "";
-
-function subscribeToInternalOrderKey() {
-  return () => undefined;
-}
-
-function getInternalOrderKey() {
-  if (!currentInternalOrderKey) currentInternalOrderKey = crypto.randomUUID();
-  return currentInternalOrderKey;
-}
 
 type DraftLine = {
   key: number;
@@ -48,6 +44,30 @@ function blankLine(key: number): DraftLine {
   };
 }
 
+type GuestDraft = {
+  businessName: string;
+  responsibleName: string;
+  phone: string;
+  email: string;
+  address: string;
+  locationLabel: string;
+  locationReference: string;
+};
+
+const blankGuestDraft: GuestDraft = {
+  businessName: "",
+  responsibleName: "",
+  phone: "",
+  email: "",
+  address: "",
+  locationLabel: "",
+  locationReference: "",
+};
+
+function numberOrNull(value: string) {
+  return value.trim() ? Number(value) : null;
+}
+
 export function InternalOrderCreator({
   customers,
   products,
@@ -56,28 +76,36 @@ export function InternalOrderCreator({
   const [mode, setMode] = useState<"registered" | "guest">("registered");
   const [customerId, setCustomerId] = useState("");
   const [locationId, setLocationId] = useState("");
-  const idempotencyKey = useSyncExternalStore(
-    subscribeToInternalOrderKey,
-    getInternalOrderKey,
-    () => "",
-  );
+  const [guest, setGuest] = useState<GuestDraft>(blankGuestDraft);
+  const [customerNotes, setCustomerNotes] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [nextLineKey, setNextLineKey] = useState(2);
   const [lines, setLines] = useState<DraftLine[]>([blankLine(1)]);
-  const [state, action, pending] = useActionState(createQbInternalOrderAction, initialState);
+  const [state, setState] = useState<QbOrderActionState>(initialState);
+  const [pending, startTransition] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const submissionInFlightRef = useRef(false);
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
 
   const itemsPayload = useMemo(
     () =>
       JSON.stringify(
-        lines.map((line) => ({
-          productId: line.productId,
-          inputMode: line.inputMode,
-          allowedUnitId: line.allowedUnitId,
-          quantity: Number(line.quantity),
-          requestedAmountBs:
-            line.inputMode === "amount_bs" ? Number(line.requestedAmountBs) : undefined,
-          notes: line.notes,
-        })),
+        lines.map((line) =>
+          line.inputMode === "amount_bs"
+            ? {
+                productId: line.productId,
+                inputMode: line.inputMode,
+                requestedAmountBs: numberOrNull(line.requestedAmountBs),
+                notes: line.notes,
+              }
+            : {
+                productId: line.productId,
+                inputMode: line.inputMode,
+                allowedUnitId: line.allowedUnitId || null,
+                quantity: numberOrNull(line.quantity),
+                notes: line.notes,
+              },
+        ),
       ),
     [lines],
   );
@@ -115,9 +143,55 @@ export function InternalOrderCreator({
     setNextLineKey((current) => current + 1);
   }
 
+  function updateGuest(patch: Partial<GuestDraft>) {
+    setGuest((current) => ({ ...current, ...patch }));
+  }
+
+  function openForm() {
+    setIdempotencyKey((current) => current || crypto.randomUUID());
+    setOpen(true);
+  }
+
+  function resetAfterConfirmedCreation() {
+    setMode("registered");
+    setCustomerId("");
+    setLocationId("");
+    setGuest(blankGuestDraft);
+    setCustomerNotes("");
+    setLines([blankLine(1)]);
+    setNextLineKey(2);
+    setIdempotencyKey(crypto.randomUUID());
+    formRef.current?.reset();
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submissionInFlightRef.current || !idempotencyKey) return;
+
+    const formData = new FormData(event.currentTarget);
+    submissionInFlightRef.current = true;
+    startTransition(async () => {
+      try {
+        const result = await createQbInternalOrderAction(state, formData);
+        setState(result);
+        if (result.success && result.orderId && result.reference) {
+          resetAfterConfirmedCreation();
+        }
+      } catch {
+        setState({
+          success: false,
+          message:
+            "No pudimos confirmar el envío. Conservamos tus datos para que puedas intentarlo nuevamente.",
+        });
+      } finally {
+        submissionInFlightRef.current = false;
+      }
+    });
+  }
+
   if (!open) {
     return (
-      <Button type="button" onClick={() => setOpen(true)}>
+      <Button type="button" onClick={openForm}>
         <Plus className="size-4" />
         Nuevo pedido
       </Button>
@@ -138,7 +212,7 @@ export function InternalOrderCreator({
         </Button>
       </CardHeader>
       <CardContent>
-        <form action={action} className="space-y-5">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
           <input type="hidden" name="order_mode" value={mode} />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />
           <input type="hidden" name="items" value={itemsPayload} />
@@ -201,31 +275,82 @@ export function InternalOrderCreator({
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="guest-business">Negocio</Label>
-                <Input id="guest-business" name="business_name" required minLength={2} maxLength={120} />
+                <Input
+                  id="guest-business"
+                  name="business_name"
+                  value={guest.businessName}
+                  onChange={(event) => updateGuest({ businessName: event.target.value })}
+                  required
+                  minLength={2}
+                  maxLength={120}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guest-responsible">Responsable</Label>
-                <Input id="guest-responsible" name="responsible_name" required minLength={2} maxLength={120} />
+                <Input
+                  id="guest-responsible"
+                  name="responsible_name"
+                  value={guest.responsibleName}
+                  onChange={(event) => updateGuest({ responsibleName: event.target.value })}
+                  required
+                  minLength={2}
+                  maxLength={120}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guest-phone">Teléfono</Label>
-                <Input id="guest-phone" name="phone" required maxLength={25} />
+                <Input
+                  id="guest-phone"
+                  name="phone"
+                  value={guest.phone}
+                  onChange={(event) => updateGuest({ phone: event.target.value })}
+                  required
+                  maxLength={25}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guest-email">Correo opcional</Label>
-                <Input id="guest-email" name="email" type="email" maxLength={254} />
+                <Input
+                  id="guest-email"
+                  name="email"
+                  value={guest.email}
+                  onChange={(event) => updateGuest({ email: event.target.value })}
+                  type="email"
+                  maxLength={254}
+                />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="guest-address">Dirección</Label>
-                <Input id="guest-address" name="address" required minLength={5} maxLength={300} />
+                <Input
+                  id="guest-address"
+                  name="address"
+                  value={guest.address}
+                  onChange={(event) => updateGuest({ address: event.target.value })}
+                  required
+                  minLength={5}
+                  maxLength={300}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guest-location-label">Nombre de la ubicación</Label>
-                <Input id="guest-location-label" name="location_label" maxLength={80} placeholder="Principal" />
+                <Input
+                  id="guest-location-label"
+                  name="location_label"
+                  value={guest.locationLabel}
+                  onChange={(event) => updateGuest({ locationLabel: event.target.value })}
+                  maxLength={80}
+                  placeholder="Principal"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="guest-reference">Referencia</Label>
-                <Input id="guest-reference" name="location_reference" maxLength={300} />
+                <Input
+                  id="guest-reference"
+                  name="location_reference"
+                  value={guest.locationReference}
+                  onChange={(event) => updateGuest({ locationReference: event.target.value })}
+                  maxLength={300}
+                />
               </div>
             </div>
           )}
@@ -337,7 +462,14 @@ export function InternalOrderCreator({
 
           <div className="space-y-2">
             <Label htmlFor="internal-customer-notes">Notas generales</Label>
-            <Textarea id="internal-customer-notes" name="customer_notes" maxLength={1000} rows={2} />
+            <Textarea
+              id="internal-customer-notes"
+              name="customer_notes"
+              value={customerNotes}
+              onChange={(event) => setCustomerNotes(event.target.value)}
+              maxLength={1000}
+              rows={2}
+            />
           </div>
 
           {state.message ? (
@@ -346,7 +478,7 @@ export function InternalOrderCreator({
             </p>
           ) : null}
 
-          <Button type="submit" disabled={pending || !idempotencyKey || state.success}>
+          <Button type="submit" disabled={pending || !idempotencyKey}>
             <Send className="size-4" />
             {pending ? "Creando..." : "Crear pedido"}
           </Button>

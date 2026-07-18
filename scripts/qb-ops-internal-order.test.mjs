@@ -36,8 +36,7 @@ test("la interfaz selecciona productos, unidades y cantidades permitidas", () =>
 
 test("la acción valida autenticación, autorización e inputs en servidor", () => {
   assert.match(actions, /requireRoleAccess\("\/pedidos"\)/);
-  assert.match(actions, /createInternalOrderSchema\.safeParse/);
-  assert.match(actions, /parseInternalOrderItems/);
+  assert.match(actions, /parseInternalOrderFormData\(formData\)/);
   assert.match(actions, /create_qb(?:17)?_internal_catalog_order/);
 });
 

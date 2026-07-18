@@ -98,4 +98,5 @@ export type QbOrderActionState = {
   success: boolean;
   message?: string;
   reference?: string;
+  orderId?: string;
 };

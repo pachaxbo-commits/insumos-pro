@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireRoleAccess } from "@/lib/auth/session";
+import { parseInternalOrderFormData } from "@/lib/qb-orders/internal-order-input";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { QbOrderActionState } from "@/types/qb-orders";
 
@@ -13,72 +14,6 @@ const actionState = (success: boolean, message: string): QbOrderActionState => (
 });
 
 const uuidSchema = z.string().uuid();
-
-const internalOrderItemSchema = z
-  .object({
-    productId: z.string().uuid(),
-    inputMode: z.enum(["quantity", "amount_bs"]).optional().default("quantity"),
-    allowedUnitId: z.string().uuid().optional(),
-    quantity: z.number().finite().positive().max(10000).optional(),
-    requestedAmountBs: z.number().finite().positive().max(1000000).optional(),
-    notes: z.string().trim().max(500).optional().default(""),
-  })
-  .superRefine((item, context) => {
-    if (item.inputMode === "amount_bs") {
-      if (
-        item.requestedAmountBs === undefined ||
-        Math.abs(item.requestedAmountBs * 100 - Math.round(item.requestedAmountBs * 100)) > 0.000001
-      ) {
-        context.addIssue({ code: "custom", path: ["requestedAmountBs"], message: "Ingresa un importe valido." });
-      }
-      return;
-    }
-    if (!item.allowedUnitId || item.quantity === undefined) {
-      context.addIssue({ code: "custom", path: ["quantity"], message: "Selecciona unidad y cantidad." });
-    }
-  });
-
-const createInternalOrderSchema = z
-  .object({
-    orderMode: z.enum(["registered", "guest"]),
-    customerAccountId: z.string().uuid().optional().nullable(),
-    customerLocationId: z.string().uuid().optional().nullable(),
-    businessName: z.string().trim().max(120).optional().default(""),
-    responsibleName: z.string().trim().max(120).optional().default(""),
-    phone: z.string().trim().max(25).optional().default(""),
-    email: z.string().trim().email().max(254).optional().or(z.literal("")).default(""),
-    address: z.string().trim().max(300).optional().default(""),
-    locationLabel: z.string().trim().max(80).optional().default(""),
-    locationReference: z.string().trim().max(300).optional().default(""),
-    customerNotes: z.string().trim().max(1000).optional().default(""),
-    idempotencyKey: z.string().uuid(),
-    items: z.array(internalOrderItemSchema).min(1).max(30),
-  })
-  .superRefine((value, context) => {
-    if (value.orderMode === "registered") {
-      if (!value.customerAccountId) {
-        context.addIssue({ code: "custom", path: ["customerAccountId"], message: "Selecciona un cliente." });
-      }
-      if (!value.customerLocationId) {
-        context.addIssue({ code: "custom", path: ["customerLocationId"], message: "Selecciona una ubicacion." });
-      }
-      return;
-    }
-
-    if (value.businessName.length < 2) {
-      context.addIssue({ code: "custom", path: ["businessName"], message: "Ingresa el nombre del negocio." });
-    }
-    if (value.responsibleName.length < 2) {
-      context.addIssue({ code: "custom", path: ["responsibleName"], message: "Ingresa el nombre del responsable." });
-    }
-    const phoneDigits = value.phone.replace(/\D/g, "");
-    if (!/^\+?[0-9\s()-]+$/.test(value.phone) || phoneDigits.length < 7 || phoneDigits.length > 15) {
-      context.addIssue({ code: "custom", path: ["phone"], message: "Ingresa un telefono valido." });
-    }
-    if (value.address.length < 5) {
-      context.addIssue({ code: "custom", path: ["address"], message: "Ingresa una direccion." });
-    }
-  });
 
 const preparationLineSchema = z.object({
   orderItemId: z.string().uuid(),
@@ -110,16 +45,45 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function parseInternalOrderItems(value: FormDataEntryValue | null) {
-  if (typeof value !== "string") return null;
-  try {
-    const parsed = z.array(internalOrderItemSchema).min(1).max(30).safeParse(JSON.parse(value));
-    if (!parsed.success) return null;
-    return new Set(parsed.data.map((item) => item.productId)).size === parsed.data.length
-      ? parsed.data
-      : null;
-  } catch {
-    return null;
+function internalOrderRpcErrorMessage(error: unknown) {
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+
+  if (message.includes("QB17_AMOUNT_UNAVAILABLE")) {
+    return "El producto no está disponible para pedidos por importe.";
+  }
+  if (
+    message.includes("QB17_INVALID_AMOUNT") ||
+    message.includes("QB17_AMOUNT_TOO_SMALL_OR_LARGE")
+  ) {
+    return "Ingresa un importe válido.";
+  }
+
+  return "No pudimos crear el pedido. Revisa los datos e inténtalo nuevamente.";
+}
+
+function internalOrderResultMessage(resultCode: string) {
+  switch (resultCode) {
+    case "invalid_customer":
+      return "Selecciona un cliente activo.";
+    case "invalid_location":
+      return "Selecciona una ubicación activa del cliente.";
+    case "product_unavailable":
+      return "Uno de los productos ya no está disponible.";
+    case "invalid_unit":
+      return "Selecciona una unidad permitida para cada producto.";
+    case "invalid_quantity":
+      return "Ingresa una cantidad válida.";
+    case "unsupported_amount_mode":
+      return "El producto no está disponible para pedidos por importe.";
+    case "duplicate_product":
+      return "No repitas un producto en el mismo pedido.";
+    case "invalid_contact":
+      return "Revisa los datos del cliente sin cuenta.";
+    default:
+      return "No pudimos crear el pedido. Revisa los datos e inténtalo nuevamente.";
   }
 }
 
@@ -132,31 +96,19 @@ export async function createQbInternalOrderAction(
     return actionState(false, "Solo un administrador puede crear pedidos internos.");
   }
 
-  const items = parseInternalOrderItems(formData.get("items"));
-  if (!items) return actionState(false, "Agrega productos validos sin repetir.");
-
-  const parsed = createInternalOrderSchema.safeParse({
-    orderMode: formData.get("order_mode"),
-    customerAccountId: formData.get("customer_account_id") || null,
-    customerLocationId: formData.get("customer_location_id") || null,
-    businessName: formData.get("business_name"),
-    responsibleName: formData.get("responsible_name"),
-    phone: formData.get("phone"),
-    email: formData.get("email"),
-    address: formData.get("address"),
-    locationLabel: formData.get("location_label"),
-    locationReference: formData.get("location_reference"),
-    customerNotes: formData.get("customer_notes"),
-    idempotencyKey: formData.get("idempotency_key"),
-    items,
-  });
+  const parsed = parseInternalOrderFormData(formData);
 
   if (!parsed.success) {
     return actionState(false, parsed.error.issues[0]?.message ?? "Revisa el pedido.");
   }
 
-  const { supabase, state } = await getSupabaseOrState();
-  if (!supabase) return state;
+  const { supabase } = await getSupabaseOrState();
+  if (!supabase) {
+    return actionState(
+      false,
+      "No pudimos crear el pedido en este momento. Inténtalo nuevamente.",
+    );
+  }
 
   const { data, error } = await supabase.rpc("create_qb17_internal_catalog_order", {
     p_order_mode: parsed.data.orderMode,
@@ -190,22 +142,36 @@ export async function createQbInternalOrderAction(
   });
 
   if (error) {
-    return actionState(false, errorMessage(error, "No se pudo crear el pedido."));
+    return actionState(false, internalOrderRpcErrorMessage(error));
   }
 
   const result = ((data ?? []) as Array<{
+    created_order_id: string | null;
     order_reference: string | null;
     result_code: string;
   }>)[0];
   if (!result || !["created", "already_created"].includes(result.result_code)) {
-    return actionState(false, "No se pudo crear el pedido. Revisa cliente, ubicacion y productos.");
+    return actionState(false, internalOrderResultMessage(result?.result_code ?? ""));
+  }
+
+  const orderId = uuidSchema.safeParse(result.created_order_id);
+  const reference = result.order_reference?.trim();
+  if (!orderId.success || !reference) {
+    return actionState(
+      false,
+      "No pudimos confirmar la creación del pedido. Inténtalo nuevamente sin cambiar los datos.",
+    );
   }
 
   revalidatePath("/pedidos");
   return {
     success: true,
-    message: result.result_code === "already_created" ? "El pedido ya habia sido recibido." : "Pedido creado y enviado a preparacion.",
-    reference: result.order_reference ?? undefined,
+    message:
+      result.result_code === "already_created"
+        ? "El pedido ya había sido recibido."
+        : "Pedido creado y enviado a preparación.",
+    reference,
+    orderId: orderId.data,
   };
 }
 
