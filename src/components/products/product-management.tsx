@@ -26,6 +26,7 @@ import {
   updateUnitAction,
 } from "@/lib/products/actions";
 import { QbProductConfigPanel } from "@/components/products/qb-product-config-panel";
+import { ProductClassificationConfiguration } from "@/components/products/product-classification-configuration";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -895,7 +896,7 @@ export function ProductManagement({
                                   <span className="sr-only">Editar producto</span>
                                 </Button>
                               </DialogTrigger>
-                              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+                              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
                                 <DialogHeader>
                                   <DialogTitle>Editar producto</DialogTitle>
                                   <DialogDescription>
@@ -910,6 +911,18 @@ export function ProductManagement({
                                   qbSettings={qbSettingsByProduct.get(product.id)}
                                   unitLocked={productsWithMovements.has(product.id)}
                                 />
+                                {product.requires_classification ? (
+                                  <ProductClassificationConfiguration
+                                    sourceProduct={product}
+                                    products={products}
+                                    settings={qbSettingsByProduct.get(product.id)}
+                                    allSettings={qbProductUnitSettings}
+                                    presentations={qbProductPresentations}
+                                    outputs={qbProductClassificationOutputs}
+                                    units={qbUnits}
+                                    canManage={canManage}
+                                  />
+                                ) : null}
                               </DialogContent>
                             </Dialog>
                             {product.is_active ? (

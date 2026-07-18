@@ -53,6 +53,7 @@ type QbProductUnitSettingsRow = {
   inventory_unit_id: string | null;
   base_inventory_unit_id: string | null;
   is_classifiable: boolean;
+  classification_mode: string;
   is_qb_active: boolean;
 };
 
@@ -257,13 +258,13 @@ export async function createQbMerchandiseReceiptAction(
   const [productResult, settingsResult, allowedUnitResult] = await Promise.all([
     access.supabase
       .from("products")
-      .select("id, name, is_active")
+      .select("id, name, is_active, requires_classification")
       .eq("id", input.product_id)
-      .maybeSingle<{ id: string; name: string; is_active: boolean }>(),
+      .maybeSingle<{ id: string; name: string; is_active: boolean; requires_classification: boolean }>(),
     access.supabase
       .from("qb_product_unit_settings")
       .select(
-        "product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, is_classifiable, is_qb_active",
+        "product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, is_classifiable, classification_mode, is_qb_active",
       )
       .eq("product_id", input.product_id)
       .maybeSingle<QbProductUnitSettingsRow>(),
@@ -314,11 +315,32 @@ export async function createQbMerchandiseReceiptAction(
     };
   }
 
-  if (input.requires_classification && !settings.is_classifiable) {
+  const requiresClassification = Boolean(
+    productResult.data.requires_classification || settings.is_classifiable,
+  );
+
+  if (requiresClassification && (!settings.is_classifiable || settings.classification_mode !== "percentage")) {
     return {
       success: false,
-      message: "Este producto no esta configurado como clasificable en Productos QB.",
+      message: "Este producto requiere una configuracion de clasificacion porcentual valida.",
     };
+  }
+
+  if (requiresClassification) {
+    const { count, error: outputsError } = await access.supabase
+      .from("qb_product_classification_outputs")
+      .select("id", { count: "exact", head: true })
+      .eq("source_product_id", input.product_id)
+      .eq("output_type", "product")
+      .eq("is_active", true);
+
+    if (outputsError) return { success: false, message: outputsError.message };
+    if (!count) {
+      return {
+        success: false,
+        message: "Este producto requiere clasificación, pero todavía no tiene productos resultantes configurados.",
+      };
+    }
   }
 
   const baseUnitId =
@@ -426,7 +448,7 @@ export async function createQbMerchandiseReceiptAction(
     presentationId = presentation.id;
     sourceLabel = `${presentation.name} (${presentation.symbol})`;
     conversionFactorToBase =
-      Number(presentation.base_quantity) *
+      Number(presentation.conversion_factor_to_base) *
       (Number(presentationBaseUnit.conversion_factor_to_base) /
         Number(baseUnit.conversion_factor_to_base));
     snapshotPayload = {
@@ -476,7 +498,7 @@ export async function createQbMerchandiseReceiptAction(
       conversion_factor_to_base: conversionFactorToBase,
       unit_cost: input.unit_cost,
       total_cost: totalCost,
-      requires_classification: input.requires_classification,
+      requires_classification: requiresClassification,
       notes: input.notes,
       created_by: access.userId,
       updated_by: access.userId,
@@ -532,7 +554,7 @@ export async function createQbMerchandiseReceiptAction(
       source_label: sourceLabel,
       source_quantity: input.source_quantity,
       base_quantity: baseQuantity,
-      requires_classification: input.requires_classification,
+      requires_classification: requiresClassification,
     },
   });
 

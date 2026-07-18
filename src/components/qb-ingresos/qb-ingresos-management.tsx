@@ -147,6 +147,7 @@ function CreateReceiptForm({
   qbProductUnitSettings,
   qbProductAllowedUnits,
   qbProductPresentations,
+  qbProductClassificationOutputs,
   qbUnits,
   canManage,
 }: {
@@ -154,6 +155,7 @@ function CreateReceiptForm({
   qbProductUnitSettings: QbProductUnitSettings[];
   qbProductAllowedUnits: QbProductAllowedUnit[];
   qbProductPresentations: QbProductPresentation[];
+  qbProductClassificationOutputs: QbProductClassificationOutput[];
   qbUnits: QbUnit[];
   canManage: boolean;
 }) {
@@ -177,7 +179,17 @@ function CreateReceiptForm({
     return product.is_active && settings?.is_qb_active;
   });
   const [selectedProductId, setSelectedProductId] = useState(activeQbProducts[0]?.id ?? "");
+  const [selectedAllowedUnitId, setSelectedAllowedUnitId] = useState(() =>
+    qbProductAllowedUnits.find(
+      (allowedUnit) =>
+        allowedUnit.product_id === activeQbProducts[0]?.id
+        && allowedUnit.usage_context === "recepcion"
+        && allowedUnit.is_active,
+    )?.id ?? "",
+  );
+  const [sourceQuantity, setSourceQuantity] = useState("");
   const selectedSettings = settingsByProductId.get(selectedProductId);
+  const selectedProduct = activeQbProducts.find((product) => product.id === selectedProductId);
   const receptionUnits = qbProductAllowedUnits
     .filter(
       (allowedUnit) =>
@@ -186,6 +198,53 @@ function CreateReceiptForm({
         allowedUnit.is_active,
     )
     .sort((a, b) => a.sort_order - b.sort_order);
+  const selectedOutputs = qbProductClassificationOutputs
+    .filter(
+      (output) =>
+        output.source_product_id === selectedProductId
+        && output.output_type === "product"
+        && output.output_product_id
+        && output.is_active,
+    )
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const requiresClassification = Boolean(
+    selectedProduct?.requires_classification || selectedSettings?.is_classifiable,
+  );
+  const selectedAllowedUnit = receptionUnits.find(
+    (allowedUnit) => allowedUnit.id === selectedAllowedUnitId,
+  );
+  const baseUnitId = selectedSettings?.base_inventory_unit_id
+    ?? selectedSettings?.inventory_unit_id
+    ?? selectedSettings?.base_unit_id;
+  const baseUnit = unitsById.get(baseUnitId ?? "");
+  const selectedPresentation = selectedAllowedUnit?.presentation_id
+    ? presentationsById.get(selectedAllowedUnit.presentation_id)
+    : undefined;
+  const selectedUnit = selectedAllowedUnit?.unit_id
+    ? unitsById.get(selectedAllowedUnit.unit_id)
+    : undefined;
+  const conversionFactor = selectedPresentation
+    ? Number(selectedPresentation.conversion_factor_to_base)
+    : selectedUnit && baseUnit
+      ? Number(selectedUnit.conversion_factor_to_base) / Number(baseUnit.conversion_factor_to_base)
+      : 0;
+  const calculatedBaseQuantity = Number(sourceQuantity) > 0
+    ? Number(sourceQuantity) * conversionFactor
+    : 0;
+
+  function selectProduct(productId: string) {
+    setSelectedProductId(productId);
+    setSelectedAllowedUnitId(
+      qbProductAllowedUnits.find(
+        (allowedUnit) =>
+          allowedUnit.product_id === productId
+          && allowedUnit.usage_context === "recepcion"
+          && allowedUnit.is_active,
+      )?.id ?? "",
+    );
+    setSourceQuantity("");
+  }
 
   return (
     <Card className="border-white/60 bg-card/92 shadow-sm">
@@ -230,7 +289,7 @@ function CreateReceiptForm({
                 }))}
                 name="product_id"
                 value={selectedProductId}
-                onValueChange={setSelectedProductId}
+                onValueChange={selectProduct}
                 disabled={!canManage || !activeQbProducts.length}
                 placeholder="Buscar por nombre o categoría"
                 ariaLabel="Producto recibido"
@@ -239,9 +298,9 @@ function CreateReceiptForm({
             <div className="space-y-2">
               <Label>Unidad o presentacion de recepcion</Label>
               <NativeSelect
-                key={selectedProductId}
                 name="allowed_unit_id"
-                defaultValue={receptionUnits[0]?.id ?? ""}
+                value={selectedAllowedUnitId}
+                onChange={(event) => setSelectedAllowedUnitId(event.target.value)}
                 disabled={!canManage || !receptionUnits.length}
               >
                 <option value="">Seleccionar</option>
@@ -259,6 +318,8 @@ function CreateReceiptForm({
                 type="number"
                 min="0.001"
                 step="0.001"
+                value={sourceQuantity}
+                onChange={(event) => setSourceQuantity(event.target.value)}
                 required
                 className="rounded-xl"
                 disabled={!canManage}
@@ -276,17 +337,11 @@ function CreateReceiptForm({
                 disabled={!canManage}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Clasificacion</Label>
-              <NativeSelect
-                name="requires_classification"
-                defaultValue="false"
-                disabled={!canManage || !selectedSettings?.is_classifiable}
-              >
-                <option value="false">Ingreso directo a inventario</option>
-                <option value="true">Clasificar antes de confirmar</option>
-              </NativeSelect>
-            </div>
+            <input
+              type="hidden"
+              name="requires_classification"
+              value={String(requiresClassification)}
+            />
             <div className="space-y-2">
               <Label>Origen referencial</Label>
               <Input
@@ -301,9 +356,57 @@ function CreateReceiptForm({
               <Textarea name="notes" className="rounded-xl" disabled={!canManage} />
             </div>
           </div>
+          {selectedProductId && calculatedBaseQuantity > 0 ? (
+            <div className="rounded-2xl border bg-muted/25 p-4">
+              <p className="text-sm text-muted-foreground">Total calculado</p>
+              <p className="mt-1 font-heading text-2xl font-semibold">
+                {formatNumber(calculatedBaseQuantity)} {baseUnit?.symbol ?? ""}
+              </p>
+              {selectedPresentation ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  1 {selectedPresentation.symbol.toLocaleLowerCase("es")} ={" "}
+                  {formatNumber(selectedPresentation.conversion_factor_to_base)} {baseUnit?.symbol ?? ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {requiresClassification ? (
+            selectedOutputs.length ? (
+              <Alert>
+                <Split className="size-4" />
+                <AlertTitle>Clasificación obligatoria</AlertTitle>
+                <AlertDescription>
+                  <p>En cada ingreso deberás distribuir el 100 % entre los productos resultantes.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {selectedOutputs.map((output) => (
+                      <Badge key={output.id} variant="outline" className="rounded-full bg-background">
+                        {productsById.get(output.output_product_id ?? "")?.name ?? output.label}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="mt-2">Los porcentajes y cantidades se completan en el borrador.</p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert variant="destructive">
+                <AlertTriangle className="size-4" />
+                <AlertTitle>Configuración incompleta</AlertTitle>
+                <AlertDescription>
+                  Este producto requiere clasificación, pero todavía no tiene productos resultantes configurados.
+                </AlertDescription>
+              </Alert>
+            )
+          ) : null}
           <Button
             type="submit"
-            disabled={pending || !canManage || !selectedProductId || !receptionUnits.length}
+            disabled={
+              pending
+              || !canManage
+              || !selectedProductId
+              || !selectedAllowedUnitId
+              || !sourceQuantity
+              || (requiresClassification && !selectedOutputs.length)
+            }
             className="rounded-xl"
           >
             <Save className="size-4" />
@@ -724,6 +827,7 @@ export function QbIngresosManagement({
         qbProductUnitSettings={qbProductUnitSettings}
         qbProductAllowedUnits={qbProductAllowedUnits}
         qbProductPresentations={qbProductPresentations}
+        qbProductClassificationOutputs={qbProductClassificationOutputs}
         qbUnits={qbUnits}
         canManage={canUseModule}
       />

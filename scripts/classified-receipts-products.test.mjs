@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260712092700_classified_receipt_percentages.sql");
+const adminMigration = read("supabase/migrations/20260712093000_qb_classification_admin_configuration.sql");
 const storageMigration = read("supabase/migrations/20260712092800_product_catalog_images.sql");
 const ingresos = read("src/components/qb-ingresos/qb-ingresos-management.tsx");
 const ingresoActions = read("src/lib/qb-ingresos/actions.ts");
@@ -12,6 +13,9 @@ const productActions = read("src/lib/products/actions.ts");
 const productForm = read("src/components/products/product-management.tsx");
 const orderCreator = read("src/components/qb-orders/internal-order-creator.tsx");
 const productConfig = read("src/components/products/qb-product-config-panel.tsx");
+const classificationConfig = read("src/components/products/product-classification-configuration.tsx");
+const parametrization = read("src/components/products/qb-parametrization-panel.tsx");
+const e2e = read("supabase/tests/classified_receipts_e2e_rollback.sql");
 
 function distribute(baseQuantity, percentages) {
   const result = [];
@@ -56,8 +60,9 @@ test("08 el porcentaje es variable por linea", () => {
   assert.match(ingresos, /name={`percentage_\$\{index\}`}/);
 });
 test("09 no se ofrece merma nueva", () => {
-  assert.match(productConfig, /value={output\?\.output_type \?\? "product"}/);
-  assert.doesNotMatch(productConfig, /<option value="loss">/);
+  assert.match(classificationConfig, /Distribución variable, sin merma/);
+  assert.doesNotMatch(classificationConfig, /<option value="loss">/);
+  assert.match(adminMigration, /'loss_output', false/);
 });
 test("10 la clasificacion solo admite resultados producto activos", () => {
   assert.match(migration, /output_type = 'product'/);
@@ -114,4 +119,61 @@ test("25 la configuracion y las imagenes son solo de administrador", () => {
 test("26 cada imagen usa una ruta nueva antes de reemplazar la anterior", () => {
   assert.match(productActions, /`\$\{productId\}\/\$\{crypto\.randomUUID\(\)\}\.\$\{detected\.extension\}`/);
   assert.match(productActions, /if \(error\) \{[\s\S]*uploaded\.path[\s\S]*remove\(\[uploaded\.path\]\)/);
+});
+test("27 la configuracion administrativa usa una sola RPC atomica", () => {
+  assert.match(productActions, /rpc\("save_qb_product_classification_configuration"/);
+  assert.doesNotMatch(productActions, /from\("qb_product_classification_outputs"\)\s*\.(insert|update|delete)/);
+  assert.match(adminMigration, /create or replace function public\.save_qb_product_classification_configuration/);
+});
+test("28 solo administradores pueden guardar resultados", () => {
+  assert.match(adminMigration, /v_role not in \('admin', 'administrador'\)/);
+  assert.match(adminMigration, /revoke all on function[\s\S]*from public, anon, authenticated/);
+  assert.match(adminMigration, /grant execute on function[\s\S]*to authenticated/);
+});
+test("29 no queda DML directo de resultados para usuarios", () => {
+  assert.match(adminMigration, /revoke insert, update, delete on table public\.qb_product_classification_outputs/);
+  assert.match(adminMigration, /Internal roles can view QB classification outputs/);
+  assert.doesNotMatch(adminMigration, /grant (insert|update|delete)/i);
+});
+test("30 la RPC impide origen propio duplicados inactivos y dimensiones distintas", () => {
+  assert.match(adminMigration, /v_output_product_id = p_source_product_id/);
+  assert.match(adminMigration, /v_output_product_id = any\(v_output_ids\)/);
+  assert.match(adminMigration, /product\.is_active = true/);
+  assert.match(adminMigration, /unit\.dimension_id = v_source_dimension_id/);
+});
+test("31 retirar una relacion la desactiva y no la elimina", () => {
+  assert.match(adminMigration, /update public\.qb_product_classification_outputs output[\s\S]*set is_active = false/);
+  assert.doesNotMatch(adminMigration, /delete from public\.qb_product_classification_outputs/);
+});
+test("32 la configuracion aparece dentro de editar producto", () => {
+  assert.match(productForm, /product\.requires_classification[\s\S]*<ProductClassificationConfiguration/);
+  assert.doesNotMatch(productConfig, /ProductClassificationOutputForm/);
+});
+test("33 la interfaz explica porcentaje variable y ausencia de stock fuente", () => {
+  assert.match(classificationConfig, /distribuir el 100 % entre los productos resultantes/);
+  assert.match(classificationConfig, /El producto de entrada no acumula stock/);
+});
+test("34 presentaciones muestran equivalencia unitaria y total", () => {
+  assert.match(parametrization, /Equivalencia por unidad/);
+  assert.match(parametrization, /Total presentación/);
+  assert.match(parametrization, /presentation\.conversion_factor_to_base/);
+});
+test("35 ingresos muestran resultados y bloquean configuracion incompleta", () => {
+  assert.match(ingresos, /qbProductClassificationOutputs/);
+  assert.match(ingresos, /Este producto requiere clasificación, pero todavía no tiene productos resultantes configurados/);
+  assert.match(ingresos, /requiresClassification && !selectedOutputs\.length/);
+});
+test("36 el backend fuerza clasificacion y exige resultados activos", () => {
+  assert.match(ingresoActions, /productResult\.data\.requires_classification \|\| settings\.is_classifiable/);
+  assert.match(ingresoActions, /\.eq\("output_type", "product"\)/);
+  assert.match(ingresoActions, /requires_classification: requiresClassification/);
+});
+test("37 recepcion usa el factor total de la presentacion", () => {
+  assert.match(ingresoActions, /Number\(presentation\.conversion_factor_to_base\)/);
+  assert.doesNotMatch(ingresoActions, /conversionFactorToBase =[\s\S]{0,120}Number\(presentation\.base_quantity\)/);
+});
+test("38 el contrato transaccional configura resultados con la misma RPC", () => {
+  assert.match(e2e, /perform public\.save_qb_product_classification_configuration/);
+  assert.doesNotMatch(e2e, /insert into public\.qb_product_classification_outputs/);
+  assert.match(e2e, /rollback;/i);
 });

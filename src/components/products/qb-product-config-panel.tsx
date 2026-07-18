@@ -6,9 +6,7 @@ import { AlertTriangle, Edit3, ListChecks, PackageCheck, Plus, Save } from "luci
 
 import {
   createQbProductAllowedUnitAction,
-  createQbProductClassificationOutputAction,
   updateQbProductAllowedUnitAction,
-  updateQbProductClassificationOutputAction,
   upsertQbProductUnitSettingsAction,
 } from "@/lib/products/actions";
 import { formatNumber } from "@/lib/format";
@@ -423,118 +421,6 @@ function ProductAllowedUnitForm({
   );
 }
 
-function ProductClassificationOutputForm({
-  productId,
-  products,
-  output,
-}: {
-  productId?: string;
-  products: ProductWithRelations[];
-  output?: QbProductClassificationOutput;
-}) {
-  const [state, formAction, pending] = useActionState(
-    output
-      ? updateQbProductClassificationOutputAction
-      : createQbProductClassificationOutputAction,
-    initialState,
-  );
-  useActionToast(state);
-  const defaultProductId = output?.source_product_id ?? productId ?? "";
-  const [sourceProductId, setSourceProductId] = useState(defaultProductId);
-  const [outputProductId, setOutputProductId] = useState(output?.output_product_id ?? "");
-  const productOptions = products.map((product) => ({
-    id: product.id,
-    name: product.name,
-    category: product.category?.name,
-    unit: product.unit?.abbreviation,
-  }));
-
-  return (
-    <form action={formAction} className="space-y-4">
-      {output ? <input type="hidden" name="id" value={output.id} /> : null}
-      <FormMessage state={state} />
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Producto clasificable</Label>
-          <ProductCombobox
-            name="source_product_id"
-            options={productOptions}
-            value={sourceProductId}
-            onValueChange={setSourceProductId}
-            placeholder="Buscar producto de entrada"
-            ariaLabel="Producto clasificable"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Tipo de salida</Label>
-          <input type="hidden" name="output_type" value={output?.output_type ?? "product"} />
-          <p className="flex h-10 items-center rounded-xl border bg-slate-50 px-3 text-sm">
-            {output?.output_type === "loss" ? "Merma histórica" : "Producto resultado"}
-          </p>
-        </div>
-        <div className="space-y-2">
-          <Label>Producto resultado</Label>
-          {output?.output_type === "loss" ? (
-            <input type="hidden" name="output_product_id" value="" />
-          ) : (
-            <ProductCombobox
-              name="output_product_id"
-              options={productOptions.filter((product) => product.id !== sourceProductId)}
-              value={outputProductId}
-              onValueChange={setOutputProductId}
-              placeholder="Buscar producto resultado"
-              ariaLabel="Producto resultado"
-            />
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label>Etiqueta</Label>
-          <Input
-            name="label"
-            defaultValue={output?.label ?? ""}
-            placeholder="Papa grande"
-            required
-            className="rounded-xl"
-          />
-        </div>
-        <input type="hidden" name="expected_percentage" value="" />
-        <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          El porcentaje se introduce en cada ingreso y no queda fijado como valor predeterminado.
-        </p>
-        <div className="space-y-2">
-          <Label>Estado</Label>
-          <NativeSelect name="is_active" defaultValue={String(output?.is_active ?? true)}>
-            <option value="true">Activo</option>
-            <option value="false">Inactivo</option>
-          </NativeSelect>
-        </div>
-        <div className="space-y-2">
-          <Label>Orden</Label>
-          <Input
-            name="sort_order"
-            type="number"
-            min="0"
-            step="1"
-            defaultValue={output?.sort_order ?? 0}
-            required
-            className="rounded-xl"
-          />
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <Label>Notas</Label>
-          <Textarea name="notes" defaultValue={output?.notes ?? ""} className="rounded-xl" />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button type="submit" disabled={pending} className="rounded-xl">
-          <Save className="size-4" />
-          {pending ? "Guardando..." : "Guardar"}
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
-
 export function QbProductConfigPanel({
   products,
   qbUnitDimensions,
@@ -606,9 +492,9 @@ export function QbProductConfigPanel({
           <p className="mt-2 font-heading text-3xl font-semibold">{pendingProducts}</p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
-          <p className="text-sm text-muted-foreground">Clasificacion futura</p>
+          <p className="text-sm text-muted-foreground">Resultados activos</p>
           <p className="mt-2 font-heading text-3xl font-semibold">
-            {qbProductClassificationOutputs.length}
+            {qbProductClassificationOutputs.filter((output) => output.is_active).length}
           </p>
         </div>
       </div>
@@ -850,100 +736,6 @@ export function QbProductConfigPanel({
         </CardContent>
       </Card>
 
-      <Card className="border-white/60 bg-card/92 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 font-heading text-xl">
-            <ListChecks className="size-5" />
-            Clasificacion futura
-          </CardTitle>
-          {canEditQb ? (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="rounded-xl">
-                  <Plus className="size-4" />
-                  Nueva
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>Nueva salida de clasificacion</DialogTitle>
-                  <DialogDescription>Define productos resultado o merma futura.</DialogDescription>
-                </DialogHeader>
-                <ProductClassificationOutputForm products={activeProducts} />
-              </DialogContent>
-            </Dialog>
-          ) : null}
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-hidden rounded-2xl border border-border/70">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Producto origen</TableHead>
-                  <TableHead>Salida</TableHead>
-                  <TableHead>Producto resultado</TableHead>
-                  <TableHead className="text-right">Esperado</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Accion</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {qbProductClassificationOutputs.map((output) => (
-                  <TableRow key={output.id}>
-                    <TableCell>{productsById.get(output.source_product_id)?.name ?? "N/D"}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="rounded-full">
-                        {output.output_type === "loss" ? "Merma" : output.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {output.output_type === "loss"
-                        ? "No aumenta stock"
-                        : productsById.get(output.output_product_id ?? "")?.name ?? "N/D"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {output.expected_percentage !== null && output.expected_percentage !== undefined
-                        ? `${formatNumber(output.expected_percentage)}%`
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge active={output.is_active} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {canEditQb ? (
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
-                              <Edit3 className="size-4" />
-                              <span className="sr-only">Editar salida de clasificacion</span>
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-                            <DialogHeader>
-                              <DialogTitle>Editar salida de clasificacion</DialogTitle>
-                              <DialogDescription>
-                                Actualiza la relacion futura de clasificacion.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <ProductClassificationOutputForm products={activeProducts} output={output} />
-                          </DialogContent>
-                        </Dialog>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Lectura</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          {!qbProductClassificationOutputs.length ? (
-            <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-muted-foreground">
-              No hay salidas de clasificación registradas.
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
     </section>
   );
 }

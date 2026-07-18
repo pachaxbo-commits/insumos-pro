@@ -45,15 +45,6 @@ const optionalPositiveNumber = z.preprocess(
   z.coerce.number().finite().positive().nullable(),
 );
 
-const optionalPercentage = z.preprocess(
-  (value) => {
-    if (typeof value !== "string" && typeof value !== "number") return null;
-    if (typeof value === "string" && !value.trim()) return null;
-    return value;
-  },
-  z.coerce.number().finite().min(0).max(100).nullable(),
-);
-
 const qbCodeSchema = z
   .string()
   .trim()
@@ -318,45 +309,11 @@ const qbProductAllowedUnitSchema = z
     });
   });
 
-const qbProductClassificationOutputSchema = z
-  .object({
-    source_product_id: z.uuid("Selecciona el producto clasificable."),
-    output_type: z.enum(["product", "loss"]),
-    output_product_id: optionalUuid,
-    label: z.string().trim().min(2, "La etiqueta debe tener al menos 2 caracteres."),
-    expected_percentage: optionalPercentage,
-    is_active: booleanField,
-    sort_order: z.coerce
-      .number()
-      .int("El orden debe ser un entero.")
-      .min(0, "El orden no puede ser negativo."),
-    notes: optionalText,
-  })
-  .superRefine((output, context) => {
-    if (output.output_type === "product" && !output.output_product_id) {
-      context.addIssue({
-        code: "custom",
-        path: ["output_product_id"],
-        message: "Selecciona el producto resultado.",
-      });
-    }
-
-    if (output.output_type === "loss" && output.output_product_id) {
-      context.addIssue({
-        code: "custom",
-        path: ["output_product_id"],
-        message: "La merma no debe apuntar a un producto resultado.",
-      });
-    }
-
-    if (output.output_product_id === output.source_product_id) {
-      context.addIssue({
-        code: "custom",
-        path: ["output_product_id"],
-        message: "El producto resultado no puede ser el mismo producto origen.",
-      });
-    }
-  });
+const classificationOutputIdsSchema = z
+  .array(z.uuid("La seleccion contiene un producto invalido."))
+  .min(1, "Selecciona al menos un producto resultante.")
+  .max(20, "Puedes configurar hasta veinte productos resultantes.")
+  .refine((ids) => new Set(ids).size === ids.length, "No puedes repetir un producto resultante.");
 
 function normalizeCatalogSlug(value: string) {
   return value
@@ -433,6 +390,11 @@ function revalidateProducts() {
 function revalidateQbParametrization() {
   revalidatePath("/productos");
   revalidatePath("/parametrizacion");
+}
+
+function revalidateQbClassification() {
+  revalidatePath("/productos");
+  revalidatePath("/ingresos");
 }
 
 export async function createProductAction(
@@ -1078,7 +1040,7 @@ export async function updateQbProductAllowedUnitAction(
   return { success: true, message: "Unidad permitida QB actualizada correctamente." };
 }
 
-export async function createQbProductClassificationOutputAction(
+export async function saveQbProductClassificationConfigurationAction(
   _previousState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
@@ -1086,65 +1048,58 @@ export async function createQbProductClassificationOutputAction(
 
   if (!access.allowed) return { success: false, message: access.message };
 
-  const parsed = qbProductClassificationOutputSchema.safeParse(Object.fromEntries(formData));
+  const sourceProductId = formData.get("source_product_id");
+  const rawOutputProductIds = formData.get("output_product_ids");
+  const parsedSourceProductId = z.uuid("El producto de recepcion no es valido.").safeParse(
+    sourceProductId,
+  );
 
-  if (!parsed.success) {
+  if (!parsedSourceProductId.success || typeof rawOutputProductIds !== "string") {
     return {
       success: false,
-      message:
-        parsed.error.issues[0]?.message ?? "Revisa la salida de clasificacion del producto.",
+      message: parsedSourceProductId.error?.issues[0]?.message ?? "Revisa los productos resultantes.",
     };
   }
 
-  const { error } = await access.supabase.from("qb_product_classification_outputs").insert({
-    ...parsed.data,
-    output_product_id:
-      parsed.data.output_type === "loss" ? null : parsed.data.output_product_id,
-    created_by: access.userId,
-    updated_by: access.userId,
+  let outputProductIds: unknown;
+  try {
+    outputProductIds = JSON.parse(rawOutputProductIds);
+  } catch {
+    return { success: false, message: "Revisa los productos resultantes." };
+  }
+
+  const parsedOutputProductIds = classificationOutputIdsSchema.safeParse(outputProductIds);
+  if (!parsedOutputProductIds.success) {
+    return {
+      success: false,
+      message: parsedOutputProductIds.error.issues[0]?.message ?? "Revisa los productos resultantes.",
+    };
+  }
+
+  const { error } = await access.supabase.rpc("save_qb_product_classification_configuration", {
+    p_source_product_id: parsedSourceProductId.data,
+    p_output_product_ids: parsedOutputProductIds.data,
   });
 
-  if (error) return { success: false, message: error.message };
-
-  revalidateQbParametrization();
-  return { success: true, message: "Salida de clasificacion QB creada correctamente." };
-}
-
-export async function updateQbProductClassificationOutputAction(
-  _previousState: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const access = await assertCanMutateProducts();
-
-  if (!access.allowed) return { success: false, message: access.message };
-
-  const id = parseId(formData);
-  const parsed = qbProductClassificationOutputSchema.safeParse(Object.fromEntries(formData));
-
-  if (!z.uuid().safeParse(id).success) {
-    return { success: false, message: "Salida de clasificacion QB invalida." };
-  }
-
-  if (!parsed.success) {
+  if (error) {
+    const safeMessages = [
+      "Solo un administrador puede configurar productos resultantes.",
+      "El producto de recepcion no existe o no esta activo.",
+      "Configura el producto para clasificacion porcentual antes de guardar resultados.",
+      "La unidad base del producto de recepcion no esta activa.",
+      "Selecciona entre uno y veinte productos resultantes.",
+      "El producto de recepcion no puede ser también un resultado.",
+      "No puedes repetir un producto resultante.",
+      "Cada producto resultante debe estar activo y usar una unidad de la misma dimension.",
+      "La seleccion de productos resultantes no es valida.",
+    ];
+    const safeMessage = safeMessages.find((message) => error.message.includes(message));
     return {
       success: false,
-      message:
-        parsed.error.issues[0]?.message ?? "Revisa la salida de clasificacion del producto.",
+      message: safeMessage ?? "No se pudo guardar la configuracion de clasificacion.",
     };
   }
 
-  const { error } = await access.supabase
-    .from("qb_product_classification_outputs")
-    .update({
-      ...parsed.data,
-      output_product_id:
-        parsed.data.output_type === "loss" ? null : parsed.data.output_product_id,
-      updated_by: access.userId,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, message: error.message };
-
-  revalidateQbParametrization();
-  return { success: true, message: "Salida de clasificacion QB actualizada correctamente." };
+  revalidateQbClassification();
+  return { success: true, message: "Productos resultantes guardados correctamente." };
 }

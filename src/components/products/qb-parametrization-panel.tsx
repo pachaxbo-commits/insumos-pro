@@ -370,7 +370,7 @@ function ProductPresentationForm({
           </NativeSelect>
         </div>
         <div className="space-y-2">
-          <Label>Equivalencia base</Label>
+          <Label>Equivalencia por unidad contenida</Label>
           <Input
             name="base_quantity"
             type="number"
@@ -393,7 +393,7 @@ function ProductPresentationForm({
           </NativeSelect>
         </div>
         <div className="space-y-2">
-          <Label>Factor a base</Label>
+          <Label>Total de una presentación en unidad base</Label>
           <Input
             name="conversion_factor_to_base"
             type="number"
@@ -706,7 +706,8 @@ export function QbParametrizationPanel({
                   <TableHead>Producto</TableHead>
                   <TableHead>Presentacion</TableHead>
                   <TableHead>Contenido</TableHead>
-                  <TableHead>Base</TableHead>
+                  <TableHead>Equivalencia por unidad</TableHead>
+                  <TableHead>Total presentación</TableHead>
                   <TableHead>Contextos</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Accion</TableHead>
@@ -729,6 +730,21 @@ export function QbParametrizationPanel({
                     <TableCell>
                       {formatNumber(presentation.base_quantity)}{" "}
                       {unitsById.get(presentation.base_unit_id)?.symbol ?? "N/D"}
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">
+                          {formatNumber(presentation.conversion_factor_to_base)}{" "}
+                          {unitsById.get(presentation.base_unit_id)?.symbol ?? "N/D"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          1 {presentation.symbol.toLocaleLowerCase("es")} ={" "}
+                          {formatNumber(presentation.contained_quantity)}{" "}
+                          {unitsById.get(presentation.contained_unit_id)?.name.toLocaleLowerCase("es") ?? "unidades"}
+                          {" = "}{formatNumber(presentation.conversion_factor_to_base)}{" "}
+                          {unitsById.get(presentation.base_unit_id)?.symbol ?? "N/D"}
+                        </p>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

@@ -38,9 +38,9 @@ declare
   v_tomato_receipt_unit_id uuid := extensions.gen_random_uuid();
   v_vaina_receipt_unit_id uuid := extensions.gen_random_uuid();
   v_large_order_unit_id uuid := extensions.gen_random_uuid();
-  v_large_output_id uuid := extensions.gen_random_uuid();
-  v_medium_output_id uuid := extensions.gen_random_uuid();
-  v_small_output_id uuid := extensions.gen_random_uuid();
+  v_large_output_id uuid;
+  v_medium_output_id uuid;
+  v_small_output_id uuid;
   v_papa_receipt_id uuid := extensions.gen_random_uuid();
   v_papa_line_id uuid := extensions.gen_random_uuid();
   v_papa_snapshot_id uuid := extensions.gen_random_uuid();
@@ -133,13 +133,34 @@ begin
     (v_vaina_receipt_unit_id, v_vaina_id, 'recepcion', null, v_vaina_presentation_id, true, 1, 1, true, v_admin_id, v_admin_id),
     (v_large_order_unit_id, v_papa_large_id, 'pedido', v_kg_id, null, true, 0.001, 0.001, true, v_admin_id, v_admin_id);
 
-  insert into public.qb_product_classification_outputs (
-    id, source_product_id, output_type, output_product_id, label,
-    expected_percentage, is_active, sort_order, created_by, updated_by
-  ) values
-    (v_large_output_id, v_papa_input_id, 'product', v_papa_large_id, 'Papa grande QB TEST', null, true, 1, v_admin_id, v_admin_id),
-    (v_medium_output_id, v_papa_input_id, 'product', v_papa_medium_id, 'Papa mediana QB TEST', null, true, 2, v_admin_id, v_admin_id),
-    (v_small_output_id, v_papa_input_id, 'product', v_papa_small_id, 'Papa pequena QB TEST', null, true, 3, v_admin_id, v_admin_id);
+  perform public.save_qb_product_classification_configuration(
+    v_papa_input_id,
+    jsonb_build_array(
+      v_papa_large_id::text,
+      v_papa_medium_id::text,
+      v_papa_small_id::text
+    )
+  );
+
+  select output.id into v_large_output_id
+  from public.qb_product_classification_outputs output
+  where output.source_product_id = v_papa_input_id
+    and output.output_product_id = v_papa_large_id
+    and output.is_active;
+  select output.id into v_medium_output_id
+  from public.qb_product_classification_outputs output
+  where output.source_product_id = v_papa_input_id
+    and output.output_product_id = v_papa_medium_id
+    and output.is_active;
+  select output.id into v_small_output_id
+  from public.qb_product_classification_outputs output
+  where output.source_product_id = v_papa_input_id
+    and output.output_product_id = v_papa_small_id
+    and output.is_active;
+
+  if v_large_output_id is null or v_medium_output_id is null or v_small_output_id is null then
+    raise exception 'QB_TEST_ADMIN_CONFIGURATION_FAILED';
+  end if;
 
   perform pg_temp.qb_classified_pass('A', 'Producto de recepcion temporal creado');
   perform pg_temp.qb_classified_pass('B', 'Tres productos resultado temporales creados');
