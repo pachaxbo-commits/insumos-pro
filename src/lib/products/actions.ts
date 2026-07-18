@@ -425,6 +425,7 @@ function revalidateProducts() {
 function revalidateQbParametrization() {
   revalidatePath("/productos");
   revalidatePath("/parametrizacion");
+  revalidatePath("/ingresos");
 }
 
 function revalidateQbClassification() {

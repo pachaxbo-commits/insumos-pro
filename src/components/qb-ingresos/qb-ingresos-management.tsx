@@ -21,6 +21,7 @@ import {
   saveQbMerchandiseClassificationAction,
 } from "@/lib/qb-ingresos/actions";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { getActiveReceptionSources } from "@/lib/qb-ingresos/reception-sources";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
 import type {
@@ -120,11 +121,6 @@ function unitLabel(unit: QbUnit | undefined) {
   return `${unit.name} (${unit.symbol})`;
 }
 
-function presentationLabel(presentation: QbProductPresentation | undefined) {
-  if (!presentation) return "N/D";
-  return `${presentation.name} (${presentation.symbol})`;
-}
-
 function allowedUnitLabel(
   allowedUnit: QbProductAllowedUnit,
   unitsById: Map<string, QbUnit>,
@@ -132,7 +128,14 @@ function allowedUnitLabel(
 ) {
   if (allowedUnit.unit_id) return unitLabel(unitsById.get(allowedUnit.unit_id));
   if (allowedUnit.presentation_id) {
-    return presentationLabel(presentationsById.get(allowedUnit.presentation_id));
+    const presentation = presentationsById.get(allowedUnit.presentation_id);
+    const baseUnit = presentation
+      ? unitsById.get(presentation.base_unit_id)
+      : undefined;
+    if (!presentation) return "N/D";
+    return `${presentation.name} — ${formatNumber(
+      presentation.conversion_factor_to_base,
+    )} ${baseUnit?.symbol ?? ""}`.trim();
   }
 
   return "N/D";
@@ -149,6 +152,7 @@ function CreateReceiptForm({
   qbProductPresentations,
   qbProductClassificationOutputs,
   qbUnits,
+  presentationLoadError,
   canManage,
 }: {
   products: ProductWithRelations[];
@@ -157,6 +161,7 @@ function CreateReceiptForm({
   qbProductPresentations: QbProductPresentation[];
   qbProductClassificationOutputs: QbProductClassificationOutput[];
   qbUnits: QbUnit[];
+  presentationLoadError: boolean;
   canManage: boolean;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -180,24 +185,22 @@ function CreateReceiptForm({
   });
   const [selectedProductId, setSelectedProductId] = useState(activeQbProducts[0]?.id ?? "");
   const [selectedAllowedUnitId, setSelectedAllowedUnitId] = useState(() =>
-    qbProductAllowedUnits.find(
-      (allowedUnit) =>
-        allowedUnit.product_id === activeQbProducts[0]?.id
-        && allowedUnit.usage_context === "recepcion"
-        && allowedUnit.is_active,
-    )?.id ?? "",
+    getActiveReceptionSources({
+      productId: activeQbProducts[0]?.id ?? "",
+      allowedUnits: qbProductAllowedUnits,
+      presentations: qbProductPresentations,
+      units: qbUnits,
+    })[0]?.id ?? "",
   );
   const [sourceQuantity, setSourceQuantity] = useState("");
   const selectedSettings = settingsByProductId.get(selectedProductId);
   const selectedProduct = activeQbProducts.find((product) => product.id === selectedProductId);
-  const receptionUnits = qbProductAllowedUnits
-    .filter(
-      (allowedUnit) =>
-        allowedUnit.product_id === selectedProductId &&
-        allowedUnit.usage_context === "recepcion" &&
-        allowedUnit.is_active,
-    )
-    .sort((a, b) => a.sort_order - b.sort_order);
+  const receptionUnits = getActiveReceptionSources({
+    productId: selectedProductId,
+    allowedUnits: qbProductAllowedUnits,
+    presentations: qbProductPresentations,
+    units: qbUnits,
+  });
   const selectedOutputs = qbProductClassificationOutputs
     .filter(
       (output) =>
@@ -236,12 +239,12 @@ function CreateReceiptForm({
   function selectProduct(productId: string) {
     setSelectedProductId(productId);
     setSelectedAllowedUnitId(
-      qbProductAllowedUnits.find(
-        (allowedUnit) =>
-          allowedUnit.product_id === productId
-          && allowedUnit.usage_context === "recepcion"
-          && allowedUnit.is_active,
-      )?.id ?? "",
+      getActiveReceptionSources({
+        productId,
+        allowedUnits: qbProductAllowedUnits,
+        presentations: qbProductPresentations,
+        units: qbUnits,
+      })[0]?.id ?? "",
     );
     setSourceQuantity("");
   }
@@ -310,6 +313,15 @@ function CreateReceiptForm({
                   </option>
                 ))}
               </NativeSelect>
+              {presentationLoadError ? (
+                <p className="text-sm text-rose-700" role="alert">
+                  No pudimos cargar las presentaciones. Intenta nuevamente.
+                </p>
+              ) : selectedProductId && !receptionUnits.length ? (
+                <p className="text-sm text-amber-700" role="status">
+                  Este producto no tiene una presentación de recepción activa.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Cantidad recibida</Label>
@@ -829,6 +841,7 @@ export function QbIngresosManagement({
         qbProductPresentations={qbProductPresentations}
         qbProductClassificationOutputs={qbProductClassificationOutputs}
         qbUnits={qbUnits}
+        presentationLoadError={Boolean(qbParametrizationWarning)}
         canManage={canUseModule}
       />
 

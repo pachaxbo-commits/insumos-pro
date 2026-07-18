@@ -33,6 +33,7 @@ type QbProductPresentationRow = {
   base_quantity: number;
   base_unit_id: string;
   conversion_factor_to_base: number;
+  allow_purchase: boolean;
   is_active: boolean;
 };
 
@@ -409,7 +410,7 @@ export async function createQbMerchandiseReceiptAction(
     const presentationResult = await access.supabase
       .from("qb_product_presentations")
       .select(
-        "id, product_id, name, symbol, contained_quantity, contained_unit_id, base_quantity, base_unit_id, conversion_factor_to_base, is_active",
+        "id, product_id, name, symbol, contained_quantity, contained_unit_id, base_quantity, base_unit_id, conversion_factor_to_base, allow_purchase, is_active",
       )
       .eq("id", allowedUnit.presentation_id)
       .maybeSingle<QbProductPresentationRow>();
@@ -417,7 +418,11 @@ export async function createQbMerchandiseReceiptAction(
     if (presentationResult.error) {
       return { success: false, message: presentationResult.error.message };
     }
-    if (!presentationResult.data?.is_active || presentationResult.data.product_id !== input.product_id) {
+    if (
+      !presentationResult.data?.is_active ||
+      !presentationResult.data.allow_purchase ||
+      presentationResult.data.product_id !== input.product_id
+    ) {
       return { success: false, message: "La presentacion de recepcion no esta activa para este producto." };
     }
 
