@@ -9,13 +9,10 @@ const POLLING_INTERVAL_MS = 15_000;
 const REFRESH_DEBOUNCE_MS = 750;
 
 export type QbOrdersSyncStatus =
-  | "connecting"
-  | "live"
-  | "polling"
-  | "offline"
-  | "stale";
+  "connecting" | "live" | "polling" | "offline" | "stale";
 
-type RefreshReason = "realtime" | "poll" | "focus" | "visibility" | "online" | "manual";
+type RefreshReason =
+  "realtime" | "poll" | "focus" | "visibility" | "online" | "manual";
 
 export function useQbOrdersSynchronization({
   hasUnsavedChanges,
@@ -104,16 +101,48 @@ export function useQbOrdersSynchronization({
     const handleDatabaseChange = () => requestRefresh("realtime");
     const channel = supabase
       .channel("qb-orders-operational-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "qb_orders" }, handleDatabaseChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "qb_order_items" }, handleDatabaseChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "qb_order_preparations" }, handleDatabaseChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "qb_order_preparation_items" }, handleDatabaseChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "qb_order_delivery_movements" }, handleDatabaseChange)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qb_orders" },
+        handleDatabaseChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qb_order_items" },
+        handleDatabaseChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qb_order_preparations" },
+        handleDatabaseChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qb_order_preparation_items" },
+        handleDatabaseChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "qb_order_delivery_movements" },
+        handleDatabaseChange,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "qb_product_unit_settings",
+        },
+        handleDatabaseChange,
+      )
       .subscribe((channelStatus) => {
         if (channelStatus === "SUBSCRIBED") {
           transportStatusRef.current = "live";
           setStatus("live");
-        } else if (channelStatus === "CHANNEL_ERROR" || channelStatus === "TIMED_OUT") {
+        } else if (
+          channelStatus === "CHANNEL_ERROR" ||
+          channelStatus === "TIMED_OUT"
+        ) {
           transportStatusRef.current = navigator.onLine ? "polling" : "offline";
           setStatus(transportStatusRef.current);
         } else if (channelStatus === "CLOSED" && !navigator.onLine) {

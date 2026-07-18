@@ -47,7 +47,10 @@ type ReceiptOrderRow = {
   receipt_id: string;
   order_id: string;
   inclusion_status: "borrador" | "emitido" | "anulado";
-  order?: { id: string; public_reference: string } | { id: string; public_reference: string }[] | null;
+  order?:
+    | { id: string; public_reference: string }
+    | { id: string; public_reference: string }[]
+    | null;
 };
 
 type ReceiptLineRow = {
@@ -59,6 +62,12 @@ type ReceiptLineRow = {
   delivered_base_quantity: number | string;
   base_unit_symbol: string;
   visible_unit_label: string;
+  order_input_mode: "quantity" | "amount_bs";
+  requested_amount_bs: number | string | null;
+  currency_snapshot: string | null;
+  pricing_unit_id: string | null;
+  estimated_base_quantity: number | string | null;
+  fixed_line_amount: number | string | null;
   original_base_price: number | string | null;
   base_price_used: number | string | null;
   base_price_edited: boolean;
@@ -66,7 +75,10 @@ type ReceiptLineRow = {
   final_unit_price: number | string | null;
   line_total: number | string | null;
   notes: string | null;
-  order?: { id: string; public_reference: string } | { id: string; public_reference: string }[] | null;
+  order?:
+    | { id: string; public_reference: string }
+    | { id: string; public_reference: string }[]
+    | null;
 };
 
 type ReceiptEventRow = {
@@ -101,7 +113,7 @@ type DeliveredMovementRow = {
 };
 
 function single<T>(value: T | T[] | null | undefined) {
-  return Array.isArray(value) ? value[0] : value ?? null;
+  return Array.isArray(value) ? value[0] : (value ?? null);
 }
 
 function numberValue(value: number | string | null | undefined) {
@@ -151,10 +163,14 @@ function mapReceipt(
     hasPendingPrices: lines.some(
       (line) =>
         line.deliveredBaseQuantity <= 0 ||
-        line.basePriceUsed === null ||
-        line.basePriceUsed <= 0 ||
-        line.finalUnitPrice === null ||
-        line.finalUnitPrice <= 0 ||
+        (line.inputMode === "quantity" &&
+          (line.basePriceUsed === null ||
+            line.basePriceUsed <= 0 ||
+            line.finalUnitPrice === null ||
+            line.finalUnitPrice <= 0)) ||
+        (line.inputMode === "amount_bs" &&
+          (line.requestedAmountBs === null ||
+            line.fixedLineAmount !== line.requestedAmountBs)) ||
         line.lineTotal === null ||
         line.lineTotal <= 0,
     ),
@@ -189,11 +205,15 @@ async function getReceiptParts(
   const [ordersResult, linesResult, eventsResult] = await Promise.all([
     supabase
       .from("qb_receipt_orders")
-      .select("id, receipt_id, order_id, inclusion_status, order:qb_orders(id, public_reference)")
+      .select(
+        "id, receipt_id, order_id, inclusion_status, order:qb_orders(id, public_reference)",
+      )
       .in("receipt_id", receiptIds),
     supabase
       .from("qb_receipt_lines")
-      .select("id, receipt_id, order_id, product_id, product_name_snapshot, delivered_base_quantity, base_unit_symbol, visible_unit_label, original_base_price, base_price_used, base_price_edited, save_as_new_base_price, final_unit_price, line_total, notes, order:qb_orders(id, public_reference)")
+      .select(
+        "id, receipt_id, order_id, product_id, product_name_snapshot, delivered_base_quantity, base_unit_symbol, visible_unit_label, order_input_mode, requested_amount_bs, currency_snapshot, pricing_unit_id, estimated_base_quantity, fixed_line_amount, original_base_price, base_price_used, base_price_edited, save_as_new_base_price, final_unit_price, line_total, notes, order:qb_orders(id, public_reference)",
+      )
       .in("receipt_id", receiptIds)
       .order("created_at", { ascending: true }),
     supabase
@@ -218,11 +238,16 @@ async function getReceiptParts(
       priceByProduct.set(price.product_id, price);
     }
 
-    const unitIds = [...new Set(
-      [...priceByProduct.values()]
-        .map((price) => price.base_price_unit_id)
-        .filter((unitId): unitId is string => Boolean(unitId)),
-    )];
+    const unitIds = [
+      ...new Set([
+        ...[...priceByProduct.values()]
+          .map((price) => price.base_price_unit_id)
+          .filter((unitId): unitId is string => Boolean(unitId)),
+        ...lineRows
+          .map((line) => line.pricing_unit_id)
+          .filter((unitId): unitId is string => Boolean(unitId)),
+      ]),
+    ];
 
     if (unitIds.length) {
       const { data: unitData } = await supabase
@@ -266,10 +291,18 @@ async function getReceiptParts(
         deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
+        inputMode: row.order_input_mode,
+        requestedAmountBs: nullableNumberValue(row.requested_amount_bs),
+        currencySnapshot: row.currency_snapshot,
+        pricingUnitSymbol: row.pricing_unit_id
+          ? (symbolByUnit.get(row.pricing_unit_id) ?? null)
+          : null,
+        estimatedBaseQuantity: nullableNumberValue(row.estimated_base_quantity),
+        fixedLineAmount: nullableNumberValue(row.fixed_line_amount),
         originalBasePrice: nullableNumberValue(row.original_base_price),
         currentBasePrice: nullableNumberValue(currentPrice?.base_sale_price),
         currentBasePriceUnitSymbol: currentPrice?.base_price_unit_id
-          ? symbolByUnit.get(currentPrice.base_price_unit_id) ?? null
+          ? (symbolByUnit.get(currentPrice.base_price_unit_id) ?? null)
           : null,
         basePriceUsed: nullableNumberValue(row.base_price_used),
         basePriceEdited: row.base_price_edited,
@@ -299,7 +332,9 @@ async function getPendingReceiptGroups(
 ): Promise<QbReceiptCustomerGroup[]> {
   const { data, error } = await supabase
     .from("qb_orders")
-    .select("id, public_reference, customer_account_id, delivered_at, location_snapshot, customer:customer_accounts(id, email, full_name, phone)")
+    .select(
+      "id, public_reference, customer_account_id, delivered_at, location_snapshot, customer:customer_accounts(id, email, full_name, phone)",
+    )
     .eq("status", "entregado_pendiente_recibo")
     .order("delivered_at", { ascending: false })
     .limit(100);
@@ -317,7 +352,10 @@ async function getPendingReceiptGroups(
       .in("order_id", orderIds);
 
     for (const movement of (movementsData ?? []) as DeliveredMovementRow[]) {
-      movementCounts.set(movement.order_id, (movementCounts.get(movement.order_id) ?? 0) + 1);
+      movementCounts.set(
+        movement.order_id,
+        (movementCounts.get(movement.order_id) ?? 0) + 1,
+      );
     }
   }
 
@@ -361,11 +399,19 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { receipts: [], pendingGroups: [], error: "No pudimos cargar los recibos en este momento. Comunícate con el administrador de QB Insumos." };
+  if (!supabase)
+    return {
+      receipts: [],
+      pendingGroups: [],
+      error:
+        "No pudimos cargar los recibos en este momento. Comunícate con el administrador de QB Insumos.",
+    };
 
   const { data, error } = await supabase
     .from("qb_receipts")
-    .select("id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)")
+    .select(
+      "id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)",
+    )
     .order("created_at", { ascending: false })
     .limit(80);
 
@@ -373,16 +419,18 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
     return {
       receipts: [],
       pendingGroups: [],
-      error: "No pudimos cargar los recibos en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
+      error:
+        "No pudimos cargar los recibos en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     };
   }
 
   const rows = (data ?? []) as ReceiptRow[];
   const receiptIds = rows.map((receipt) => receipt.id);
-  const [{ ordersByReceipt, linesByReceipt, eventsByReceipt }, pendingGroups] = await Promise.all([
-    getReceiptParts(supabase, receiptIds),
-    getPendingReceiptGroups(supabase),
-  ]);
+  const [{ ordersByReceipt, linesByReceipt, eventsByReceipt }, pendingGroups] =
+    await Promise.all([
+      getReceiptParts(supabase, receiptIds),
+      getPendingReceiptGroups(supabase),
+    ]);
 
   return {
     receipts: rows.map((row) =>
@@ -397,15 +445,24 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
   };
 }
 
-export async function getQbReceiptDetailData(receiptId: string): Promise<QbReceiptDetailData> {
+export async function getQbReceiptDetailData(
+  receiptId: string,
+): Promise<QbReceiptDetailData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { receipt: null, error: "No pudimos cargar el recibo en este momento. Comunícate con el administrador de QB Insumos." };
+  if (!supabase)
+    return {
+      receipt: null,
+      error:
+        "No pudimos cargar el recibo en este momento. Comunícate con el administrador de QB Insumos.",
+    };
 
   const { data, error } = await supabase
     .from("qb_receipts")
-    .select("id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)")
+    .select(
+      "id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)",
+    )
     .eq("id", receiptId)
     .maybeSingle<ReceiptRow>();
 
@@ -413,7 +470,8 @@ export async function getQbReceiptDetailData(receiptId: string): Promise<QbRecei
     return { receipt: null, error: "No se encontró el recibo solicitado." };
   }
 
-  const { ordersByReceipt, linesByReceipt, eventsByReceipt } = await getReceiptParts(supabase, [data.id]);
+  const { ordersByReceipt, linesByReceipt, eventsByReceipt } =
+    await getReceiptParts(supabase, [data.id]);
 
   return {
     receipt: mapReceipt(

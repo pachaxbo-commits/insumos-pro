@@ -249,4 +249,3 @@ from qb_pilot_stock_amount_results
 order by scenario;
 
 rollback;
-

@@ -38,13 +38,18 @@ const savePreparationSchema = z.object({
 
 async function getSupabaseOrState() {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { state: actionState(false, "Faltan variables publicas de Supabase.") };
+  if (!supabase)
+    return {
+      state: actionState(false, "Faltan variables publicas de Supabase."),
+    };
   return { supabase };
 }
 
 function errorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
-    const message = String((error as { message?: unknown }).message ?? "").trim();
+    const message = String(
+      (error as { message?: unknown }).message ?? "",
+    ).trim();
     if (message) return message;
   }
 
@@ -69,10 +74,18 @@ function orderMutationErrorState(error: unknown, fallback: string) {
     "no preparada",
   ];
 
+  if (message.includes("QB_STOCK_INSUFFICIENT:")) {
+    return actionState(
+      false,
+      message.replace(/^.*QB_STOCK_INSUFFICIENT:\s*/, "Stock insuficiente. "),
+      true,
+    );
+  }
+
   if (
-    code === "40001"
-    || normalized.includes("cambió en otro dispositivo")
-    || conflictSignals.some((signal) => normalized.includes(signal))
+    code === "40001" ||
+    normalized.includes("cambió en otro dispositivo") ||
+    conflictSignals.some((signal) => normalized.includes(signal))
   ) {
     return actionState(
       false,
@@ -132,13 +145,19 @@ export async function createQbInternalOrderAction(
 ): Promise<QbOrderActionState> {
   const auth = await requireRoleAccess("/pedidos");
   if (auth.user.role !== "administrador") {
-    return actionState(false, "Solo un administrador puede crear pedidos internos.");
+    return actionState(
+      false,
+      "Solo un administrador puede crear pedidos internos.",
+    );
   }
 
   const parsed = parseInternalOrderFormData(formData);
 
   if (!parsed.success) {
-    return actionState(false, parsed.error.issues[0]?.message ?? "Revisa el pedido.");
+    return actionState(
+      false,
+      parsed.error.issues[0]?.message ?? "Revisa el pedido.",
+    );
   }
 
   const { supabase } = await getSupabaseOrState();
@@ -149,48 +168,56 @@ export async function createQbInternalOrderAction(
     );
   }
 
-  const { data, error } = await supabase.rpc("create_qb17_internal_catalog_order", {
-    p_order_mode: parsed.data.orderMode,
-    p_customer_account_id: parsed.data.customerAccountId,
-    p_customer_location_id: parsed.data.customerLocationId,
-    p_business_name: parsed.data.businessName || null,
-    p_full_name: parsed.data.responsibleName || null,
-    p_phone: parsed.data.phone || null,
-    p_email: parsed.data.email || null,
-    p_address: parsed.data.address || null,
-    p_location_label: parsed.data.locationLabel || null,
-    p_location_reference: parsed.data.locationReference || null,
-    p_customer_notes: parsed.data.customerNotes || null,
-    p_items: parsed.data.items.map((item) =>
-      item.inputMode === "amount_bs"
-        ? {
-            product_id: item.productId,
-            input_mode: "amount_bs",
-            requested_amount_bs: item.requestedAmountBs,
-            notes: item.notes || null,
-          }
-        : {
-            product_id: item.productId,
-            input_mode: "quantity",
-            allowed_unit_id: item.allowedUnitId,
-            quantity: item.quantity,
-            notes: item.notes || null,
-          },
-    ),
-    p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  const { data, error } = await supabase.rpc(
+    "create_qb17_internal_catalog_order",
+    {
+      p_order_mode: parsed.data.orderMode,
+      p_customer_account_id: parsed.data.customerAccountId,
+      p_customer_location_id: parsed.data.customerLocationId,
+      p_business_name: parsed.data.businessName || null,
+      p_full_name: parsed.data.responsibleName || null,
+      p_phone: parsed.data.phone || null,
+      p_email: parsed.data.email || null,
+      p_address: parsed.data.address || null,
+      p_location_label: parsed.data.locationLabel || null,
+      p_location_reference: parsed.data.locationReference || null,
+      p_customer_notes: parsed.data.customerNotes || null,
+      p_items: parsed.data.items.map((item) =>
+        item.inputMode === "amount_bs"
+          ? {
+              product_id: item.productId,
+              input_mode: "amount_bs",
+              requested_amount_bs: item.requestedAmountBs,
+              notes: item.notes || null,
+            }
+          : {
+              product_id: item.productId,
+              input_mode: "quantity",
+              allowed_unit_id: item.allowedUnitId,
+              quantity: item.quantity,
+              notes: item.notes || null,
+            },
+      ),
+      p_idempotency_key: parsed.data.idempotencyKey,
+    },
+  );
 
   if (error) {
     return actionState(false, internalOrderRpcErrorMessage(error));
   }
 
-  const result = ((data ?? []) as Array<{
-    created_order_id: string | null;
-    order_reference: string | null;
-    result_code: string;
-  }>)[0];
+  const result = (
+    (data ?? []) as Array<{
+      created_order_id: string | null;
+      order_reference: string | null;
+      result_code: string;
+    }>
+  )[0];
   if (!result || !["created", "already_created"].includes(result.result_code)) {
-    return actionState(false, internalOrderResultMessage(result?.result_code ?? ""));
+    return actionState(
+      false,
+      internalOrderResultMessage(result?.result_code ?? ""),
+    );
   }
 
   const orderId = uuidSchema.safeParse(result.created_order_id);
@@ -232,7 +259,10 @@ export async function startQbOrderPreparationAction(
   });
 
   if (error) {
-    return orderMutationErrorState(error, "No se pudo iniciar la preparación QB.");
+    return orderMutationErrorState(
+      error,
+      "No se pudo iniciar la preparación QB.",
+    );
   }
 
   revalidatePath("/pedidos");
@@ -261,7 +291,10 @@ export async function saveQbOrderPreparationAction(
   });
 
   if (!parsed.success) {
-    return actionState(false, "Revisa cantidades, estados y unidades de preparacion.");
+    return actionState(
+      false,
+      "Revisa cantidades, estados y unidades de preparacion.",
+    );
   }
 
   const { supabase, state } = await getSupabaseOrState();
@@ -274,7 +307,8 @@ export async function saveQbOrderPreparationAction(
       order_item_id: item.orderItemId,
       status: item.status,
       actual_allowed_unit_id: item.actualAllowedUnitId || null,
-      actual_quantity: item.status === "no_disponible" ? 0 : item.actualQuantity,
+      actual_quantity:
+        item.status === "no_disponible" ? 0 : item.actualQuantity,
       notes: item.notes,
     })),
     p_internal_notes: parsed.data.internalNotes,
@@ -283,14 +317,22 @@ export async function saveQbOrderPreparationAction(
 
   if (error) {
     return {
-      ...orderMutationErrorState(error, "No se pudo guardar la preparación QB."),
+      ...orderMutationErrorState(
+        error,
+        "No se pudo guardar la preparación QB.",
+      ),
       orderId: parsed.data.orderId,
     };
   }
 
   revalidatePath("/pedidos");
   return {
-    ...actionState(true, parsed.data.markPrepared ? "Pedido QB preparado." : "Preparacion QB guardada."),
+    ...actionState(
+      true,
+      parsed.data.markPrepared
+        ? "Pedido QB preparado."
+        : "Preparacion QB guardada.",
+    ),
     orderId: parsed.data.orderId,
   };
 }
@@ -313,7 +355,10 @@ export async function confirmQbOrderDeliveryAction(
   });
 
   if (error) {
-    return orderMutationErrorState(error, "No se pudo confirmar la entrega QB.");
+    return orderMutationErrorState(
+      error,
+      "No se pudo confirmar la entrega QB.",
+    );
   }
 
   revalidatePath("/pedidos");
@@ -327,7 +372,11 @@ export async function cancelQbOrderBeforeDeliveryAction(
   await requireRoleAccess("/pedidos");
 
   const orderId = uuidSchema.safeParse(formData.get("order_id"));
-  const reason = z.string().max(500).optional().safeParse(formData.get("reason") ?? "");
+  const reason = z
+    .string()
+    .max(500)
+    .optional()
+    .safeParse(formData.get("reason") ?? "");
 
   if (!orderId.success || !reason.success) {
     return actionState(false, "Datos de cancelacion invalidos.");
@@ -336,11 +385,14 @@ export async function cancelQbOrderBeforeDeliveryAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { error } = await supabase.rpc("cancel_qb_order_before_delivery_versioned", {
-    p_order_id: orderId.data,
-    p_expected_updated_at: formData.get("expected_updated_at"),
-    p_reason: reason.data,
-  });
+  const { error } = await supabase.rpc(
+    "cancel_qb_order_before_delivery_versioned",
+    {
+      p_order_id: orderId.data,
+      p_expected_updated_at: formData.get("expected_updated_at"),
+      p_reason: reason.data,
+    },
+  );
 
   if (error) {
     return orderMutationErrorState(error, "No se pudo cancelar el pedido QB.");

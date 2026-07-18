@@ -11,22 +11,30 @@ import {
 } from "lucide-react";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
+import { StockControlBanner } from "@/components/inventory/stock-control-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { TransitionModule } from "@/lib/qb-insumos/transition-policy";
 import type { QbReportsData } from "@/types/reports";
+import type { QbOperationalSettings } from "@/types/operational-settings";
 
 type QbTransitionHomeProps = {
   activeModules: TransitionModule[];
   reportsData?: QbReportsData;
+  operationalSettings: QbOperationalSettings;
 };
 
 function formatDate(value: string | null) {
   if (!value) return "Sin fecha";
-  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00`);
-  return new Intl.DateTimeFormat("es-BO", { dateStyle: "medium", timeZone: "UTC" }).format(date);
+  const date = value.includes("T")
+    ? new Date(value)
+    : new Date(`${value}T00:00:00`);
+  return new Intl.DateTimeFormat("es-BO", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 function SummaryTile({
@@ -51,12 +59,18 @@ function SummaryTile({
           <CardTitle className="mt-1 text-2xl">{value}</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">{detail}</CardContent>
+      <CardContent className="text-xs text-muted-foreground">
+        {detail}
+      </CardContent>
     </Card>
   );
 }
 
-export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHomeProps) {
+export function QbTransitionHome({
+  activeModules,
+  reportsData,
+  operationalSettings,
+}: QbTransitionHomeProps) {
   const summary = reportsData?.summary;
 
   return (
@@ -66,15 +80,18 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
           <div className="space-y-5">
             <QbInsumosBrand showSubtitle variant="hero" />
             <div className="space-y-3">
-              <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800">
+              <Badge
+                variant="outline"
+                className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800"
+              >
                 Inicio operativo
               </Badge>
               <h1 className="max-w-2xl font-heading text-4xl font-semibold tracking-tight">
                 Gestión de pedidos, inventario y recibos acumulativos
               </h1>
               <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                Consulta el estado de pedidos, ingresos, existencias y recibos para organizar
-                la operación diaria de QB Insumos.
+                Consulta el estado de pedidos, ingresos, existencias y recibos
+                para organizar la operación diaria de QB Insumos.
               </p>
             </div>
           </div>
@@ -88,12 +105,16 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
             </CardHeader>
             <CardContent className="space-y-3 text-sm leading-6 text-emerald-950/75">
               <p>Los pedidos se preparan y entregan desde Pedidos.</p>
-              <p>El inventario se actualiza al confirmar Ingresos y Entregas.</p>
+              <p>
+                El inventario se actualiza al confirmar Ingresos y Entregas.
+              </p>
               <p>Los pedidos entregados se agrupan en Recibos.</p>
             </CardContent>
           </Card>
         </div>
       </section>
+
+      <StockControlBanner settings={operationalSettings} />
 
       {summary ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -117,7 +138,9 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
           />
           <SummaryTile
             title="Productos con alerta"
-            value={formatNumber(summary.lowStockProducts + summary.outOfStockProducts)}
+            value={formatNumber(
+              summary.lowStockProducts + summary.outOfStockProducts,
+            )}
             detail={`${formatNumber(summary.outOfStockProducts)} sin stock o por regularizar`}
             icon={PackageSearch}
           />
@@ -132,17 +155,24 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
             </CardHeader>
             <CardContent className="space-y-3">
               {reportsData.orders.slice(0, 5).map((order) => (
-                <div key={order.id} className="rounded-lg border bg-white/70 p-3">
+                <div
+                  key={order.id}
+                  className="rounded-lg border bg-white/70 p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{order.customer}</p>
-                      <p className="text-xs text-muted-foreground">{order.reference} - {formatDate(order.date)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {order.reference} - {formatDate(order.date)}
+                      </p>
                     </div>
                     <Badge variant="outline" className="shrink-0 capitalize">
                       {order.status.replaceAll("_", " ")}
                     </Badge>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{order.requestedProducts}</p>
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                    {order.requestedProducts}
+                  </p>
                 </div>
               ))}
               {!reportsData.orders.length ? (
@@ -159,11 +189,16 @@ export function QbTransitionHome({ activeModules, reportsData }: QbTransitionHom
             </CardHeader>
             <CardContent className="space-y-3">
               {reportsData.merchandiseReceipts.slice(0, 5).map((receipt) => (
-                <div key={receipt.id} className="rounded-lg border bg-white/70 p-3">
+                <div
+                  key={receipt.id}
+                  className="rounded-lg border bg-white/70 p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{receipt.product}</p>
-                      <p className="text-xs text-muted-foreground">{receipt.supplierOrOrigin} - {formatDate(receipt.date)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {receipt.supplierOrOrigin} - {formatDate(receipt.date)}
+                      </p>
                     </div>
                     <Badge variant="outline" className="shrink-0 capitalize">
                       {receipt.status.replaceAll("_", " ")}

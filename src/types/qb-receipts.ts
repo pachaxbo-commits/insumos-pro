@@ -11,6 +11,12 @@ export type QbReceiptLine = {
   deliveredBaseQuantity: number;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
+  inputMode: "quantity" | "amount_bs";
+  requestedAmountBs: number | null;
+  currencySnapshot: string | null;
+  pricingUnitSymbol: string | null;
+  estimatedBaseQuantity: number | null;
+  fixedLineAmount: number | null;
   originalBasePrice: number | null;
   currentBasePrice: number | null;
   currentBasePriceUnitSymbol: string | null;

@@ -6,7 +6,10 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/audit/log";
-import { QB_ALLOWED_UNIT_CONTEXTS, QB_CLASSIFICATION_MODES } from "@/types/products";
+import {
+  QB_ALLOWED_UNIT_CONTEXTS,
+  QB_CLASSIFICATION_MODES,
+} from "@/types/products";
 
 type ActionState = {
   success: boolean;
@@ -18,32 +21,23 @@ const booleanField = z.union([
   z.enum(["true", "false"]).transform((value) => value === "true"),
 ]);
 
-const optionalText = z.preprocess(
-  (value) => {
-    if (typeof value !== "string") return null;
-    const trimmed = value.trim();
-    return trimmed.length ? trimmed : null;
-  },
-  z.string().nullable(),
-);
+const optionalText = z.preprocess((value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}, z.string().nullable());
 
-const optionalUuid = z.preprocess(
-  (value) => {
-    if (typeof value !== "string") return null;
-    const trimmed = value.trim();
-    return trimmed.length ? trimmed : null;
-  },
-  z.uuid().nullable(),
-);
+const optionalUuid = z.preprocess((value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}, z.uuid().nullable());
 
-const optionalPositiveNumber = z.preprocess(
-  (value) => {
-    if (typeof value !== "string" && typeof value !== "number") return null;
-    if (typeof value === "string" && !value.trim()) return null;
-    return value;
-  },
-  z.coerce.number().finite().positive().nullable(),
-);
+const optionalPositiveNumber = z.preprocess((value) => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  return value;
+}, z.coerce.number().finite().positive().nullable());
 
 const qbCodeSchema = z
   .string()
@@ -52,42 +46,39 @@ const qbCodeSchema = z
   .regex(/^[a-z0-9_]+$/, "Usa solo minusculas, numeros y guion bajo.");
 
 const productSchema = z.object({
-    name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
-    sku: optionalText,
-    category_id: z.uuid("Selecciona una categoria."),
-    base_unit_id: z.uuid("Selecciona la unidad base."),
-    inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
-    price_unit_id: z.uuid("Selecciona la unidad de precio."),
-    stock_min: z.coerce
-      .number()
-      .finite("El stock minimo debe ser valido.")
-      .min(0, "El stock minimo no puede ser negativo."),
-    supplier_name: optionalText,
-    image_url: optionalText,
-    requires_classification: booleanField,
-    is_sellable: booleanField,
-    catalog_description: z.preprocess(
-      (value) => {
-        if (typeof value !== "string") return null;
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : null;
-      },
-      z.string().max(1000, "La descripcion publica no puede superar 1000 caracteres.").nullable(),
-    ),
-    catalog_sort_order: z.coerce
-      .number()
-      .int("El orden publico debe ser un entero.")
-      .min(0, "El orden publico no puede ser negativo."),
-    catalog_min_quantity: z.coerce
-      .number()
-      .finite("La cantidad minima debe ser valida.")
-      .positive("La cantidad minima debe ser mayor a cero."),
-    catalog_quantity_step: z.coerce
-      .number()
-      .finite("El incremento debe ser valido.")
-      .positive("El incremento debe ser mayor a cero."),
-    is_active: booleanField,
-  });
+  name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+  sku: optionalText,
+  category_id: z.uuid("Selecciona una categoria."),
+  base_unit_id: z.uuid("Selecciona la unidad base."),
+  inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
+  price_unit_id: z.uuid("Selecciona la unidad de precio."),
+  stock_min: z.coerce
+    .number()
+    .finite("El stock minimo debe ser valido.")
+    .min(0, "El stock minimo no puede ser negativo."),
+  supplier_name: optionalText,
+  image_url: optionalText,
+  requires_classification: booleanField,
+  is_sellable: booleanField,
+  catalog_description: z.preprocess((value) => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }, z.string().max(1000, "La descripcion publica no puede superar 1000 caracteres.").nullable()),
+  catalog_sort_order: z.coerce
+    .number()
+    .int("El orden publico debe ser un entero.")
+    .min(0, "El orden publico no puede ser negativo."),
+  catalog_min_quantity: z.coerce
+    .number()
+    .finite("La cantidad minima debe ser valida.")
+    .positive("La cantidad minima debe ser mayor a cero."),
+  catalog_quantity_step: z.coerce
+    .number()
+    .finite("El incremento debe ser valido.")
+    .positive("El incremento debe ser mayor a cero."),
+  is_active: booleanField,
+});
 
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -103,17 +94,26 @@ function productMutationError(message: string) {
 }
 
 function detectProductImage(bytes: Uint8Array) {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
     return { mime: "image/jpeg", extension: "jpg" };
   }
-  if (bytes.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
-    .every((value, index) => bytes[index] === value)) {
+  if (
+    bytes.length >= 8 &&
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (value, index) => bytes[index] === value,
+    )
+  ) {
     return { mime: "image/png", extension: "png" };
   }
   if (
-    bytes.length >= 12
-    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
-    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+    bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
   ) {
     return { mime: "image/webp", extension: "webp" };
   }
@@ -125,8 +125,10 @@ async function uploadProductImage(
   productId: string,
   value: FormDataEntryValue | null,
 ) {
-  if (!(value instanceof File) || value.size === 0) return { path: null, publicUrl: null };
-  if (value.size > MAX_PRODUCT_IMAGE_BYTES) throw new Error("La imagen no puede superar 5 MB.");
+  if (!(value instanceof File) || value.size === 0)
+    return { path: null, publicUrl: null };
+  if (value.size > MAX_PRODUCT_IMAGE_BYTES)
+    throw new Error("La imagen no puede superar 5 MB.");
 
   const bytes = new Uint8Array(await value.arrayBuffer());
   const detected = detectProductImage(bytes);
@@ -137,12 +139,17 @@ async function uploadProductImage(
   const path = `${productId}/${crypto.randomUUID()}.${detected.extension}`;
   const { error } = await supabase.storage
     .from(PRODUCT_IMAGE_BUCKET)
-    .upload(path, bytes, { contentType: detected.mime, cacheControl: "0", upsert: true });
+    .upload(path, bytes, {
+      contentType: detected.mime,
+      cacheControl: "0",
+      upsert: true,
+    });
   if (error) throw new Error("No se pudo subir la fotografía del producto.");
 
   return {
     path,
-    publicUrl: supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl,
+    publicUrl: supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path)
+      .data.publicUrl,
   };
 }
 
@@ -150,7 +157,9 @@ function productImagePath(publicUrl: string | null | undefined) {
   if (!publicUrl) return null;
   const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
   const markerIndex = publicUrl.indexOf(marker);
-  return markerIndex >= 0 ? decodeURIComponent(publicUrl.slice(markerIndex + marker.length)) : null;
+  return markerIndex >= 0
+    ? decodeURIComponent(publicUrl.slice(markerIndex + marker.length))
+    : null;
 }
 
 const catalogSchema = z.object({
@@ -166,7 +175,11 @@ const catalogSchema = z.object({
 
 const unitSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
-  abbreviation: z.string().trim().min(1, "La abreviatura es obligatoria.").max(12),
+  abbreviation: z
+    .string()
+    .trim()
+    .min(1, "La abreviatura es obligatoria.")
+    .max(12),
   is_active: booleanField,
 });
 
@@ -211,7 +224,8 @@ const qbProductUnitSettingsSchema = z
     notes: optionalText,
   })
   .superRefine((settings, context) => {
-    if (settings.is_classifiable || settings.classification_mode === "none") return;
+    if (settings.is_classifiable || settings.classification_mode === "none")
+      return;
 
     context.addIssue({
       code: "custom",
@@ -228,16 +242,26 @@ const qbProductBasePriceSchema = z.object({
   ),
   new_price: z.preprocess(
     (value) => (typeof value === "string" && value.trim() ? value : null),
-    z.coerce.number().finite().positive("El precio debe ser mayor a cero.").nullable(),
+    z.coerce
+      .number()
+      .finite()
+      .positive("El precio debe ser mayor a cero.")
+      .nullable(),
   ),
   remove_price: booleanField,
-  confirm_replacement: z.preprocess((value) => value === "true" || value === "on", z.boolean()),
+  confirm_replacement: z.preprocess(
+    (value) => value === "true" || value === "on",
+    z.boolean(),
+  ),
 });
 
 const qbProductPresentationSchema = z
   .object({
     product_id: z.uuid("Selecciona un producto."),
-    name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
+    name: z
+      .string()
+      .trim()
+      .min(2, "El nombre debe tener al menos 2 caracteres."),
     symbol: z.string().trim().min(1, "El simbolo es obligatorio.").max(24),
     contained_quantity: z.coerce
       .number()
@@ -298,14 +322,17 @@ const qbProductAllowedUnitSchema = z
     notes: optionalText,
   })
   .superRefine((allowedUnit, context) => {
-    const selectedTargets = Number(Boolean(allowedUnit.unit_id)) + Number(Boolean(allowedUnit.presentation_id));
+    const selectedTargets =
+      Number(Boolean(allowedUnit.unit_id)) +
+      Number(Boolean(allowedUnit.presentation_id));
 
     if (selectedTargets === 1) return;
 
     context.addIssue({
       code: "custom",
       path: ["unit_id"],
-      message: "Selecciona una unidad universal o una presentacion, pero no ambas.",
+      message:
+        "Selecciona una unidad universal o una presentacion, pero no ambas.",
     });
   });
 
@@ -313,7 +340,10 @@ const classificationOutputIdsSchema = z
   .array(z.uuid("La seleccion contiene un producto invalido."))
   .min(1, "Selecciona al menos un producto resultante.")
   .max(20, "Puedes configurar hasta veinte productos resultantes.")
-  .refine((ids) => new Set(ids).size === ids.length, "No puedes repetir un producto resultante.");
+  .refine(
+    (ids) => new Set(ids).size === ids.length,
+    "No puedes repetir un producto resultante.",
+  );
 
 function normalizeCatalogSlug(value: string) {
   return value
@@ -325,7 +355,9 @@ function normalizeCatalogSlug(value: string) {
 }
 
 function getCategoryPayload(category: z.infer<typeof catalogSchema>) {
-  const catalogSlug = normalizeCatalogSlug(category.catalog_slug ?? category.name);
+  const catalogSlug = normalizeCatalogSlug(
+    category.catalog_slug ?? category.name,
+  );
 
   return {
     success: true as const,
@@ -371,7 +403,10 @@ async function assertCanManageBasePrices() {
   const supabase = await createSupabaseServerClient();
 
   if (!supabase) {
-    return { allowed: false as const, message: "Supabase no esta configurado." };
+    return {
+      allowed: false as const,
+      message: "Supabase no esta configurado.",
+    };
   }
 
   return { allowed: true as const, supabase };
@@ -410,16 +445,30 @@ export async function createProductAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos del producto.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos del producto.",
     };
   }
 
   const productId = crypto.randomUUID();
-  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = { path: null, publicUrl: null };
+  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = {
+    path: null,
+    publicUrl: null,
+  };
   try {
-    uploaded = await uploadProductImage(access.supabase, productId, formData.get("image_file"));
+    uploaded = await uploadProductImage(
+      access.supabase,
+      productId,
+      formData.get("image_file"),
+    );
   } catch (error) {
-    return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "No se pudo validar la fotografía.",
+    };
   }
 
   const { error } = await access.supabase.rpc("save_qb_product_with_units", {
@@ -444,7 +493,10 @@ export async function createProductAction(
   });
 
   if (error) {
-    if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
+    if (uploaded.path)
+      await access.supabase.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .remove([uploaded.path]);
     return { success: false, message: productMutationError(error.message) };
   }
 
@@ -470,7 +522,8 @@ export async function updateProductAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos del producto.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos del producto.",
     };
   }
 
@@ -481,15 +534,31 @@ export async function updateProductAction(
     .maybeSingle<{ image_url: string | null }>();
 
   if (existingProductResult.error || !existingProductResult.data) {
-    return { success: false, message: "No se pudo cargar el producto que deseas editar." };
+    return {
+      success: false,
+      message: "No se pudo cargar el producto que deseas editar.",
+    };
   }
 
   const existingImageUrl = existingProductResult.data.image_url;
-  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = { path: null, publicUrl: null };
+  let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = {
+    path: null,
+    publicUrl: null,
+  };
   try {
-    uploaded = await uploadProductImage(access.supabase, id, formData.get("image_file"));
+    uploaded = await uploadProductImage(
+      access.supabase,
+      id,
+      formData.get("image_file"),
+    );
   } catch (error) {
-    return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "No se pudo validar la fotografía.",
+    };
   }
 
   const { error } = await access.supabase.rpc("save_qb_product_with_units", {
@@ -514,13 +583,18 @@ export async function updateProductAction(
   });
 
   if (error) {
-    if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
+    if (uploaded.path)
+      await access.supabase.storage
+        .from(PRODUCT_IMAGE_BUCKET)
+        .remove([uploaded.path]);
     return { success: false, message: productMutationError(error.message) };
   }
 
   const previousPath = productImagePath(existingImageUrl);
   if (uploaded.path && previousPath && previousPath !== uploaded.path) {
-    await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([previousPath]);
+    await access.supabase.storage
+      .from(PRODUCT_IMAGE_BUCKET)
+      .remove([previousPath]);
   }
 
   revalidateProducts();
@@ -541,7 +615,10 @@ export async function deactivateProductAction(
     return { success: false, message: "Producto invalido." };
   }
 
-  const { error } = await access.supabase.from("products").update({ is_active: false }).eq("id", id);
+  const { error } = await access.supabase
+    .from("products")
+    .update({ is_active: false })
+    .eq("id", id);
 
   if (error) return { success: false, message: error.message };
 
@@ -570,13 +647,16 @@ export async function createCategoryAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la categoria.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la categoria.",
     };
   }
 
   const payload = getCategoryPayload(parsed.data);
 
-  const { error } = await access.supabase.from("product_categories").insert(payload.data);
+  const { error } = await access.supabase
+    .from("product_categories")
+    .insert(payload.data);
 
   if (error) return { success: false, message: error.message };
 
@@ -602,7 +682,8 @@ export async function updateCategoryAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la categoria.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la categoria.",
     };
   }
 
@@ -632,11 +713,14 @@ export async function createUnitAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad.",
     };
   }
 
-  const { error } = await access.supabase.from("units_of_measure").insert(parsed.data);
+  const { error } = await access.supabase
+    .from("units_of_measure")
+    .insert(parsed.data);
 
   if (error) return { success: false, message: error.message };
 
@@ -662,7 +746,8 @@ export async function updateUnitAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad.",
     };
   }
 
@@ -690,7 +775,8 @@ export async function createQbUnitDimensionAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
     };
   }
 
@@ -724,7 +810,8 @@ export async function updateQbUnitDimensionAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la dimension.",
     };
   }
 
@@ -752,7 +839,8 @@ export async function createQbUnitAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
     };
   }
 
@@ -786,7 +874,8 @@ export async function updateQbUnitAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
+      message:
+        parsed.error.issues[0]?.message ?? "Revisa los datos de la unidad QB.",
     };
   }
 
@@ -809,13 +898,16 @@ export async function upsertQbProductUnitSettingsAction(
 
   if (!access.allowed) return { success: false, message: access.message };
 
-  const parsed = qbProductUnitSettingsSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductUnitSettingsSchema.safeParse(
+    Object.fromEntries(formData),
+  );
 
   if (!parsed.success) {
     return {
       success: false,
       message:
-        parsed.error.issues[0]?.message ?? "Revisa la unidad base parametrica del producto.",
+        parsed.error.issues[0]?.message ??
+        "Revisa la unidad base parametrica del producto.",
     };
   }
 
@@ -836,7 +928,9 @@ export async function upsertQbProductUnitSettingsAction(
     base_sale_price: existingRow?.base_sale_price ?? null,
     is_visible_in_qb_catalog: parsed.data.is_visible_in_qb_catalog,
     is_classifiable: parsed.data.is_classifiable,
-    classification_mode: parsed.data.is_classifiable ? parsed.data.classification_mode : "none",
+    classification_mode: parsed.data.is_classifiable
+      ? parsed.data.classification_mode
+      : "none",
     is_qb_active: parsed.data.is_qb_active,
     internal_notes: parsed.data.internal_notes,
     notes: parsed.data.notes,
@@ -866,7 +960,9 @@ export async function updateQbProductBasePriceAction(
   const access = await assertCanManageBasePrices();
   if (!access.allowed) return { success: false, message: access.message };
 
-  const parsed = qbProductBasePriceSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductBasePriceSchema.safeParse(
+    Object.fromEntries(formData),
+  );
   if (!parsed.success) {
     return {
       success: false,
@@ -879,32 +975,56 @@ export async function updateQbProductBasePriceAction(
     return { success: false, message: "Ingresa un precio positivo." };
   }
   if (
-    input.new_price !== null
-    && Math.abs(input.new_price * 100 - Math.round(input.new_price * 100)) > 0.00000001
+    input.new_price !== null &&
+    Math.abs(input.new_price * 100 - Math.round(input.new_price * 100)) >
+      0.00000001
   ) {
-    return { success: false, message: "El precio admite como maximo dos decimales." };
+    return {
+      success: false,
+      message: "El precio admite como maximo dos decimales.",
+    };
   }
-  if (!input.remove_price && input.expected_price !== null && !input.confirm_replacement) {
-    return { success: false, message: "Confirma el reemplazo del precio actual." };
+  if (
+    !input.remove_price &&
+    input.expected_price !== null &&
+    !input.confirm_replacement
+  ) {
+    return {
+      success: false,
+      message: "Confirma el reemplazo del precio actual.",
+    };
   }
 
-  const { data, error } = await access.supabase.rpc("update_qb_product_base_price", {
-    p_product_id: input.product_id,
-    p_new_price: input.remove_price ? null : input.new_price,
-    p_expected_price: input.expected_price,
-    p_remove_price: input.remove_price,
-  });
+  const { data, error } = await access.supabase.rpc(
+    "update_qb_product_base_price",
+    {
+      p_product_id: input.product_id,
+      p_new_price: input.remove_price ? null : input.new_price,
+      p_expected_price: input.expected_price,
+      p_remove_price: input.remove_price,
+    },
+  );
 
   if (error) {
     const messages: Record<string, string> = {
-      QB_PRICE_CONCURRENT_CHANGE: "El precio cambio mientras editabas. Actualiza la pagina y revisalo nuevamente.",
-      QB_PRICE_INVALID: "El precio debe ser positivo y tener como maximo dos decimales.",
-      QB_PRICE_PRODUCT_INACTIVE: "No se puede actualizar el precio de un producto inactivo.",
-      QB_PRICE_UNIT_INVALID: "La unidad de precio no es valida para este producto.",
-      QB_PRICE_ADMIN_REQUIRED: "Solo un administrador puede cambiar precios base.",
+      QB_PRICE_CONCURRENT_CHANGE:
+        "El precio cambio mientras editabas. Actualiza la pagina y revisalo nuevamente.",
+      QB_PRICE_INVALID:
+        "El precio debe ser positivo y tener como maximo dos decimales.",
+      QB_PRICE_PRODUCT_INACTIVE:
+        "No se puede actualizar el precio de un producto inactivo.",
+      QB_PRICE_UNIT_INVALID:
+        "La unidad de precio no es valida para este producto.",
+      QB_PRICE_ADMIN_REQUIRED:
+        "Solo un administrador puede cambiar precios base.",
     };
-    const code = Object.keys(messages).find((candidate) => error.message.includes(candidate));
-    return { success: false, message: code ? messages[code] : "No se pudo actualizar el precio base." };
+    const code = Object.keys(messages).find((candidate) =>
+      error.message.includes(candidate),
+    );
+    return {
+      success: false,
+      message: code ? messages[code] : "No se pudo actualizar el precio base.",
+    };
   }
 
   const result = data as { status?: string } | null;
@@ -912,7 +1032,88 @@ export async function updateQbProductBasePriceAction(
   revalidatePath("/pedidos");
   return {
     success: true,
-    message: result?.status === "removed" ? "Precio retirado correctamente." : "Precio actualizado correctamente.",
+    message:
+      result?.status === "removed"
+        ? "Precio retirado correctamente."
+        : "Precio actualizado correctamente.",
+  };
+}
+
+const qbProductAmountModeSchema = z.object({
+  product_id: z.uuid("Producto inválido."),
+  enabled: booleanField,
+});
+
+export async function setQbProductAmountModeAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanManageBasePrices();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductAmountModeSchema.safeParse(
+    Object.fromEntries(formData),
+  );
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa la modalidad.",
+    };
+  }
+
+  const { error } = await access.supabase.rpc("set_qb_product_amount_mode", {
+    p_product_id: parsed.data.product_id,
+    p_enabled: parsed.data.enabled,
+  });
+
+  if (error) {
+    const messages: Record<string, string> = {
+      QB_AMOUNT_ADMIN_REQUIRED:
+        "Solo un administrador puede cambiar esta modalidad.",
+      QB_AMOUNT_CONFIGURATION_REQUIRED:
+        "Completa primero la configuración de unidades del producto.",
+      QB_AMOUNT_PRODUCT_INACTIVE:
+        "Activa el producto antes de habilitar pedidos por Bs.",
+      QB_AMOUNT_NOT_SELLABLE:
+        "Solo los productos vendibles pueden habilitar pedidos por Bs.",
+      QB_AMOUNT_RECEIVING_ONLY:
+        "Un producto exclusivo de recepción no puede venderse por Bs.",
+      QB_AMOUNT_SETTINGS_INACTIVE:
+        "Activa la configuración operativa del producto.",
+      QB_AMOUNT_BASE_UNIT_REQUIRED:
+        "Configura una unidad física de inventario.",
+      QB_AMOUNT_PRICE_UNIT_REQUIRED: "Configura una unidad de precio.",
+      QB_AMOUNT_PRICE_REQUIRED: "Registra un precio base positivo.",
+      QB_AMOUNT_CONVERSION_INVALID:
+        "Las unidades física y de precio deben tener una conversión válida.",
+      QB_AMOUNT_ORDER_UNIT_REQUIRED:
+        "Habilita la unidad de precio para pedidos.",
+    };
+    const code = Object.keys(messages).find((candidate) =>
+      error.message.includes(candidate),
+    );
+    return {
+      success: false,
+      message: code
+        ? messages[code]
+        : "No se pudo cambiar la modalidad por Bs.",
+    };
+  }
+
+  revalidateProducts();
+  for (const path of [
+    "/catalogo",
+    "/catalogo/checkout",
+    "/pedidos",
+    "/mi-cuenta",
+  ]) {
+    revalidatePath(path);
+  }
+  return {
+    success: true,
+    message: parsed.data.enabled
+      ? "Pedidos por importe en Bs habilitados."
+      : "Pedidos por importe en Bs deshabilitados.",
   };
 }
 
@@ -924,20 +1125,26 @@ export async function createQbProductPresentationAction(
 
   if (!access.allowed) return { success: false, message: access.message };
 
-  const parsed = qbProductPresentationSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductPresentationSchema.safeParse(
+    Object.fromEntries(formData),
+  );
 
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la presentacion.",
+      message:
+        parsed.error.issues[0]?.message ??
+        "Revisa los datos de la presentacion.",
     };
   }
 
-  const { error } = await access.supabase.from("qb_product_presentations").insert({
-    ...parsed.data,
-    created_by: access.userId,
-    updated_by: access.userId,
-  });
+  const { error } = await access.supabase
+    .from("qb_product_presentations")
+    .insert({
+      ...parsed.data,
+      created_by: access.userId,
+      updated_by: access.userId,
+    });
 
   if (error) return { success: false, message: error.message };
 
@@ -954,7 +1161,9 @@ export async function updateQbProductPresentationAction(
   if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  const parsed = qbProductPresentationSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductPresentationSchema.safeParse(
+    Object.fromEntries(formData),
+  );
 
   if (!z.uuid().safeParse(id).success) {
     return { success: false, message: "Presentacion QB invalida." };
@@ -963,7 +1172,9 @@ export async function updateQbProductPresentationAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa los datos de la presentacion.",
+      message:
+        parsed.error.issues[0]?.message ??
+        "Revisa los datos de la presentacion.",
     };
   }
 
@@ -975,7 +1186,10 @@ export async function updateQbProductPresentationAction(
   if (error) return { success: false, message: error.message };
 
   revalidateQbParametrization();
-  return { success: true, message: "Presentacion QB actualizada correctamente." };
+  return {
+    success: true,
+    message: "Presentacion QB actualizada correctamente.",
+  };
 }
 
 export async function createQbProductAllowedUnitAction(
@@ -986,25 +1200,34 @@ export async function createQbProductAllowedUnitAction(
 
   if (!access.allowed) return { success: false, message: access.message };
 
-  const parsed = qbProductAllowedUnitSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductAllowedUnitSchema.safeParse(
+    Object.fromEntries(formData),
+  );
 
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa la unidad permitida del producto.",
+      message:
+        parsed.error.issues[0]?.message ??
+        "Revisa la unidad permitida del producto.",
     };
   }
 
-  const { error } = await access.supabase.from("qb_product_allowed_units").insert({
-    ...parsed.data,
-    created_by: access.userId,
-    updated_by: access.userId,
-  });
+  const { error } = await access.supabase
+    .from("qb_product_allowed_units")
+    .insert({
+      ...parsed.data,
+      created_by: access.userId,
+      updated_by: access.userId,
+    });
 
   if (error) return { success: false, message: error.message };
 
   revalidateQbParametrization();
-  return { success: true, message: "Unidad permitida QB creada correctamente." };
+  return {
+    success: true,
+    message: "Unidad permitida QB creada correctamente.",
+  };
 }
 
 export async function updateQbProductAllowedUnitAction(
@@ -1016,7 +1239,9 @@ export async function updateQbProductAllowedUnitAction(
   if (!access.allowed) return { success: false, message: access.message };
 
   const id = parseId(formData);
-  const parsed = qbProductAllowedUnitSchema.safeParse(Object.fromEntries(formData));
+  const parsed = qbProductAllowedUnitSchema.safeParse(
+    Object.fromEntries(formData),
+  );
 
   if (!z.uuid().safeParse(id).success) {
     return { success: false, message: "Unidad permitida QB invalida." };
@@ -1025,7 +1250,9 @@ export async function updateQbProductAllowedUnitAction(
   if (!parsed.success) {
     return {
       success: false,
-      message: parsed.error.issues[0]?.message ?? "Revisa la unidad permitida del producto.",
+      message:
+        parsed.error.issues[0]?.message ??
+        "Revisa la unidad permitida del producto.",
     };
   }
 
@@ -1037,7 +1264,10 @@ export async function updateQbProductAllowedUnitAction(
   if (error) return { success: false, message: error.message };
 
   revalidateQbParametrization();
-  return { success: true, message: "Unidad permitida QB actualizada correctamente." };
+  return {
+    success: true,
+    message: "Unidad permitida QB actualizada correctamente.",
+  };
 }
 
 export async function saveQbProductClassificationConfigurationAction(
@@ -1050,14 +1280,19 @@ export async function saveQbProductClassificationConfigurationAction(
 
   const sourceProductId = formData.get("source_product_id");
   const rawOutputProductIds = formData.get("output_product_ids");
-  const parsedSourceProductId = z.uuid("El producto de recepcion no es valido.").safeParse(
-    sourceProductId,
-  );
+  const parsedSourceProductId = z
+    .uuid("El producto de recepcion no es valido.")
+    .safeParse(sourceProductId);
 
-  if (!parsedSourceProductId.success || typeof rawOutputProductIds !== "string") {
+  if (
+    !parsedSourceProductId.success ||
+    typeof rawOutputProductIds !== "string"
+  ) {
     return {
       success: false,
-      message: parsedSourceProductId.error?.issues[0]?.message ?? "Revisa los productos resultantes.",
+      message:
+        parsedSourceProductId.error?.issues[0]?.message ??
+        "Revisa los productos resultantes.",
     };
   }
 
@@ -1068,18 +1303,24 @@ export async function saveQbProductClassificationConfigurationAction(
     return { success: false, message: "Revisa los productos resultantes." };
   }
 
-  const parsedOutputProductIds = classificationOutputIdsSchema.safeParse(outputProductIds);
+  const parsedOutputProductIds =
+    classificationOutputIdsSchema.safeParse(outputProductIds);
   if (!parsedOutputProductIds.success) {
     return {
       success: false,
-      message: parsedOutputProductIds.error.issues[0]?.message ?? "Revisa los productos resultantes.",
+      message:
+        parsedOutputProductIds.error.issues[0]?.message ??
+        "Revisa los productos resultantes.",
     };
   }
 
-  const { error } = await access.supabase.rpc("save_qb_product_classification_configuration", {
-    p_source_product_id: parsedSourceProductId.data,
-    p_output_product_ids: parsedOutputProductIds.data,
-  });
+  const { error } = await access.supabase.rpc(
+    "save_qb_product_classification_configuration",
+    {
+      p_source_product_id: parsedSourceProductId.data,
+      p_output_product_ids: parsedOutputProductIds.data,
+    },
+  );
 
   if (error) {
     const safeMessages = [
@@ -1093,13 +1334,19 @@ export async function saveQbProductClassificationConfigurationAction(
       "Cada producto resultante debe estar activo y usar una unidad de la misma dimension.",
       "La seleccion de productos resultantes no es valida.",
     ];
-    const safeMessage = safeMessages.find((message) => error.message.includes(message));
+    const safeMessage = safeMessages.find((message) =>
+      error.message.includes(message),
+    );
     return {
       success: false,
-      message: safeMessage ?? "No se pudo guardar la configuracion de clasificacion.",
+      message:
+        safeMessage ?? "No se pudo guardar la configuracion de clasificacion.",
     };
   }
 
   revalidateQbClassification();
-  return { success: true, message: "Productos resultantes guardados correctamente." };
+  return {
+    success: true,
+    message: "Productos resultantes guardados correctamente.",
+  };
 }

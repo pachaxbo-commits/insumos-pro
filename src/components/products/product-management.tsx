@@ -27,6 +27,7 @@ import {
 } from "@/lib/products/actions";
 import { QbProductConfigPanel } from "@/components/products/qb-product-config-panel";
 import { ProductClassificationConfiguration } from "@/components/products/product-classification-configuration";
+import { ProductAmountModeControl } from "@/components/products/product-amount-mode-control";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -86,6 +87,7 @@ type ProductManagementProps = {
   qbParametrizationWarning?: string;
   canManage: boolean;
   canManagePrice: boolean;
+  strictStockControl: boolean;
 };
 
 const initialState: ActionState = { success: false };
@@ -106,18 +108,32 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
-function StockBadge({ product }: { product: ProductWithRelations }) {
+function StockBadge({
+  product,
+  strictStockControl,
+}: {
+  product: ProductWithRelations;
+  strictStockControl: boolean;
+}) {
   if (product.stock_status === "pendiente_regularizacion") {
     return (
-      <Badge variant="outline" className="rounded-full border-violet-200 bg-violet-50 text-violet-700">
-        Pendiente de regularización
+      <Badge
+        variant="outline"
+        className="rounded-full border-violet-200 bg-violet-50 text-violet-700"
+      >
+        {strictStockControl
+          ? "Pendiente de regularización"
+          : "Saldo provisional"}
       </Badge>
     );
   }
 
   if (product.stock_status === "sin_stock") {
     return (
-      <Badge variant="outline" className="rounded-full border-rose-200 bg-rose-50 text-rose-700">
+      <Badge
+        variant="outline"
+        className="rounded-full border-rose-200 bg-rose-50 text-rose-700"
+      >
         Sin stock
       </Badge>
     );
@@ -125,14 +141,20 @@ function StockBadge({ product }: { product: ProductWithRelations }) {
 
   if (product.stock_status === "stock_bajo") {
     return (
-      <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-700">
+      <Badge
+        variant="outline"
+        className="rounded-full border-amber-200 bg-amber-50 text-amber-700"
+      >
         Stock bajo
       </Badge>
     );
   }
 
   return (
-    <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-slate-600">
+    <Badge
+      variant="outline"
+      className="rounded-full border-slate-200 bg-slate-50 text-slate-600"
+    >
       Stock ok
     </Badge>
   );
@@ -145,7 +167,9 @@ function FormMessage({ state }: { state: ActionState }) {
     <p
       className={cn(
         "rounded-xl px-3 py-2 text-sm",
-        state.success ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
+        state.success
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-rose-50 text-rose-700",
       )}
     >
       {state.message}
@@ -204,7 +228,9 @@ function ProductForm({
   useActionToast(state);
   const baseUnitId = qbSettings?.base_unit_id ?? "";
   const inventoryUnitId =
-    qbSettings?.base_inventory_unit_id ?? qbSettings?.inventory_unit_id ?? baseUnitId;
+    qbSettings?.base_inventory_unit_id ??
+    qbSettings?.inventory_unit_id ??
+    baseUnitId;
   const priceUnitId = qbSettings?.base_price_unit_id ?? baseUnitId;
   const configuredUnitIds = new Set([baseUnitId, inventoryUnitId, priceUnitId]);
   const availableQbUnits = qbUnits.filter(
@@ -214,17 +240,23 @@ function ProductForm({
   const confirmUnitChange: ChangeEventHandler<HTMLSelectElement> = (event) => {
     const originalValue = event.currentTarget.dataset.originalValue ?? "";
     if (
-      mode === "edit"
-      && originalValue
-      && event.currentTarget.value !== originalValue
-      && !window.confirm("¿Confirmas el cambio de unidad base para este producto sin movimientos?")
+      mode === "edit" &&
+      originalValue &&
+      event.currentTarget.value !== originalValue &&
+      !window.confirm(
+        "¿Confirmas el cambio de unidad base para este producto sin movimientos?",
+      )
     ) {
       event.currentTarget.value = originalValue;
     }
   };
 
   return (
-    <form action={formAction} encType="multipart/form-data" className="space-y-4">
+    <form
+      action={formAction}
+      encType="multipart/form-data"
+      className="space-y-4"
+    >
       {product ? <input type="hidden" name="id" value={product.id} /> : null}
       <FormMessage state={state} />
 
@@ -254,7 +286,10 @@ function ProductForm({
 
         <div className="space-y-2">
           <Label>Estado</Label>
-          <NativeSelect name="is_active" defaultValue={String(product?.is_active ?? true)}>
+          <NativeSelect
+            name="is_active"
+            defaultValue={String(product?.is_active ?? true)}
+          >
             <option value="true">Activo</option>
             <option value="false">Inactivo</option>
           </NativeSelect>
@@ -267,19 +302,28 @@ function ProductForm({
             defaultValue={String(product?.requires_classification ?? false)}
           >
             <option value="false">No requiere clasificacion</option>
-            <option value="true">Requiere clasificacion antes de ingresar a inventario</option>
+            <option value="true">
+              Requiere clasificacion antes de ingresar a inventario
+            </option>
           </NativeSelect>
           <p className="text-xs text-muted-foreground">
-            Los productos que requieren clasificacion son solo de compra y no pueden publicarse.
+            Los productos que requieren clasificacion son solo de compra y no
+            pueden publicarse.
           </p>
         </div>
 
         <div className="space-y-2">
           <Label>Categoria</Label>
-          <NativeSelect name="category_id" defaultValue={product?.category_id ?? ""}>
+          <NativeSelect
+            name="category_id"
+            defaultValue={product?.category_id ?? ""}
+          >
             <option value="">Seleccionar</option>
             {categories
-              .filter((category) => category.is_active || category.id === product?.category_id)
+              .filter(
+                (category) =>
+                  category.is_active || category.id === product?.category_id,
+              )
               .map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -290,7 +334,9 @@ function ProductForm({
 
         <div className="space-y-2 md:col-span-2">
           <Label>Unidad base</Label>
-          {unitLocked ? <input type="hidden" name="base_unit_id" value={baseUnitId} /> : null}
+          {unitLocked ? (
+            <input type="hidden" name="base_unit_id" value={baseUnitId} />
+          ) : null}
           <NativeSelect
             name={unitLocked ? undefined : "base_unit_id"}
             defaultValue={baseUnitId}
@@ -307,18 +353,26 @@ function ProductForm({
           </NativeSelect>
           {unitLocked ? (
             <p className="text-xs font-medium text-amber-700">
-              No puedes cambiar la unidad base porque este producto ya tiene movimientos de inventario.
+              No puedes cambiar la unidad base porque este producto ya tiene
+              movimientos de inventario.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              La unidad es obligatoria. Las unidades de inventario, precio y pedido se administran en la configuración operativa.
+              La unidad es obligatoria. Las unidades de inventario, precio y
+              pedido se administran en la configuración operativa.
             </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label>Unidad de inventario</Label>
-          {unitLocked ? <input type="hidden" name="inventory_unit_id" value={inventoryUnitId} /> : null}
+          {unitLocked ? (
+            <input
+              type="hidden"
+              name="inventory_unit_id"
+              value={inventoryUnitId}
+            />
+          ) : null}
           <NativeSelect
             name={unitLocked ? undefined : "inventory_unit_id"}
             defaultValue={inventoryUnitId}
@@ -361,6 +415,25 @@ function ProductForm({
           />
         </div>
 
+        {mode === "create" ? (
+          <div className="space-y-2 md:col-span-2">
+            <Label>Permitir pedidos por importe en Bs</Label>
+            <label className="flex items-start gap-3 rounded-xl border bg-muted/25 p-3 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                disabled
+                checked={false}
+                className="mt-0.5"
+              />
+              <span>
+                Guarda el producto, configura sus unidades y registra un precio
+                base positivo. Después podrás habilitar esta modalidad desde
+                Editar producto o Configuración por producto.
+              </span>
+            </label>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor={`${mode}-supplier`}>Proveedor</Label>
           <Input
@@ -382,14 +455,17 @@ function ProductForm({
             className="rounded-xl"
           />
           <p className="text-xs text-muted-foreground">
-            JPEG, PNG o WebP, hasta 5 MB. Al subir una nueva fotografia se reemplaza la anterior.
+            JPEG, PNG o WebP, hasta 5 MB. Al subir una nueva fotografia se
+            reemplaza la anterior.
           </p>
           {product?.image_url ? (
             <div
               role="img"
               aria-label={`Fotografia actual de ${product.name}`}
               className="h-24 w-24 rounded-xl border bg-cover bg-center"
-              style={{ backgroundImage: `url(${JSON.stringify(product.image_url)})` }}
+              style={{
+                backgroundImage: `url(${JSON.stringify(product.image_url)})`,
+              }}
             />
           ) : null}
         </div>
@@ -406,7 +482,9 @@ function ProductForm({
         </div>
 
         <div className="space-y-2 md:col-span-2">
-          <Label htmlFor={`${mode}-catalog-description`}>Descripcion publica</Label>
+          <Label htmlFor={`${mode}-catalog-description`}>
+            Descripcion publica
+          </Label>
           <Textarea
             id={`${mode}-catalog-description`}
             name="catalog_description"
@@ -432,7 +510,9 @@ function ProductForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`${mode}-catalog-min-quantity`}>Cantidad minima</Label>
+          <Label htmlFor={`${mode}-catalog-min-quantity`}>
+            Cantidad minima
+          </Label>
           <Input
             id={`${mode}-catalog-min-quantity`}
             name="catalog_min_quantity"
@@ -446,7 +526,9 @@ function ProductForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`${mode}-catalog-quantity-step`}>Incremento permitido</Label>
+          <Label htmlFor={`${mode}-catalog-quantity-step`}>
+            Incremento permitido
+          </Label>
           <Input
             id={`${mode}-catalog-quantity-step`}
             name="catalog_quantity_step"
@@ -460,9 +542,10 @@ function ProductForm({
         </div>
 
         <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground md:col-span-2">
-          El stock se modifica mediante Ingresos y Entregas. El precio base, la unidad de precio,
-          las presentaciones y la visibilidad se configuran despues de guardar el producto. El
-          catalogo nunca muestra costo, stock exacto, proveedor ni margen.
+          El stock se modifica mediante Ingresos y Entregas. El precio base, la
+          unidad de precio, las presentaciones y la visibilidad se configuran
+          despues de guardar el producto. El catalogo nunca muestra costo, stock
+          exacto, proveedor ni margen.
         </p>
       </div>
 
@@ -486,7 +569,10 @@ function CatalogForm({
   const isCategory = type === "category";
   const createAction = isCategory ? createCategoryAction : createUnitAction;
   const updateAction = isCategory ? updateCategoryAction : updateUnitAction;
-  const [state, formAction, pending] = useActionState(item ? updateAction : createAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    item ? updateAction : createAction,
+    initialState,
+  );
   useActionToast(state);
 
   return (
@@ -495,7 +581,12 @@ function CatalogForm({
       <FormMessage state={state} />
       <div className="space-y-2">
         <Label>Nombre</Label>
-        <Input name="name" defaultValue={item?.name} required className="rounded-xl" />
+        <Input
+          name="name"
+          defaultValue={item?.name}
+          required
+          className="rounded-xl"
+        />
       </div>
       {isCategory ? (
         <>
@@ -503,7 +594,9 @@ function CatalogForm({
             <Label>Descripcion</Label>
             <Textarea
               name="description"
-              defaultValue={(item as ProductCategory | undefined)?.description ?? ""}
+              defaultValue={
+                (item as ProductCategory | undefined)?.description ?? ""
+              }
               className="rounded-xl"
             />
           </div>
@@ -511,7 +604,9 @@ function CatalogForm({
             <Label>Slug publico</Label>
             <Input
               name="catalog_slug"
-              defaultValue={(item as ProductCategory | undefined)?.catalog_slug ?? ""}
+              defaultValue={
+                (item as ProductCategory | undefined)?.catalog_slug ?? ""
+              }
               placeholder="verduras-frescas"
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
               className="rounded-xl"
@@ -527,7 +622,9 @@ function CatalogForm({
               type="number"
               min="0"
               step="1"
-              defaultValue={(item as ProductCategory | undefined)?.catalog_sort_order ?? 0}
+              defaultValue={
+                (item as ProductCategory | undefined)?.catalog_sort_order ?? 0
+              }
               required
               className="rounded-xl"
             />
@@ -538,7 +635,9 @@ function CatalogForm({
           <Label>Abreviatura</Label>
           <Input
             name="abbreviation"
-            defaultValue={(item as UnitOfMeasure | undefined)?.abbreviation ?? ""}
+            defaultValue={
+              (item as UnitOfMeasure | undefined)?.abbreviation ?? ""
+            }
             required
             className="rounded-xl"
           />
@@ -546,7 +645,10 @@ function CatalogForm({
       )}
       <div className="space-y-2">
         <Label>Estado</Label>
-        <NativeSelect name="is_active" defaultValue={String(item?.is_active ?? true)}>
+        <NativeSelect
+          name="is_active"
+          defaultValue={String(item?.is_active ?? true)}
+        >
           <option value="true">Activo</option>
           <option value="false">Inactivo</option>
         </NativeSelect>
@@ -591,8 +693,12 @@ function CatalogList({
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>{type === "category" ? "Nueva categoria" : "Nueva unidad"}</DialogTitle>
-                <DialogDescription>Completa los datos para agregar el registro.</DialogDescription>
+                <DialogTitle>
+                  {type === "category" ? "Nueva categoria" : "Nueva unidad"}
+                </DialogTitle>
+                <DialogDescription>
+                  Completa los datos para agregar el registro.
+                </DialogDescription>
               </DialogHeader>
               <CatalogForm type={type} />
             </DialogContent>
@@ -608,7 +714,9 @@ function CatalogList({
             <div className="min-w-0">
               <p className="truncate font-medium">{item.name}</p>
               <p className="text-xs text-muted-foreground">
-                {"abbreviation" in item ? item.abbreviation : item.description || "Sin descripcion"}
+                {"abbreviation" in item
+                  ? item.abbreviation
+                  : item.description || "Sin descripcion"}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -623,8 +731,12 @@ function CatalogList({
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                      <DialogTitle>Editar {type === "category" ? "categoria" : "unidad"}</DialogTitle>
-                      <DialogDescription>Actualiza el registro seleccionado.</DialogDescription>
+                      <DialogTitle>
+                        Editar {type === "category" ? "categoria" : "unidad"}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Actualiza el registro seleccionado.
+                      </DialogDescription>
                     </DialogHeader>
                     <CatalogForm type={type} item={item} />
                   </DialogContent>
@@ -639,7 +751,10 @@ function CatalogList({
 }
 
 function ProductDeactivateForm({ productId }: { productId: string }) {
-  const [state, formAction, pending] = useActionState(deactivateProductAction, initialState);
+  const [state, formAction, pending] = useActionState(
+    deactivateProductAction,
+    initialState,
+  );
   useActionToast(state);
 
   return (
@@ -668,12 +783,18 @@ export function ProductManagement({
   qbParametrizationWarning,
   canManage,
   canManagePrice,
+  strictStockControl,
 }: ProductManagementProps) {
   const activeProducts = products.filter((product) => product.is_active).length;
-  const lowStock = products.filter((product) => product.stock_status !== "ok").length;
+  const lowStock = products.filter(
+    (product) => product.stock_status !== "ok",
+  ).length;
   const qbVisibleProductIds = new Set(
     qbProductUnitSettings
-      .filter((settings) => settings.is_qb_active && settings.is_visible_in_qb_catalog)
+      .filter(
+        (settings) =>
+          settings.is_qb_active && settings.is_visible_in_qb_catalog,
+      )
       .map((settings) => settings.product_id),
   );
   const publicProducts = products.filter(
@@ -690,7 +811,9 @@ export function ProductManagement({
   const effectiveUnit = (product: ProductWithRelations) => {
     const settings = qbSettingsByProduct.get(product.id);
     const unitId =
-      settings?.base_inventory_unit_id ?? settings?.inventory_unit_id ?? settings?.base_unit_id;
+      settings?.base_inventory_unit_id ??
+      settings?.inventory_unit_id ??
+      settings?.base_unit_id;
     return (
       (unitId ? qbUnitsById.get(unitId)?.symbol : null) ??
       product.unit?.abbreviation ??
@@ -703,7 +826,9 @@ export function ProductManagement({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Productos activos</p>
-          <p className="mt-2 font-heading text-3xl font-semibold">{activeProducts}</p>
+          <p className="mt-2 font-heading text-3xl font-semibold">
+            {activeProducts}
+          </p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Alertas de inventario</p>
@@ -711,7 +836,9 @@ export function ProductManagement({
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Visibles en catalogo</p>
-          <p className="mt-2 font-heading text-3xl font-semibold">{publicProducts}</p>
+          <p className="mt-2 font-heading text-3xl font-semibold">
+            {publicProducts}
+          </p>
         </div>
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Categorias y unidades</p>
@@ -725,9 +852,12 @@ export function ProductManagement({
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <CardTitle className="font-heading text-xl">Catálogo de productos</CardTitle>
+              <CardTitle className="font-heading text-xl">
+                Catálogo de productos
+              </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Consulta y administra productos, categorías, estados y precios base.
+                Consulta y administra productos, categorías, estados y precios
+                base.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -746,7 +876,11 @@ export function ProductManagement({
                         Registra un producto base sin movimientos de inventario.
                       </DialogDescription>
                     </DialogHeader>
-                    <ProductForm mode="create" categories={categories} qbUnits={qbUnits} />
+                    <ProductForm
+                      mode="create"
+                      categories={categories}
+                      qbUnits={qbUnits}
+                    />
                   </DialogContent>
                 </Dialog>
               ) : (
@@ -760,7 +894,10 @@ export function ProductManagement({
             </div>
           </div>
 
-          <form className="grid gap-3 lg:grid-cols-[1.3fr_0.8fr_0.7fr_0.7fr_auto]" action="/productos">
+          <form
+            className="grid gap-3 lg:grid-cols-[1.3fr_0.8fr_0.7fr_0.7fr_auto]"
+            action="/productos"
+          >
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -770,7 +907,10 @@ export function ProductManagement({
                 className="h-10 rounded-xl pl-10"
               />
             </div>
-            <NativeSelect name="category" defaultValue={filters.category ?? "all"}>
+            <NativeSelect
+              name="category"
+              defaultValue={filters.category ?? "all"}
+            >
               <option value="all">Todas las categorias</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -816,11 +956,19 @@ export function ProductManagement({
                       <div className="flex items-center gap-3">
                         <div
                           role={product.image_url ? "img" : undefined}
-                          aria-label={product.image_url ? `Fotografia de ${product.name}` : undefined}
+                          aria-label={
+                            product.image_url
+                              ? `Fotografia de ${product.name}`
+                              : undefined
+                          }
                           className="size-11 shrink-0 rounded-xl border bg-slate-100 bg-cover bg-center"
-                          style={product.image_url
-                            ? { backgroundImage: `url(${JSON.stringify(product.image_url)})` }
-                            : undefined}
+                          style={
+                            product.image_url
+                              ? {
+                                  backgroundImage: `url(${JSON.stringify(product.image_url)})`,
+                                }
+                              : undefined
+                          }
                         />
                         <div>
                           <p className="font-medium">{product.name}</p>
@@ -830,12 +978,16 @@ export function ProductManagement({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{product.category?.name ?? "Sin categoria"}</TableCell>
+                    <TableCell>
+                      {product.category?.name ?? "Sin categoria"}
+                    </TableCell>
                     <TableCell>{effectiveUnit(product)}</TableCell>
                     <TableCell className="text-right">
                       {formatNumber(product.stock_current)}
                     </TableCell>
-                    <TableCell className="text-right">{formatNumber(product.stock_min)}</TableCell>
+                    <TableCell className="text-right">
+                      {formatNumber(product.stock_min)}
+                    </TableCell>
                     <TableCell className="text-right">
                       {formatCurrency(product.purchase_price)}
                     </TableCell>
@@ -848,7 +1000,10 @@ export function ProductManagement({
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
                         <StatusBadge active={product.is_active} />
-                        <StockBadge product={product} />
+                        <StockBadge
+                          product={product}
+                          strictStockControl={strictStockControl}
+                        />
                         {qbVisibleProductIds.has(product.id) ? (
                           <Badge
                             variant="outline"
@@ -893,7 +1048,9 @@ export function ProductManagement({
                               <DialogTrigger asChild>
                                 <Button variant="outline" size="icon-sm">
                                   <Edit3 className="size-4" />
-                                  <span className="sr-only">Editar producto</span>
+                                  <span className="sr-only">
+                                    Editar producto
+                                  </span>
                                 </Button>
                               </DialogTrigger>
                               <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
@@ -908,14 +1065,28 @@ export function ProductManagement({
                                   product={product}
                                   categories={categories}
                                   qbUnits={qbUnits}
-                                  qbSettings={qbSettingsByProduct.get(product.id)}
-                                  unitLocked={productsWithMovements.has(product.id)}
+                                  qbSettings={qbSettingsByProduct.get(
+                                    product.id,
+                                  )}
+                                  unitLocked={productsWithMovements.has(
+                                    product.id,
+                                  )}
+                                />
+                                <ProductAmountModeControl
+                                  productId={product.id}
+                                  enabled={Boolean(
+                                    qbSettingsByProduct.get(product.id)
+                                      ?.supports_amount_bs,
+                                  )}
+                                  canManage={canManagePrice}
                                 />
                                 {product.requires_classification ? (
                                   <ProductClassificationConfiguration
                                     sourceProduct={product}
                                     products={products}
-                                    settings={qbSettingsByProduct.get(product.id)}
+                                    settings={qbSettingsByProduct.get(
+                                      product.id,
+                                    )}
                                     allSettings={qbProductUnitSettings}
                                     presentations={qbProductPresentations}
                                     outputs={qbProductClassificationOutputs}
@@ -930,7 +1101,9 @@ export function ProductManagement({
                             ) : null}
                           </>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Lectura</span>
+                          <span className="text-xs text-muted-foreground">
+                            Lectura
+                          </span>
                         )}
                       </div>
                     </TableCell>
@@ -944,7 +1117,9 @@ export function ProductManagement({
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
               <Boxes className="size-8 text-muted-foreground" />
               <div>
-                <p className="font-medium">No hay productos para estos filtros</p>
+                <p className="font-medium">
+                  No hay productos para estos filtros
+                </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Ajusta la busqueda o registra el primer producto.
                 </p>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronRight,
@@ -28,6 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { saveLocalCart, useLocalCart } from "@/hooks/use-local-cart";
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
   QbCatalogCategory,
   QbCatalogProduct,
@@ -63,11 +65,20 @@ function formatBolivianos(value: number) {
 }
 
 function getDefaultUnit(product: QbCatalogProduct) {
-  return product.allowedUnits.find((unit) => unit.isDefault) ?? product.allowedUnits[0];
+  return (
+    product.allowedUnits.find((unit) => unit.isDefault) ??
+    product.allowedUnits[0]
+  );
 }
 
-function normalizeQuantity(product: QbCatalogProduct, allowedUnitId: string, value: number) {
-  const unit = product.allowedUnits.find((item) => item.id === allowedUnitId) ?? getDefaultUnit(product);
+function normalizeQuantity(
+  product: QbCatalogProduct,
+  allowedUnitId: string,
+  value: number,
+) {
+  const unit =
+    product.allowedUnits.find((item) => item.id === allowedUnitId) ??
+    getDefaultUnit(product);
   if (!unit || !Number.isFinite(value)) return 1;
 
   const min = unit.minQuantity;
@@ -111,16 +122,23 @@ function CartSummary({
         <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
           <ShoppingBasket className="size-10 text-emerald-700" />
           <p className="mt-3 text-base font-semibold">Tu pedido esta vacio</p>
-          <p className="mt-1 text-sm text-muted-foreground">Agrega productos del catalogo.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Agrega productos del catalogo.
+          </p>
         </div>
       ) : (
         <>
           <div className="flex-1 space-y-3 overflow-y-auto py-2">
             {lines.map(({ product, item }) => {
-              const unit = product.allowedUnits.find((allowed) => allowed.id === item.allowedUnitId);
+              const unit = product.allowedUnits.find(
+                (allowed) => allowed.id === item.allowedUnitId,
+              );
 
               return (
-                <article key={product.id} className="rounded-lg border bg-background p-3">
+                <article
+                  key={product.id}
+                  className="rounded-lg border bg-background p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{product.name}</p>
@@ -152,7 +170,11 @@ function CartSummary({
           <div className="border-t pt-4">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>{lines.length} productos</span>
-              <button type="button" className="font-medium text-destructive" onClick={onClear}>
+              <button
+                type="button"
+                className="font-medium text-destructive"
+                onClick={onClear}
+              >
                 Vaciar
               </button>
             </div>
@@ -169,16 +191,47 @@ function CartSummary({
   );
 }
 
-export function PublicCatalog({ products, categories, error }: PublicCatalogProps) {
+export function PublicCatalog({
+  products,
+  categories,
+  error,
+}: PublicCatalogProps) {
+  const router = useRouter();
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel("qb-catalog-settings")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "qb_product_unit_settings",
+        },
+        () => router.refresh(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [router]);
   const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase("es"));
+  const deferredSearch = useDeferredValue(
+    search.trim().toLocaleLowerCase("es"),
+  );
   const cart = useLocalCart() as QbLocalCartItem[];
-  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const productMap = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products],
+  );
   const cartLines = cart.flatMap<CartLine>((item) => {
     const product = productMap.get(item.productId);
     if (!product) return [];
-    const unit = product.allowedUnits.some((allowed) => allowed.id === item.allowedUnitId)
+    const unit = product.allowedUnits.some(
+      (allowed) => allowed.id === item.allowedUnitId,
+    )
       ? item.allowedUnitId
       : getDefaultUnit(product)?.id;
     if (!unit) return [];
@@ -186,7 +239,8 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
   });
 
   const filteredProducts = products.filter((product) => {
-    const categoryMatches = category === "all" || product.categorySlug === category;
+    const categoryMatches =
+      category === "all" || product.categorySlug === category;
     const textMatches =
       !deferredSearch ||
       product.name.toLocaleLowerCase("es").includes(deferredSearch) ||
@@ -200,12 +254,16 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
     }
   }
 
-  function updateProduct(product: QbCatalogProduct, values: Partial<QbLocalCartItem>) {
+  function updateProduct(
+    product: QbCatalogProduct,
+    values: Partial<QbLocalCartItem>,
+  ) {
     const defaultUnit = getDefaultUnit(product);
     if (!defaultUnit) return;
 
     const current = cart.find((item) => item.productId === product.id);
-    const allowedUnitId = values.allowedUnitId ?? current?.allowedUnitId ?? defaultUnit.id;
+    const allowedUnitId =
+      values.allowedUnitId ?? current?.allowedUnitId ?? defaultUnit.id;
     const quantity = normalizeQuantity(
       product,
       allowedUnitId,
@@ -213,22 +271,32 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
     );
     const notes = values.notes ?? current?.notes ?? "";
     const requestedMode = values.inputMode ?? current?.inputMode ?? "quantity";
-    const inputMode = requestedMode === "amount_bs" && product.amountBsAvailable
-      ? "amount_bs"
-      : "quantity";
-    const requestedAmountBs = Math.round(
-      Math.max(0.01, values.requestedAmountBs ?? current?.requestedAmountBs ?? 5) * 100,
-    ) / 100;
+    const inputMode =
+      requestedMode === "amount_bs" && product.amountBsAvailable
+        ? "amount_bs"
+        : "quantity";
+    const requestedAmountBs =
+      Math.round(
+        Math.max(
+          0.01,
+          values.requestedAmountBs ?? current?.requestedAmountBs ?? 5,
+        ) * 100,
+      ) / 100;
     const nextItem: QbLocalCartItem = {
       productId: product.id,
       allowedUnitId,
       quantity,
       inputMode,
-      requestedAmountBs: inputMode === "amount_bs" ? requestedAmountBs : undefined,
+      requestedAmountBs:
+        inputMode === "amount_bs" ? requestedAmountBs : undefined,
       notes: notes.trim() || undefined,
     };
     const exists = cart.some((item) => item.productId === product.id);
-    persist(exists ? cart.map((item) => (item.productId === product.id ? nextItem : item)) : [...cart, nextItem]);
+    persist(
+      exists
+        ? cart.map((item) => (item.productId === product.id ? nextItem : item))
+        : [...cart, nextItem],
+    );
   }
 
   function removeProduct(productId: string) {
@@ -283,7 +351,10 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
             </div>
           </div>
 
-          <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Categorias">
+          <nav
+            className="mt-3 flex gap-2 overflow-x-auto pb-1"
+            aria-label="Categorias"
+          >
             <Button
               type="button"
               size="sm"
@@ -316,16 +387,27 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
           ) : (
             <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredProducts.map((product) => {
-                const current = cartLines.find((line) => line.product.id === product.id)?.item;
-                const selectedUnitId = current?.allowedUnitId ?? getDefaultUnit(product)?.id ?? "";
-                const selectedUnit = product.allowedUnits.find((unit) => unit.id === selectedUnitId);
-                const quantity = current?.quantity ?? selectedUnit?.minQuantity ?? 1;
-                const inputMode = current?.inputMode === "amount_bs" && product.amountBsAvailable
-                  ? "amount_bs"
-                  : "quantity";
+                const current = cartLines.find(
+                  (line) => line.product.id === product.id,
+                )?.item;
+                const selectedUnitId =
+                  current?.allowedUnitId ?? getDefaultUnit(product)?.id ?? "";
+                const selectedUnit = product.allowedUnits.find(
+                  (unit) => unit.id === selectedUnitId,
+                );
+                const quantity =
+                  current?.quantity ?? selectedUnit?.minQuantity ?? 1;
+                const inputMode =
+                  current?.inputMode === "amount_bs" &&
+                  product.amountBsAvailable
+                    ? "amount_bs"
+                    : "quantity";
 
                 return (
-                  <article key={product.id} className="overflow-hidden rounded-lg border bg-background">
+                  <article
+                    key={product.id}
+                    className="overflow-hidden rounded-lg border bg-background"
+                  >
                     <div className="aspect-[4/3]">
                       <ProductImage product={product} />
                     </div>
@@ -341,7 +423,9 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                             </span>
                           ) : null}
                         </div>
-                        <h2 className="mt-1 text-lg font-semibold leading-snug">{product.name}</h2>
+                        <h2 className="mt-1 text-lg font-semibold leading-snug">
+                          {product.name}
+                        </h2>
                         {product.description ? (
                           <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                             {product.description}
@@ -350,13 +434,16 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor={`mode-${product.id}`}>Forma de pedido</Label>
+                        <Label htmlFor={`mode-${product.id}`}>
+                          Forma de pedido
+                        </Label>
                         <select
                           id={`mode-${product.id}`}
                           value={inputMode}
                           onChange={(event) =>
                             updateProduct(product, {
-                              inputMode: event.target.value as "quantity" | "amount_bs",
+                              inputMode: event.target.value as
+                                "quantity" | "amount_bs",
                             })
                           }
                           className="h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -368,68 +455,85 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                         </select>
                       </div>
 
-                      {inputMode === "quantity" ? <>
-                      <div className="space-y-2">
-                        <Label htmlFor={`unit-${product.id}`}>Unidad</Label>
-                        <select
-                          id={`unit-${product.id}`}
-                          value={selectedUnitId}
-                          onChange={(event) =>
-                            updateProduct(product, { allowedUnitId: event.target.value })
-                          }
-                          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                        >
-                          {product.allowedUnits.map((unit) => (
-                            <option key={unit.id} value={unit.id}>
-                              {unit.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {inputMode === "quantity" ? (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor={`unit-${product.id}`}>Unidad</Label>
+                            <select
+                              id={`unit-${product.id}`}
+                              value={selectedUnitId}
+                              onChange={(event) =>
+                                updateProduct(product, {
+                                  allowedUnitId: event.target.value,
+                                })
+                              }
+                              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                            >
+                              {product.allowedUnits.map((unit) => (
+                                <option key={unit.id} value={unit.id}>
+                                  {unit.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                      <div className="grid grid-cols-[auto_1fr_auto] items-end gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          disabled={!selectedUnit || quantity <= selectedUnit.minQuantity}
-                          onClick={() =>
-                            updateProduct(product, {
-                              quantity: quantity - (selectedUnit?.quantityStep ?? 1),
-                            })
-                          }
-                        >
-                          <Minus className="size-4" />
-                        </Button>
+                          <div className="grid grid-cols-[auto_1fr_auto] items-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              disabled={
+                                !selectedUnit ||
+                                quantity <= selectedUnit.minQuantity
+                              }
+                              onClick={() =>
+                                updateProduct(product, {
+                                  quantity:
+                                    quantity -
+                                    (selectedUnit?.quantityStep ?? 1),
+                                })
+                              }
+                            >
+                              <Minus className="size-4" />
+                            </Button>
+                            <div className="space-y-2">
+                              <Label htmlFor={`qty-${product.id}`}>
+                                Cantidad
+                              </Label>
+                              <Input
+                                id={`qty-${product.id}`}
+                                type="number"
+                                min={selectedUnit?.minQuantity ?? 1}
+                                step={selectedUnit?.quantityStep ?? 1}
+                                value={quantity}
+                                onChange={(event) =>
+                                  updateProduct(product, {
+                                    quantity: Number(event.target.value),
+                                  })
+                                }
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() =>
+                                updateProduct(product, {
+                                  quantity:
+                                    quantity +
+                                    (selectedUnit?.quantityStep ?? 1),
+                                })
+                              }
+                            >
+                              <PackagePlus className="size-4" />
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
                         <div className="space-y-2">
-                          <Label htmlFor={`qty-${product.id}`}>Cantidad</Label>
-                          <Input
-                            id={`qty-${product.id}`}
-                            type="number"
-                            min={selectedUnit?.minQuantity ?? 1}
-                            step={selectedUnit?.quantityStep ?? 1}
-                            value={quantity}
-                            onChange={(event) =>
-                              updateProduct(product, { quantity: Number(event.target.value) })
-                            }
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() =>
-                            updateProduct(product, {
-                              quantity: quantity + (selectedUnit?.quantityStep ?? 1),
-                            })
-                          }
-                        >
-                          <PackagePlus className="size-4" />
-                        </Button>
-                      </div>
-                      </> : (
-                        <div className="space-y-2">
-                          <Label htmlFor={`amount-${product.id}`}>Importe solicitado (Bs)</Label>
+                          <Label htmlFor={`amount-${product.id}`}>
+                            Importe solicitado (Bs)
+                          </Label>
                           <Input
                             id={`amount-${product.id}`}
                             type="number"
@@ -444,17 +548,24 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                             }
                           />
                           <p className="text-xs text-muted-foreground">
-                            El sistema calculará internamente una cantidad física estimada para preparación.
+                            El sistema calculará internamente una cantidad
+                            física estimada para preparación.
                           </p>
                         </div>
                       )}
 
                       <div className="space-y-2">
-                        <Label htmlFor={`notes-${product.id}`}>Observacion</Label>
+                        <Label htmlFor={`notes-${product.id}`}>
+                          Observacion
+                        </Label>
                         <Textarea
                           id={`notes-${product.id}`}
                           value={current?.notes ?? ""}
-                          onChange={(event) => updateProduct(product, { notes: event.target.value })}
+                          onChange={(event) =>
+                            updateProduct(product, {
+                              notes: event.target.value,
+                            })
+                          }
                           rows={2}
                         />
                       </div>
@@ -462,14 +573,24 @@ export function PublicCatalog({ products, categories, error }: PublicCatalogProp
                       <Button
                         type="button"
                         variant={current ? "outline" : "default"}
-                        className={cn("w-full", current ? "text-emerald-700" : "")}
+                        className={cn(
+                          "w-full",
+                          current ? "text-emerald-700" : "",
+                        )}
                         onClick={() =>
                           updateProduct(product, {
-                            quantity: current?.quantity ?? selectedUnit?.minQuantity ?? 1,
+                            quantity:
+                              current?.quantity ??
+                              selectedUnit?.minQuantity ??
+                              1,
                           })
                         }
                       >
-                        {current ? <Check className="size-4" /> : <ShoppingBasket className="size-4" />}
+                        {current ? (
+                          <Check className="size-4" />
+                        ) : (
+                          <ShoppingBasket className="size-4" />
+                        )}
                         {current ? "Agregado" : "Agregar"}
                       </Button>
                     </div>

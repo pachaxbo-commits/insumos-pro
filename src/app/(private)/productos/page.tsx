@@ -7,6 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getProductsCatalogData } from "@/lib/products/data";
+import { getQbOperationalSettingsData } from "@/lib/operational-settings/data";
 import type { ProductFilters } from "@/types/products";
 
 type ProductosPageProps = {
@@ -18,22 +19,31 @@ type ProductosPageProps = {
   }>;
 };
 
-function normalizeFilters(params: Awaited<ProductosPageProps["searchParams"]>): ProductFilters {
+function normalizeFilters(
+  params: Awaited<ProductosPageProps["searchParams"]>,
+): ProductFilters {
   return {
     q: params.q,
     category: params.category,
     status:
-      params.status === "active" || params.status === "inactive" || params.status === "all"
+      params.status === "active" ||
+      params.status === "inactive" ||
+      params.status === "all"
         ? params.status
         : "all",
     stock: params.stock === "low" ? "low" : "all",
   };
 }
 
-export default async function ProductosPage({ searchParams }: ProductosPageProps) {
+export default async function ProductosPage({
+  searchParams,
+}: ProductosPageProps) {
   const auth = await requireRoleAccess("/productos");
   const filters = normalizeFilters(await searchParams);
-  const data = await getProductsCatalogData(filters, { includeQbParametrization: true });
+  const [data, operationalSettings] = await Promise.all([
+    getProductsCatalogData(filters, { includeQbParametrization: true }),
+    getQbOperationalSettingsData(),
+  ]);
   const canManage = auth.user.role === "administrador";
 
   return (
@@ -72,6 +82,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
         qbParametrizationWarning={data.qbParametrizationWarning}
         canManage={canManage}
         canManagePrice={auth.user.role === "administrador"}
+        strictStockControl={operationalSettings.strictStockControl}
       />
     </div>
   );

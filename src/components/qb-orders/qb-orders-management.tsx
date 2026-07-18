@@ -1,6 +1,12 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Ban,
   CheckCircle2,
@@ -69,7 +75,9 @@ const lineStatusLabels: Record<QbPreparationLineStatus, string> = {
 };
 
 function quantity(value: number) {
-  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
+    value,
+  );
 }
 
 function bolivianos(value: number) {
@@ -77,6 +85,23 @@ function bolivianos(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function amountDeviationIsSignificant(item: QbInternalOrderItem) {
+  if (
+    item.inputMode !== "amount_bs" ||
+    !item.preparationItem ||
+    !item.estimatedBaseQuantity
+  ) {
+    return false;
+  }
+  return (
+    Math.abs(
+      item.preparationItem.actualBaseQuantity - item.estimatedBaseQuantity,
+    ) /
+      item.estimatedBaseQuantity >=
+    0.1
+  );
 }
 
 function shortDate(value: string) {
@@ -92,12 +117,18 @@ function shortDate(value: string) {
 }
 
 function statusBadgeClass(status: QbOrderStatus) {
-  if (status === "cancelado") return "border-slate-200 bg-slate-50 text-slate-700";
-  if (status === "recibo_emitido") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "incluido_en_recibo_borrador") return "border-purple-200 bg-purple-50 text-purple-700";
-  if (status === "entregado_pendiente_recibo") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (status === "preparado") return "border-amber-200 bg-amber-50 text-amber-700";
-  if (status === "en_preparacion") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "cancelado")
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  if (status === "recibo_emitido")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "incluido_en_recibo_borrador")
+    return "border-purple-200 bg-purple-50 text-purple-700";
+  if (status === "entregado_pendiente_recibo")
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "preparado")
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  if (status === "en_preparacion")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   return "border-stone-200 bg-stone-50 text-stone-700";
 }
 
@@ -105,7 +136,9 @@ function stateMessage(state: QbOrderActionState) {
   if (!state.message) return null;
 
   return (
-    <p className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
+    <p
+      className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
+    >
       {state.message}
     </p>
   );
@@ -120,13 +153,16 @@ type LineDraft = {
 
 function buildInitialLine(item: QbInternalOrderItem): LineDraft {
   const defaultUnit =
-    item.allowedUnits.find((unit) => unit.id === item.preparationItem?.actualAllowedUnitId) ??
+    item.allowedUnits.find(
+      (unit) => unit.id === item.preparationItem?.actualAllowedUnitId,
+    ) ??
     item.allowedUnits.find((unit) => unit.isDefault) ??
     item.allowedUnits[0];
 
   return {
     status: item.preparationItem?.status ?? "no_disponible",
-    actualAllowedUnitId: item.preparationItem?.actualAllowedUnitId ?? defaultUnit?.id ?? "",
+    actualAllowedUnitId:
+      item.preparationItem?.actualAllowedUnitId ?? defaultUnit?.id ?? "",
     actualQuantity:
       item.preparationItem && item.preparationItem.actualQuantity > 0
         ? String(item.preparationItem.actualQuantity)
@@ -136,11 +172,15 @@ function buildInitialLine(item: QbInternalOrderItem): LineDraft {
 }
 
 function deliveryWouldLeaveNegative(order: QbInternalOrder) {
-  const deliveredByProduct = new Map<string, { stockCurrent: number; deliveredQuantity: number }>();
+  const deliveredByProduct = new Map<
+    string,
+    { stockCurrent: number; deliveredQuantity: number }
+  >();
 
   for (const item of order.items) {
     const preparationItem = item.preparationItem;
-    if (!preparationItem || preparationItem.status === "no_disponible") continue;
+    if (!preparationItem || preparationItem.status === "no_disponible")
+      continue;
 
     const current = deliveredByProduct.get(item.productId) ?? {
       stockCurrent: item.stockCurrent,
@@ -151,7 +191,8 @@ function deliveryWouldLeaveNegative(order: QbInternalOrder) {
   }
 
   return [...deliveredByProduct.values()].some(
-    ({ stockCurrent, deliveredQuantity }) => stockCurrent - deliveredQuantity < 0,
+    ({ stockCurrent, deliveredQuantity }) =>
+      stockCurrent - deliveredQuantity < 0,
   );
 }
 
@@ -169,10 +210,15 @@ function PreparationEditor({
   onDirtyChange: (orderId: string, dirty: boolean) => void;
 }) {
   const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
-    Object.fromEntries(order.items.map((item) => [item.id, buildInitialLine(item)])),
+    Object.fromEntries(
+      order.items.map((item) => [item.id, buildInitialLine(item)]),
+    ),
   );
   const [markPrepared, setMarkPrepared] = useState(true);
-  useEffect(() => () => onDirtyChange(order.id, false), [onDirtyChange, order.id]);
+  useEffect(
+    () => () => onDirtyChange(order.id, false),
+    [onDirtyChange, order.id],
+  );
   const itemsPayload = useMemo(
     () =>
       JSON.stringify(
@@ -181,8 +227,12 @@ function PreparationEditor({
           return {
             orderItemId: item.id,
             status: line.status,
-            actualAllowedUnitId: line.status === "no_disponible" ? null : line.actualAllowedUnitId,
-            actualQuantity: line.status === "no_disponible" ? 0 : Number(line.actualQuantity || 0),
+            actualAllowedUnitId:
+              line.status === "no_disponible" ? null : line.actualAllowedUnitId,
+            actualQuantity:
+              line.status === "no_disponible"
+                ? 0
+                : Number(line.actualQuantity || 0),
             notes: line.notes,
           };
         }),
@@ -194,7 +244,11 @@ function PreparationEditor({
     onDirtyChange(order.id, true);
     setLines((current) => ({
       ...current,
-      [itemId]: { ...(current[itemId] ?? buildInitialLine(order.items.find((item) => item.id === itemId)!)), ...patch },
+      [itemId]: {
+        ...(current[itemId] ??
+          buildInitialLine(order.items.find((item) => item.id === itemId)!)),
+        ...patch,
+      },
     }));
   }
 
@@ -203,7 +257,11 @@ function PreparationEditor({
       <input type="hidden" name="order_id" value={order.id} />
       <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
       <input type="hidden" name="items" value={itemsPayload} />
-      <input type="hidden" name="mark_prepared" value={markPrepared ? "true" : "false"} />
+      <input
+        type="hidden"
+        name="mark_prepared"
+        value={markPrepared ? "true" : "false"}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
@@ -230,24 +288,42 @@ function PreparationEditor({
           const disabled = line.status === "no_disponible";
 
           return (
-            <div key={item.id} className="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-[1fr_150px_150px_150px]">
+            <div
+              key={item.id}
+              className="grid gap-3 rounded-md border bg-background p-3 lg:grid-cols-[1fr_150px_150px_150px]"
+            >
               <div className="min-w-0">
                 <p className="font-medium">{item.productName}</p>
                 <p className="text-sm text-muted-foreground">
                   {item.inputMode === "amount_bs"
-                    ? `Importe solicitado: Bs ${bolivianos(item.requestedAmountBs ?? 0)} | Estimado: ${quantity(item.estimatedRequestedQuantity ?? item.requestedQuantity)} ${item.sourceLabel}`
+                    ? `Pedido: Bs ${bolivianos(item.requestedAmountBs ?? 0)} | Preparar aproximadamente: ${quantity(item.estimatedBaseQuantity ?? item.requestedBaseQuantity)} ${item.baseUnitSymbol} | Precio de referencia: Bs ${bolivianos((item.requestedAmountBs ?? 0) / (item.estimatedBaseQuantity || 1))} por ${item.baseUnitSymbol}`
                     : `Pedido: ${quantity(item.requestedQuantity)} ${item.sourceLabel}`}
                   {" | "}
-                  Base: {quantity(item.requestedBaseQuantity)} {item.baseUnitSymbol}
+                  Base: {quantity(item.requestedBaseQuantity)}{" "}
+                  {item.baseUnitSymbol}
                 </p>
-                {item.notes ? <p className="mt-1 text-sm text-muted-foreground">{item.notes}</p> : null}
+                {item.notes ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {item.notes}
+                  </p>
+                ) : null}
+                {amountDeviationIsSignificant(item) ? (
+                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                    La cantidad real difiere al menos 10% de la estimación.
+                    Verifica el pesaje; el importe solicitado no cambiará.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
                 <Label>Estado</Label>
                 <Select
                   value={line.status}
-                  onValueChange={(value) => updateLine(item.id, { status: value as QbPreparationLineStatus })}
+                  onValueChange={(value) =>
+                    updateLine(item.id, {
+                      status: value as QbPreparationLineStatus,
+                    })
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -266,7 +342,9 @@ function PreparationEditor({
                 <Label>Unidad</Label>
                 <Select
                   value={line.actualAllowedUnitId}
-                  onValueChange={(value) => updateLine(item.id, { actualAllowedUnitId: value })}
+                  onValueChange={(value) =>
+                    updateLine(item.id, { actualAllowedUnitId: value })
+                  }
                   disabled={disabled || item.allowedUnits.length === 0}
                 >
                   <SelectTrigger className="w-full">
@@ -289,7 +367,9 @@ function PreparationEditor({
                   min="0"
                   step="0.001"
                   value={disabled ? "0" : line.actualQuantity}
-                  onChange={(event) => updateLine(item.id, { actualQuantity: event.target.value })}
+                  onChange={(event) =>
+                    updateLine(item.id, { actualQuantity: event.target.value })
+                  }
                   disabled={disabled}
                 />
               </div>
@@ -297,7 +377,9 @@ function PreparationEditor({
               <div className="lg:col-span-4">
                 <Input
                   value={line.notes}
-                  onChange={(event) => updateLine(item.id, { notes: event.target.value })}
+                  onChange={(event) =>
+                    updateLine(item.id, { notes: event.target.value })
+                  }
                   placeholder="Nota interna opcional"
                 />
               </div>
@@ -319,13 +401,22 @@ function PreparationEditor({
 
       {synchronizationBlocked ? (
         <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
-          El pedido cambió en otro dispositivo. Actualiza la vista antes de guardar esta preparación.
+          El pedido cambió en otro dispositivo. Actualiza la vista antes de
+          guardar esta preparación.
         </p>
       ) : null}
 
-      <Button type="submit" disabled={pending || synchronizationBlocked} className="mt-3">
+      <Button
+        type="submit"
+        disabled={pending || synchronizationBlocked}
+        className="mt-3"
+      >
         <CheckCircle2 className="size-4" />
-        {pending ? "Guardando..." : markPrepared ? "Guardar como preparado" : "Guardar preparacion"}
+        {pending
+          ? "Guardando..."
+          : markPrepared
+            ? "Guardar como preparado"
+            : "Guardar preparacion"}
       </Button>
     </form>
   );
@@ -344,6 +435,7 @@ function OrderCard({
   synchronizationBlocked,
   editorResetToken,
   onDirtyChange,
+  strictStockControl,
 }: {
   order: QbInternalOrder;
   startAction: (formData: FormData) => void;
@@ -357,12 +449,15 @@ function OrderCard({
   synchronizationBlocked: boolean;
   editorResetToken: number;
   onDirtyChange: (orderId: string, dirty: boolean) => void;
+  strictStockControl: boolean;
 }) {
   const [negativeStockConfirmed, setNegativeStockConfirmed] = useState(false);
   const canPrepare = order.status === "pendiente_preparacion";
-  const canEditPreparation = order.status === "en_preparacion" || order.status === "preparado";
+  const canEditPreparation =
+    order.status === "en_preparacion" || order.status === "preparado";
   const canDeliver = order.status === "preparado";
-  const willLeaveNegativeStock = canDeliver && deliveryWouldLeaveNegative(order);
+  const willLeaveNegativeStock =
+    canDeliver && deliveryWouldLeaveNegative(order);
   const canCancel =
     order.status === "pendiente_preparacion" ||
     order.status === "en_preparacion" ||
@@ -372,13 +467,22 @@ function OrderCard({
     <Card>
       <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <CardTitle className="font-mono text-base">{order.reference}</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{shortDate(order.submittedAt)}</p>
+          <CardTitle className="font-mono text-base">
+            {order.reference}
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {shortDate(order.submittedAt)}
+          </p>
           {order.deliveredAt ? (
-            <p className="mt-1 text-xs text-muted-foreground">Entregado: {shortDate(order.deliveredAt)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Entregado: {shortDate(order.deliveredAt)}
+            </p>
           ) : null}
         </div>
-        <Badge variant="outline" className={`w-fit rounded-full ${statusBadgeClass(order.status)}`}>
+        <Badge
+          variant="outline"
+          className={`w-fit rounded-full ${statusBadgeClass(order.status)}`}
+        >
           {statusLabels[order.status]}
         </Badge>
       </CardHeader>
@@ -390,9 +494,13 @@ function OrderCard({
               Cliente
             </div>
             <p className="mt-2 font-medium">{order.customerName}</p>
-            <p className="text-sm text-muted-foreground">{order.customerEmail}</p>
+            <p className="text-sm text-muted-foreground">
+              {order.customerEmail}
+            </p>
             {order.customerPhone ? (
-              <p className="mt-1 text-sm text-muted-foreground">{order.customerPhone}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {order.customerPhone}
+              </p>
             ) : null}
           </div>
           <div className="rounded-lg border p-3 md:col-span-2">
@@ -400,10 +508,16 @@ function OrderCard({
               <MapPin className="size-4 text-emerald-700" />
               Ubicacion
             </div>
-            <p className="mt-2 font-medium">{order.locationLabel ?? "Sin etiqueta"}</p>
-            <p className="text-sm text-muted-foreground">{order.locationAddress ?? "Sin direccion"}</p>
+            <p className="mt-2 font-medium">
+              {order.locationLabel ?? "Sin etiqueta"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {order.locationAddress ?? "Sin direccion"}
+            </p>
             {order.locationReference ? (
-              <p className="mt-1 text-sm text-muted-foreground">{order.locationReference}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {order.locationReference}
+              </p>
             ) : null}
           </div>
         </div>
@@ -415,10 +529,15 @@ function OrderCard({
           </div>
           <div className="divide-y">
             {order.items.map((item) => (
-              <div key={item.id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_auto]">
+              <div
+                key={item.id}
+                className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_auto]"
+              >
                 <div>
                   <p className="font-medium">{item.productName}</p>
-                  {item.notes ? <p className="text-muted-foreground">{item.notes}</p> : null}
+                  {item.notes ? (
+                    <p className="text-muted-foreground">{item.notes}</p>
+                  ) : null}
                   {item.preparationItem ? (
                     <p className="mt-1 text-xs text-muted-foreground">
                       Preparado: {quantity(item.preparationItem.actualQuantity)}{" "}
@@ -445,8 +564,15 @@ function OrderCard({
         {canPrepare ? (
           <form action={startAction}>
             <input type="hidden" name="order_id" value={order.id} />
-            <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
-            <Button type="submit" disabled={startPending || synchronizationBlocked}>
+            <input
+              type="hidden"
+              name="expected_updated_at"
+              value={order.updatedAt}
+            />
+            <Button
+              type="submit"
+              disabled={startPending || synchronizationBlocked}
+            >
               <Play className="size-4" />
               {startPending ? "Iniciando..." : "Iniciar preparacion"}
             </Button>
@@ -466,21 +592,30 @@ function OrderCard({
 
         {willLeaveNegativeStock ? (
           <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-            <AlertTitle>Existencia insuficiente</AlertTitle>
+            <AlertTitle>
+              {strictStockControl
+                ? "Entrega bloqueada por stock"
+                : "Saldo provisional"}
+            </AlertTitle>
             <AlertDescription className="space-y-3">
               <p>
-                El stock registrado es insuficiente. Puedes continuar con la entrega, pero la
-                existencia quedará negativa hasta que se registre el ingreso correspondiente.
+                {strictStockControl
+                  ? "La cantidad preparada supera la existencia disponible. Ajusta la preparación o registra el ingreso correspondiente antes de entregar."
+                  : "El stock registrado es insuficiente. Puedes continuar con la entrega; el saldo quedará provisional hasta registrar el ingreso correspondiente."}
               </p>
-              <label className="flex items-start gap-2 font-medium">
-                <input
-                  type="checkbox"
-                  checked={negativeStockConfirmed}
-                  onChange={(event) => setNegativeStockConfirmed(event.target.checked)}
-                  className="mt-0.5 size-4"
-                />
-                Confirmo que deseo continuar con la entrega.
-              </label>
+              {!strictStockControl ? (
+                <label className="flex items-start gap-2 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={negativeStockConfirmed}
+                    onChange={(event) =>
+                      setNegativeStockConfirmed(event.target.checked)
+                    }
+                    className="mt-0.5 size-4"
+                  />
+                  Confirmo que deseo continuar con la entrega.
+                </label>
+              ) : null}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -489,10 +624,19 @@ function OrderCard({
           {canDeliver ? (
             <form action={deliveryAction}>
               <input type="hidden" name="order_id" value={order.id} />
-              <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
+              <input
+                type="hidden"
+                name="expected_updated_at"
+                value={order.updatedAt}
+              />
               <Button
                 type="submit"
-                disabled={deliveryPending || synchronizationBlocked || (willLeaveNegativeStock && !negativeStockConfirmed)}
+                disabled={
+                  deliveryPending ||
+                  synchronizationBlocked ||
+                  (willLeaveNegativeStock &&
+                    (strictStockControl || !negativeStockConfirmed))
+                }
               >
                 <Truck className="size-4" />
                 {deliveryPending ? "Entregando..." : "Confirmar entrega"}
@@ -503,14 +647,22 @@ function OrderCard({
           {canCancel ? (
             <form action={cancelAction} className="flex flex-wrap gap-2">
               <input type="hidden" name="order_id" value={order.id} />
-              <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
+              <input
+                type="hidden"
+                name="expected_updated_at"
+                value={order.updatedAt}
+              />
               <Input
                 name="reason"
                 placeholder="Motivo opcional"
                 className="h-9 w-56"
                 maxLength={500}
               />
-              <Button type="submit" variant="outline" disabled={cancelPending || synchronizationBlocked}>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={cancelPending || synchronizationBlocked}
+              >
                 <Ban className="size-4" />
                 Cancelar
               </Button>
@@ -547,22 +699,35 @@ function SynchronizationStatus({
     return () => window.clearInterval(intervalId);
   }, []);
   const elapsedSeconds = Math.max(0, Math.floor((now - lastUpdatedAt) / 1_000));
-  const updatedLabel = elapsedSeconds < 10
-    ? "Actualizado hace unos segundos"
-    : `Actualizado hace ${elapsedSeconds} segundos`;
+  const updatedLabel =
+    elapsedSeconds < 10
+      ? "Actualizado hace unos segundos"
+      : `Actualizado hace ${elapsedSeconds} segundos`;
   const online = status !== "offline";
-  const freshnessLabel = online ? updatedLabel : "Los datos visibles pueden estar desactualizados";
+  const freshnessLabel = online
+    ? updatedLabel
+    : "Los datos visibles pueden estar desactualizados";
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-white/70 p-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-2 text-sm">
-        {online ? <Wifi className="size-4 text-emerald-700" /> : <WifiOff className="size-4 text-amber-700" />}
+        {online ? (
+          <Wifi className="size-4 text-emerald-700" />
+        ) : (
+          <WifiOff className="size-4 text-amber-700" />
+        )}
         <div>
           <p className="font-medium">{syncStatusLabels[status]}</p>
           <p className="text-xs text-muted-foreground">{freshnessLabel}</p>
         </div>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onRefresh}
+        disabled={isRefreshing}
+      >
         <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
         {isRefreshing ? "Actualizando..." : "Actualizar"}
       </Button>
@@ -574,11 +739,13 @@ export function QbOrdersManagement({
   orders,
   creation,
   canCreateOrder,
+  strictStockControl,
   error,
 }: {
   orders: QbInternalOrder[];
   creation?: QbInternalOrderCreationData;
   canCreateOrder: boolean;
+  strictStockControl: boolean;
   error?: string;
 }) {
   const [startState, startAction, startPending] = useActionState(
@@ -597,9 +764,12 @@ export function QbOrdersManagement({
     cancelQbOrderBeforeDeliveryAction,
     initialState,
   );
-  const [dirtyOrderIds, setDirtyOrderIds] = useState<Set<string>>(() => new Set());
+  const [dirtyOrderIds, setDirtyOrderIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [editorResetToken, setEditorResetToken] = useState(0);
-  const mutationPending = startPending || savePending || deliveryPending || cancelPending;
+  const mutationPending =
+    startPending || savePending || deliveryPending || cancelPending;
   const synchronization = useQbOrdersSynchronization({
     hasUnsavedChanges: dirtyOrderIds.size > 0,
     mutationPending,
@@ -619,7 +789,13 @@ export function QbOrdersManagement({
     if (actionStates.some((state) => state.refreshRequired)) {
       markSynchronizationConflict();
     }
-  }, [cancelState, deliveryState, markSynchronizationConflict, saveState, startState]);
+  }, [
+    cancelState,
+    deliveryState,
+    markSynchronizationConflict,
+    saveState,
+    startState,
+  ]);
 
   useEffect(() => {
     if (!saveState.success || !saveState.orderId) return;
@@ -633,10 +809,16 @@ export function QbOrdersManagement({
     }, 0);
     return () => window.clearTimeout(timerId);
   }, [saveState]);
-  const pendingOrders = orders.filter((order) => order.status === "pendiente_preparacion");
-  const preparingOrders = orders.filter((order) => order.status === "en_preparacion");
+  const pendingOrders = orders.filter(
+    (order) => order.status === "pendiente_preparacion",
+  );
+  const preparingOrders = orders.filter(
+    (order) => order.status === "en_preparacion",
+  );
   const preparedOrders = orders.filter((order) => order.status === "preparado");
-  const deliveredOrders = orders.filter((order) => order.status === "entregado_pendiente_recibo");
+  const deliveredOrders = orders.filter(
+    (order) => order.status === "entregado_pendiente_recibo",
+  );
 
   return (
     <div className="space-y-5">
@@ -658,7 +840,8 @@ export function QbOrdersManagement({
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
           <AlertTitle>Sin conexión</AlertTitle>
           <AlertDescription>
-            Conservamos los pedidos visibles, pero no podemos afirmar que estén actualizados. La vista se actualizará al recuperar la conexión.
+            Conservamos los pedidos visibles, pero no podemos afirmar que estén
+            actualizados. La vista se actualizará al recuperar la conexión.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -667,7 +850,10 @@ export function QbOrdersManagement({
         <Alert className="border-amber-200 bg-amber-50 text-amber-950">
           <AlertTitle>El pedido cambió en otro dispositivo</AlertTitle>
           <AlertDescription className="space-y-3">
-            <p>Conservamos tus entradas sin guardar. Para evitar un conflicto, descártalas y carga el estado vigente antes de confirmar.</p>
+            <p>
+              Conservamos tus entradas sin guardar. Para evitar un conflicto,
+              descártalas y carga el estado vigente antes de confirmar.
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -684,32 +870,50 @@ export function QbOrdersManagement({
         </Alert>
       ) : null}
 
-      {canCreateOrder && creation ? <InternalOrderCreator {...creation} /> : null}
+      {canCreateOrder && creation ? (
+        <InternalOrderCreator {...creation} />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pendientes</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pendientes
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{pendingOrders.length}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {pendingOrders.length}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">En preparacion</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              En preparacion
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{preparingOrders.length}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {preparingOrders.length}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Preparados</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Preparados
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{preparedOrders.length}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {preparedOrders.length}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Entregados</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Entregados
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{deliveredOrders.length}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {deliveredOrders.length}
+          </CardContent>
         </Card>
       </div>
 
@@ -743,6 +947,7 @@ export function QbOrdersManagement({
               synchronizationBlocked={synchronization.remoteChangePending}
               editorResetToken={editorResetToken}
               onDirtyChange={handleDirtyChange}
+              strictStockControl={strictStockControl}
             />
           ))}
         </div>
@@ -750,7 +955,8 @@ export function QbOrdersManagement({
 
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Send className="size-4" />
-        El inventario se descuenta al confirmar la entrega; después, el pedido queda disponible para su recibo acumulativo.
+        El inventario se descuenta al confirmar la entrega; después, el pedido
+        queda disponible para su recibo acumulativo.
       </p>
     </div>
   );

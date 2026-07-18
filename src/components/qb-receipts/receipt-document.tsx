@@ -14,7 +14,9 @@ function money(value: number | null) {
 }
 
 function quantity(value: number) {
-  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
+    value,
+  );
 }
 
 export function ReceiptDocument({
@@ -43,29 +45,41 @@ export function ReceiptDocument({
           </p>
           <h1 className="font-mono text-2xl font-semibold">{receipt.number}</h1>
           {!isCustomerExport ? (
-            <p className="text-sm text-muted-foreground">Estado: {receipt.status}</p>
+            <p className="text-sm text-muted-foreground">
+              Estado: {receipt.status}
+            </p>
           ) : null}
         </div>
       </div>
 
       <div className="grid gap-4 border-b py-5 md:grid-cols-3">
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">Cliente</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Cliente
+          </p>
           <p className="mt-1 font-semibold">{receipt.customerName}</p>
-          <p className="text-sm text-muted-foreground">{receipt.customerEmail}</p>
+          <p className="text-sm text-muted-foreground">
+            {receipt.customerEmail}
+          </p>
           {receipt.customerPhone ? (
-            <p className="text-sm text-muted-foreground">{receipt.customerPhone}</p>
+            <p className="text-sm text-muted-foreground">
+              {receipt.customerPhone}
+            </p>
           ) : null}
         </div>
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">Periodo</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Periodo
+          </p>
           <p className="mt-1 text-sm">
             {formatBoliviaDate(receipt.periodStart)} -{" "}
             {formatBoliviaDate(receipt.periodEnd)}
           </p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">Emision</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Emision
+          </p>
           <p className="mt-1 text-sm">
             {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
           </p>
@@ -78,7 +92,10 @@ export function ReceiptDocument({
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {receipt.orders.map((order) => (
-            <span key={order.id} className="rounded-full border px-2 py-1 font-mono text-xs">
+            <span
+              key={order.id}
+              className="rounded-full border px-2 py-1 font-mono text-xs"
+            >
               {order.orderReference}
             </span>
           ))}
@@ -86,7 +103,9 @@ export function ReceiptDocument({
       </div>
 
       <div data-qb-receipt-table className="overflow-x-auto py-5">
-        <table className={`w-full text-sm ${isCustomerExport ? "min-w-[620px]" : "min-w-[760px]"}`}>
+        <table
+          className={`w-full text-sm ${isCustomerExport ? "min-w-[620px]" : "min-w-[760px]"}`}
+        >
           <thead>
             <tr className="border-b text-left text-xs uppercase text-muted-foreground">
               <th className="py-2 pr-3">Producto</th>
@@ -112,10 +131,20 @@ export function ReceiptDocument({
                   {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
                 </td>
                 {!isCustomerExport ? (
-                  <td className="py-3 pr-3 text-right">{money(line.basePriceUsed)}</td>
+                  <td className="py-3 pr-3 text-right">
+                    {line.inputMode === "amount_bs"
+                      ? `${money(line.originalBasePrice)} (referencia)`
+                      : money(line.basePriceUsed)}
+                  </td>
                 ) : null}
-                <td className="py-3 pr-3 text-right">{money(line.finalUnitPrice)}</td>
-                <td className="py-3 text-right font-semibold">{money(line.lineTotal)}</td>
+                <td className="py-3 pr-3 text-right">
+                  {line.inputMode === "amount_bs"
+                    ? `Importe fijo ${money(line.requestedAmountBs)}`
+                    : money(line.finalUnitPrice)}
+                </td>
+                <td className="py-3 text-right font-semibold">
+                  {money(line.lineTotal)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -134,8 +163,9 @@ export function ReceiptDocument({
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               Distancia {receipt.distanceFactorPercent}% · Exigencia{" "}
-              {receipt.exigencyFactorPercent}% · Clima {receipt.weatherFactorPercent}% ·
-              Extraordinario {receipt.extraordinaryFactorPercent}%
+              {receipt.exigencyFactorPercent}% · Clima{" "}
+              {receipt.weatherFactorPercent}% · Extraordinario{" "}
+              {receipt.extraordinaryFactorPercent}%
             </p>
           </div>
         ) : null}
@@ -153,7 +183,9 @@ export function ReceiptDocument({
           <div className="flex justify-between text-lg font-semibold">
             <span>Total</span>
             <span>
-              {receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.totalAmount)}
+              {receipt.hasPendingPrices
+                ? "Precio pendiente"
+                : money(receipt.totalAmount)}
             </span>
           </div>
         </div>
@@ -168,8 +200,8 @@ export function ReceiptDocument({
 
       {!isCustomerExport ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-sm font-medium text-amber-800">
-          No constituye factura fiscal ni comprobante de pago. No registra cobro, caja ni
-          metodo de pago.
+          No constituye factura fiscal ni comprobante de pago. No registra
+          cobro, caja ni metodo de pago.
         </p>
       ) : null}
     </section>

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { StockControlSettings } from "@/components/inventory/stock-control-settings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,16 @@ import {
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getRoleLabel } from "@/lib/auth/roles";
 import { getAuditLogsData } from "@/lib/audit/data";
+import { getQbOperationalSettingsData } from "@/lib/operational-settings/data";
 import {
   getActiveTransitionalModules,
   getSuspendedLegacyModules,
 } from "@/lib/qb-insumos/transition-policy";
-import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, type AuditFilters } from "@/types/audit";
+import {
+  AUDIT_ACTIONS,
+  AUDIT_ENTITY_TYPES,
+  type AuditFilters,
+} from "@/types/audit";
 import { USER_ROLES } from "@/types/auth";
 
 type ConfiguracionPageProps = {
@@ -50,19 +56,22 @@ const settings = [
   },
   {
     title: "Accesos del personal",
-    description: "Cada rol dispone únicamente de las funciones necesarias para su trabajo.",
+    description:
+      "Cada rol dispone únicamente de las funciones necesarias para su trabajo.",
     status: "Configurados",
     icon: ShieldCheck,
   },
   {
     title: "Alcance operativo",
-    description: "Distingue las funciones gestionadas desde otros módulos y las que no forman parte de esta versión.",
+    description:
+      "Distingue las funciones gestionadas desde otros módulos y las que no forman parte de esta versión.",
     status: "Definido",
     icon: LockKeyhole,
   },
   {
     title: "Auditoría",
-    description: "Consulta la bitácora de actividad para dar seguimiento a las acciones registradas.",
+    description:
+      "Consulta la bitácora de actividad para dar seguimiento a las acciones registradas.",
     status: "Consulta",
     icon: FileText,
   },
@@ -141,7 +150,9 @@ function NativeSelect({
   );
 }
 
-function normalizeFilters(params: Awaited<ConfiguracionPageProps["searchParams"]>): AuditFilters {
+function normalizeFilters(
+  params: Awaited<ConfiguracionPageProps["searchParams"]>,
+): AuditFilters {
   const actions: readonly string[] = AUDIT_ACTIONS;
   const entities: readonly string[] = AUDIT_ENTITY_TYPES;
 
@@ -177,14 +188,21 @@ function formatMetadata(metadata: Record<string, unknown>) {
     .join(" | ");
 }
 
-export default async function ConfiguracionPage({ searchParams }: ConfiguracionPageProps) {
+export default async function ConfiguracionPage({
+  searchParams,
+}: ConfiguracionPageProps) {
   await requireRoleAccess("/configuracion");
   const filters = normalizeFilters(await searchParams);
-  const audit = await getAuditLogsData(filters);
+  const [audit, operationalSettings] = await Promise.all([
+    getAuditLogsData(filters),
+    getQbOperationalSettingsData(),
+  ]);
   const activeModules = getActiveTransitionalModules();
   const suspendedModules = getSuspendedLegacyModules();
   const managedModules = suspendedModules.filter((module) =>
-    ["inventario", "ventas", "compras", "confirmacion-publica"].includes(module.id),
+    ["inventario", "ventas", "compras", "confirmacion-publica"].includes(
+      module.id,
+    ),
   );
   const unavailableModules = suspendedModules.filter((module) =>
     ["proveedores", "finanzas"].includes(module.id),
@@ -199,22 +217,42 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
       />
 
       <Card className="border-emerald-200 bg-emerald-50/70">
-        <CardHeader><CardTitle>Activación operativa</CardTitle></CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Descarga y valida plantillas de precios, conversiones y stock inicial antes de aplicar datos del cliente.</p><Button asChild className="rounded-xl"><Link href="/configuracion/activacion-operativa">Abrir herramienta</Link></Button></CardContent>
+        <CardHeader>
+          <CardTitle>Activación operativa</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Descarga y valida plantillas de precios, conversiones y stock
+            inicial antes de aplicar datos del cliente.
+          </p>
+          <Button asChild className="rounded-xl">
+            <Link href="/configuracion/activacion-operativa">
+              Abrir herramienta
+            </Link>
+          </Button>
+        </CardContent>
       </Card>
+
+      <StockControlSettings settings={operationalSettings} />
 
       <div className="grid gap-4 lg:grid-cols-4">
         {settings.map((item) => {
           const Icon = item.icon;
 
           return (
-            <Card key={item.title} className="border-white/60 bg-white/80 shadow-sm">
+            <Card
+              key={item.title}
+              className="border-white/60 bg-white/80 shadow-sm"
+            >
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <span className="flex size-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
                     <Icon className="size-5" />
                   </span>
-                  <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
+                  >
                     {item.status}
                   </Badge>
                 </div>
@@ -238,7 +276,11 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {activeModules.map((module) => (
-              <Badge key={module.id} variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800">
+              <Badge
+                key={module.id}
+                variant="outline"
+                className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-800"
+              >
                 {module.title}
               </Badge>
             ))}
@@ -275,7 +317,10 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           </CardHeader>
           <CardContent className="space-y-2">
             {managedModules.map((module) => (
-              <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
+              <div
+                key={module.id}
+                className="rounded-2xl border bg-white/70 p-3 text-sm"
+              >
                 <p className="font-medium">{module.title}</p>
                 <p className="mt-1 text-muted-foreground">{module.reason}</p>
               </div>
@@ -289,7 +334,10 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
           </CardHeader>
           <CardContent className="space-y-2">
             {unavailableModules.map((module) => (
-              <div key={module.id} className="rounded-2xl border bg-white/70 p-3 text-sm">
+              <div
+                key={module.id}
+                className="rounded-2xl border bg-white/70 p-3 text-sm"
+              >
                 <p className="font-medium">{module.title}</p>
                 <p className="mt-1 text-muted-foreground">{module.reason}</p>
               </div>
@@ -311,13 +359,22 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
               </p>
             </div>
             <div className="grid gap-2 text-sm md:grid-cols-3">
-              <span className="rounded-xl bg-muted/50 px-3 py-2">Filas: {audit.summary.total}</span>
-              <span className="rounded-xl bg-muted/50 px-3 py-2">Hoy: {audit.summary.today}</span>
-              <span className="rounded-xl bg-muted/50 px-3 py-2">Críticas: {audit.summary.critical}</span>
+              <span className="rounded-xl bg-muted/50 px-3 py-2">
+                Filas: {audit.summary.total}
+              </span>
+              <span className="rounded-xl bg-muted/50 px-3 py-2">
+                Hoy: {audit.summary.today}
+              </span>
+              <span className="rounded-xl bg-muted/50 px-3 py-2">
+                Críticas: {audit.summary.critical}
+              </span>
             </div>
           </div>
 
-          <form className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_180px_auto]" action="/configuracion">
+          <form
+            className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_180px_auto]"
+            action="/configuracion"
+          >
             <NativeSelect name="user" defaultValue={filters.user}>
               <option value="all">Todos los usuarios</option>
               {audit.users.map((user) => (
@@ -356,7 +413,9 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
         <CardContent>
           {audit.error ? (
             <Alert variant="destructive" className="mb-4">
-              <AlertTitle>No se pudo cargar la bitácora correctamente</AlertTitle>
+              <AlertTitle>
+                No se pudo cargar la bitácora correctamente
+              </AlertTitle>
               <AlertDescription>{audit.error}</AlertDescription>
             </Alert>
           ) : null}
@@ -379,8 +438,14 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                     <TableCell>{formatDateTime(log.created_at)}</TableCell>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{log.user?.full_name || log.user_id?.slice(0, 8) || "Sistema"}</p>
-                        <p className="text-xs text-muted-foreground">{log.user ? getRoleLabel(log.user.role) : "N/D"}</p>
+                        <p className="font-medium">
+                          {log.user?.full_name ||
+                            log.user_id?.slice(0, 8) ||
+                            "Sistema"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {log.user ? getRoleLabel(log.user.role) : "N/D"}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -388,7 +453,9 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                         {actionLabels[log.action] ?? log.action}
                       </Badge>
                     </TableCell>
-                    <TableCell>{entityLabels[log.entity_type] ?? log.entity_type}</TableCell>
+                    <TableCell>
+                      {entityLabels[log.entity_type] ?? log.entity_type}
+                    </TableCell>
                     <TableCell className="max-w-[360px] truncate text-muted-foreground">
                       {formatMetadata(log.metadata)}
                     </TableCell>
@@ -397,7 +464,10 @@ export default async function ConfiguracionPage({ searchParams }: ConfiguracionP
                 ))}
                 {!audit.logs.length ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={6}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       No hay eventos de auditoría para los filtros actuales.
                     </TableCell>
                   </TableRow>

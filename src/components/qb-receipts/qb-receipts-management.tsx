@@ -58,12 +58,16 @@ function money(value: number) {
 }
 
 function quantity(value: number) {
-  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
+    value,
+  );
 }
 
 function statusClass(status: QbReceiptStatus) {
-  if (status === "emitido") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "anulado") return "border-slate-200 bg-slate-50 text-slate-700";
+  if (status === "emitido")
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "anulado")
+    return "border-slate-200 bg-slate-50 text-slate-700";
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
@@ -71,7 +75,9 @@ function actionMessage(state: QbReceiptActionState) {
   if (!state.message) return null;
 
   return (
-    <p className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}>
+    <p
+      className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
+    >
       {state.message}
       {state.receiptId ? (
         <Link className="ml-2 underline" href={`/recibos/${state.receiptId}`}>
@@ -90,8 +96,10 @@ type LineDraft = {
 
 function buildLineDraft(line: QbReceiptLine): LineDraft {
   return {
-    basePriceUsed: line.basePriceUsed === null ? "" : String(line.basePriceUsed),
-    saveAsNewBasePrice: line.currentBasePrice === null && line.saveAsNewBasePrice,
+    basePriceUsed:
+      line.basePriceUsed === null ? "" : String(line.basePriceUsed),
+    saveAsNewBasePrice:
+      line.currentBasePrice === null && line.saveAsNewBasePrice,
     notes: line.notes ?? "",
   };
 }
@@ -99,7 +107,9 @@ function buildLineDraft(line: QbReceiptLine): LineDraft {
 function getDraftPriceState(value: string): "pending" | "invalid" | "valid" {
   if (!value.trim()) return "pending";
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 && parsed <= 99999999 ? "valid" : "invalid";
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 99999999
+    ? "valid"
+    : "invalid";
 }
 
 function pricesMatch(left: number | null, right: string) {
@@ -124,7 +134,8 @@ function CreateReceiptPanel({
 }) {
   const [customerId, setCustomerId] = useState(groups[0]?.customerId ?? "");
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const selectedGroup = groups.find((group) => group.customerId === customerId) ?? null;
+  const selectedGroup =
+    groups.find((group) => group.customerId === customerId) ?? null;
 
   function toggleOrder(orderId: string) {
     setSelectedOrders((current) =>
@@ -150,7 +161,11 @@ function CreateReceiptPanel({
         ) : (
           <form action={action} className="space-y-4">
             <input type="hidden" name="customer_id" value={customerId} />
-            <input type="hidden" name="order_ids" value={JSON.stringify(selectedOrders)} />
+            <input
+              type="hidden"
+              name="order_ids"
+              value={JSON.stringify(selectedOrders)}
+            />
 
             <div className="space-y-2">
               <Label>Cliente</Label>
@@ -189,13 +204,17 @@ function CreateReceiptPanel({
                       className="mt-1 size-4"
                     />
                     <span className="min-w-0">
-                      <span className="block font-mono font-medium">{order.reference}</span>
+                      <span className="block font-mono font-medium">
+                        {order.reference}
+                      </span>
                       <span className="block text-muted-foreground">
                         {formatBoliviaDate(order.deliveredAt, "short")} ·{" "}
                         {order.deliveredLineCount} lineas entregadas
                       </span>
                       {order.locationLabel ? (
-                        <span className="block text-muted-foreground">{order.locationLabel}</span>
+                        <span className="block text-muted-foreground">
+                          {order.locationLabel}
+                        </span>
                       ) : null}
                     </span>
                   </label>
@@ -203,7 +222,10 @@ function CreateReceiptPanel({
               </div>
             </div>
 
-            <Button type="submit" disabled={pending || selectedOrders.length === 0}>
+            <Button
+              type="submit"
+              disabled={pending || selectedOrders.length === 0}
+            >
               <FileText className="size-4" />
               {pending ? "Creando..." : "Crear borrador"}
             </Button>
@@ -232,7 +254,9 @@ function DraftEditor({
   voidPending: boolean;
 }) {
   const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
-    Object.fromEntries(receipt.lines.map((line) => [line.id, buildLineDraft(line)])),
+    Object.fromEntries(
+      receipt.lines.map((line) => [line.id, buildLineDraft(line)]),
+    ),
   );
   const linesPayload = useMemo(
     () =>
@@ -244,8 +268,9 @@ function DraftEditor({
             basePriceUsed: draft.basePriceUsed,
             expectedBasePrice: line.currentBasePrice,
             saveAsNewBasePrice:
-              draft.saveAsNewBasePrice
-              && !pricesMatch(line.currentBasePrice, draft.basePriceUsed),
+              line.inputMode === "quantity" &&
+              draft.saveAsNewBasePrice &&
+              !pricesMatch(line.currentBasePrice, draft.basePriceUsed),
             notes: draft.notes,
           };
         }),
@@ -253,16 +278,24 @@ function DraftEditor({
     [lines, receipt.lines],
   );
   const hasPendingDraftLines = receipt.lines.some(
-    (line) => getDraftPriceState((lines[line.id] ?? buildLineDraft(line)).basePriceUsed) === "pending",
+    (line) =>
+      getDraftPriceState(
+        (lines[line.id] ?? buildLineDraft(line)).basePriceUsed,
+      ) === "pending",
   );
   const hasInvalidDraftLines = receipt.lines.some(
-    (line) => getDraftPriceState((lines[line.id] ?? buildLineDraft(line)).basePriceUsed) === "invalid",
+    (line) =>
+      getDraftPriceState(
+        (lines[line.id] ?? buildLineDraft(line)).basePriceUsed,
+      ) === "invalid",
   );
   const hasInvalidBasePriceUpdates = receipt.lines.some((line) => {
     const draft = lines[line.id] ?? buildLineDraft(line);
-    return draft.saveAsNewBasePrice
-      && !pricesMatch(line.currentBasePrice, draft.basePriceUsed)
-      && !hasAtMostTwoDecimals(draft.basePriceUsed);
+    return (
+      draft.saveAsNewBasePrice &&
+      !pricesMatch(line.currentBasePrice, draft.basePriceUsed) &&
+      !hasAtMostTwoDecimals(draft.basePriceUsed)
+    );
   });
   const canEmit =
     !receipt.hasPendingPrices &&
@@ -275,21 +308,32 @@ function DraftEditor({
   function updateLine(lineId: string, patch: Partial<LineDraft>) {
     setLines((current) => ({
       ...current,
-      [lineId]: { ...(current[lineId] ?? buildLineDraft(receipt.lines.find((line) => line.id === lineId)!)), ...patch },
+      [lineId]: {
+        ...(current[lineId] ??
+          buildLineDraft(receipt.lines.find((line) => line.id === lineId)!)),
+        ...patch,
+      },
     }));
   }
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-      {receipt.hasPendingPrices || hasPendingDraftLines || hasInvalidDraftLines || hasInvalidBasePriceUpdates ? (
+      {receipt.hasPendingPrices ||
+      hasPendingDraftLines ||
+      hasInvalidDraftLines ||
+      hasInvalidBasePriceUpdates ? (
         <Alert>
-          <AlertTitle>{hasInvalidDraftLines || hasInvalidBasePriceUpdates ? "Revisa los precios" : "Precios pendientes"}</AlertTitle>
+          <AlertTitle>
+            {hasInvalidDraftLines || hasInvalidBasePriceUpdates
+              ? "Revisa los precios"
+              : "Precios pendientes"}
+          </AlertTitle>
           <AlertDescription>
             {hasInvalidDraftLines
               ? "Cada precio escrito debe ser un número positivo válido."
               : hasInvalidBasePriceUpdates
                 ? "Un precio que se guardará como precio base debe tener como máximo dos decimales."
-              : "Puedes guardar el borrador con precios pendientes y completarlos posteriormente."}
+                : "Puedes guardar el borrador con precios pendientes y completarlos posteriormente."}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -300,19 +344,39 @@ function DraftEditor({
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-2">
             <Label>Distancia %</Label>
-            <Input name="distance_factor_percent" type="number" step="0.001" defaultValue={receipt.distanceFactorPercent} />
+            <Input
+              name="distance_factor_percent"
+              type="number"
+              step="0.001"
+              defaultValue={receipt.distanceFactorPercent}
+            />
           </div>
           <div className="space-y-2">
             <Label>Exigencia %</Label>
-            <Input name="exigency_factor_percent" type="number" step="0.001" defaultValue={receipt.exigencyFactorPercent} />
+            <Input
+              name="exigency_factor_percent"
+              type="number"
+              step="0.001"
+              defaultValue={receipt.exigencyFactorPercent}
+            />
           </div>
           <div className="space-y-2">
             <Label>Clima %</Label>
-            <Input name="weather_factor_percent" type="number" step="0.001" defaultValue={receipt.weatherFactorPercent} />
+            <Input
+              name="weather_factor_percent"
+              type="number"
+              step="0.001"
+              defaultValue={receipt.weatherFactorPercent}
+            />
           </div>
           <div className="space-y-2">
             <Label>Extraordinario %</Label>
-            <Input name="extraordinary_factor_percent" type="number" step="0.001" defaultValue={receipt.extraordinaryFactorPercent} />
+            <Input
+              name="extraordinary_factor_percent"
+              type="number"
+              step="0.001"
+              defaultValue={receipt.extraordinaryFactorPercent}
+            />
           </div>
         </div>
 
@@ -329,56 +393,106 @@ function DraftEditor({
             {receipt.lines.map((line) => {
               const draft = lines[line.id] ?? buildLineDraft(line);
               const priceState = getDraftPriceState(draft.basePriceUsed);
-              const matchesCurrentPrice = pricesMatch(line.currentBasePrice, draft.basePriceUsed);
+              const matchesCurrentPrice = pricesMatch(
+                line.currentBasePrice,
+                draft.basePriceUsed,
+              );
               const savedPriceMatchesDraft =
-                line.basePriceUsed !== null
-                && pricesMatch(line.basePriceUsed, draft.basePriceUsed);
+                line.basePriceUsed !== null &&
+                pricesMatch(line.basePriceUsed, draft.basePriceUsed);
               return (
-                <div key={line.id} className="grid gap-3 px-3 py-4 text-sm lg:grid-cols-[1.2fr_130px_150px_180px_1.4fr_120px]">
+                <div
+                  key={line.id}
+                  className="grid gap-3 px-3 py-4 text-sm lg:grid-cols-[1.2fr_130px_150px_180px_1.4fr_120px]"
+                >
                   <div className="min-w-0">
                     <p className="font-medium">{line.productName}</p>
-                    <p className="text-xs text-muted-foreground">{line.orderReference}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {line.orderReference}
+                    </p>
                   </div>
                   <p className="text-muted-foreground">
                     {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
                   </p>
                   <div className="text-xs">
-                    {line.currentBasePrice === null ? (
-                      <p className="font-medium text-amber-700">Este producto todavía no tiene precio base.</p>
+                    {line.inputMode === "amount_bs" ? (
+                      <>
+                        <p className="font-medium">
+                          {money(line.originalBasePrice ?? 0)}
+                        </p>
+                        <p className="text-muted-foreground">
+                          referencia congelada por{" "}
+                          {line.pricingUnitSymbol ?? line.baseUnitSymbol}
+                        </p>
+                      </>
+                    ) : line.currentBasePrice === null ? (
+                      <p className="font-medium text-amber-700">
+                        Este producto todavía no tiene precio base.
+                      </p>
                     ) : (
                       <>
-                        <p className="font-medium">{money(line.currentBasePrice)}</p>
-                        <p className="text-muted-foreground">por {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}</p>
+                        <p className="font-medium">
+                          {money(line.currentBasePrice)}
+                        </p>
+                        <p className="text-muted-foreground">
+                          por{" "}
+                          {line.currentBasePriceUnitSymbol ??
+                            line.baseUnitSymbol}
+                        </p>
                       </>
                     )}
                   </div>
                   <div className="space-y-1">
-                    <Input
-                      aria-label={`Precio aplicado para ${line.productName}`}
-                      type="number"
-                      min="0.0001"
-                      step="0.0001"
-                      placeholder="Ingresa el precio"
-                      value={draft.basePriceUsed}
-                      onChange={(event) => {
-                        const basePriceUsed = event.target.value;
-                        const wasValid = getDraftPriceState(draft.basePriceUsed) === "valid";
-                        const isValid = getDraftPriceState(basePriceUsed) === "valid";
-                        updateLine(line.id, {
-                          basePriceUsed,
-                          ...(isValid
-                            ? line.currentBasePrice === null && !wasValid
-                              ? { saveAsNewBasePrice: true }
-                              : {}
-                            : { saveAsNewBasePrice: false }),
-                        });
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">Bs por {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}</p>
+                    {line.inputMode === "amount_bs" ? (
+                      <div className="rounded-xl border bg-muted/35 px-3 py-2">
+                        <p className="font-medium">
+                          Pedido por Bs {money(line.requestedAmountBs ?? 0)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Importe fijo; la cantidad real solo afecta inventario.
+                        </p>
+                      </div>
+                    ) : (
+                      <Input
+                        aria-label={`Precio aplicado para ${line.productName}`}
+                        type="number"
+                        min="0.0001"
+                        step="0.0001"
+                        placeholder="Ingresa el precio"
+                        value={draft.basePriceUsed}
+                        onChange={(event) => {
+                          const basePriceUsed = event.target.value;
+                          const wasValid =
+                            getDraftPriceState(draft.basePriceUsed) === "valid";
+                          const isValid =
+                            getDraftPriceState(basePriceUsed) === "valid";
+                          updateLine(line.id, {
+                            basePriceUsed,
+                            ...(isValid
+                              ? line.currentBasePrice === null && !wasValid
+                                ? { saveAsNewBasePrice: true }
+                                : {}
+                              : { saveAsNewBasePrice: false }),
+                          });
+                        }}
+                      />
+                    )}
+                    {line.inputMode === "quantity" ? (
+                      <p className="text-xs text-muted-foreground">
+                        Bs por{" "}
+                        {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="space-y-2 text-xs">
-                    {matchesCurrentPrice ? (
-                      <p className="font-medium text-emerald-700">El precio aplicado ya coincide con el precio base.</p>
+                    {line.inputMode === "amount_bs" ? (
+                      <p className="font-medium text-emerald-700">
+                        El precio y el importe quedan conservados por snapshot.
+                      </p>
+                    ) : matchesCurrentPrice ? (
+                      <p className="font-medium text-emerald-700">
+                        El precio aplicado ya coincide con el precio base.
+                      </p>
                     ) : (
                       <>
                         <label className="flex items-start gap-2 text-muted-foreground">
@@ -386,13 +500,27 @@ function DraftEditor({
                             type="checkbox"
                             checked={draft.saveAsNewBasePrice}
                             disabled={priceState !== "valid"}
-                            onChange={(event) => updateLine(line.id, { saveAsNewBasePrice: event.target.checked })}
+                            onChange={(event) =>
+                              updateLine(line.id, {
+                                saveAsNewBasePrice: event.target.checked,
+                              })
+                            }
                             className="mt-0.5 size-4"
                           />
-                          <span>Guardar este precio como precio base para próximos pedidos.</span>
+                          <span>
+                            Guardar este precio como precio base para próximos
+                            pedidos.
+                          </span>
                         </label>
-                        {line.currentBasePrice !== null && priceState === "valid" ? (
-                          <p className={draft.saveAsNewBasePrice ? "font-medium text-amber-700" : "text-muted-foreground"}>
+                        {line.currentBasePrice !== null &&
+                        priceState === "valid" ? (
+                          <p
+                            className={
+                              draft.saveAsNewBasePrice
+                                ? "font-medium text-amber-700"
+                                : "text-muted-foreground"
+                            }
+                          >
                             {draft.saveAsNewBasePrice
                               ? `Confirmas reemplazar ${money(line.currentBasePrice)} por ${money(Number(draft.basePriceUsed))}.`
                               : "Precio excepcional: se usará solo en este recibo."}
@@ -402,13 +530,17 @@ function DraftEditor({
                     )}
                   </div>
                   <p className="font-medium">
-                    {priceState === "invalid"
-                      ? "Precio inválido"
-                      : priceState === "pending"
-                        ? "Precio pendiente"
-                        : savedPriceMatchesDraft && line.lineTotal !== null && line.lineTotal > 0
-                          ? money(line.lineTotal)
-                          : "Se calcula al guardar"}
+                    {line.inputMode === "amount_bs"
+                      ? money(line.fixedLineAmount ?? 0)
+                      : priceState === "invalid"
+                        ? "Precio inválido"
+                        : priceState === "pending"
+                          ? "Precio pendiente"
+                          : savedPriceMatchesDraft &&
+                              line.lineTotal !== null &&
+                              line.lineTotal > 0
+                            ? money(line.lineTotal)
+                            : "Se calcula al guardar"}
                   </p>
                 </div>
               );
@@ -419,15 +551,28 @@ function DraftEditor({
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Nota visible</Label>
-            <Textarea name="visible_note" defaultValue={receipt.visibleNote ?? ""} rows={2} />
+            <Textarea
+              name="visible_note"
+              defaultValue={receipt.visibleNote ?? ""}
+              rows={2}
+            />
           </div>
           <div className="space-y-2">
             <Label>Notas internas</Label>
-            <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} />
+            <Textarea
+              name="internal_notes"
+              defaultValue={receipt.internalNotes ?? ""}
+              rows={2}
+            />
           </div>
         </div>
 
-        <Button type="submit" disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates}>
+        <Button
+          type="submit"
+          disabled={
+            updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates
+          }
+        >
           <Save className="size-4" />
           {updatePending ? "Guardando..." : "Guardar borrador"}
         </Button>
@@ -443,12 +588,17 @@ function DraftEditor({
         </form>
         {!canEmit ? (
           <p className="self-center text-sm text-muted-foreground">
-            La emisión se habilitará cuando todas las líneas tengan precios válidos y el total sea positivo.
+            La emisión se habilitará cuando todas las líneas tengan precios
+            válidos y el total sea positivo.
           </p>
         ) : null}
         <form action={voidAction} className="flex flex-wrap gap-2">
           <input type="hidden" name="receipt_id" value={receipt.id} />
-          <Input name="reason" placeholder="Motivo opcional en borrador" className="h-9 w-60" />
+          <Input
+            name="reason"
+            placeholder="Motivo opcional en borrador"
+            className="h-9 w-60"
+          />
           <Button type="submit" variant="outline" disabled={voidPending}>
             <Ban className="size-4" />
             Anular
@@ -480,15 +630,22 @@ function ReceiptCard({
     <Card>
       <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <CardTitle className="font-mono text-base">{receipt.number}</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{receipt.customerName}</p>
+          <CardTitle className="font-mono text-base">
+            {receipt.number}
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {receipt.customerName}
+          </p>
           <p className="text-xs text-muted-foreground">
             {formatBoliviaDate(receipt.periodStart, "short")} -{" "}
             {formatBoliviaDate(receipt.periodEnd, "short")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className={`rounded-full ${statusClass(receipt.status)}`}>
+          <Badge
+            variant="outline"
+            className={`rounded-full ${statusClass(receipt.status)}`}
+          >
             {statusLabels[receipt.status]}
           </Badge>
           <Button asChild variant="outline" size="sm">
@@ -512,13 +669,17 @@ function ReceiptCard({
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Subtotal</p>
             <p className="text-xl font-semibold">
-              {receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.subtotalAmount)}
+              {receipt.hasPendingPrices
+                ? "Precio pendiente"
+                : money(receipt.subtotalAmount)}
             </p>
           </div>
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Total</p>
             <p className="text-xl font-semibold">
-              {receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.totalAmount)}
+              {receipt.hasPendingPrices
+                ? "Precio pendiente"
+                : money(receipt.totalAmount)}
             </p>
           </div>
         </div>
@@ -528,9 +689,15 @@ function ReceiptCard({
             <Percent className="size-3" />
             Distancia {receipt.distanceFactorPercent}%
           </span>
-          <span className="rounded-full border px-2 py-1">Exigencia {receipt.exigencyFactorPercent}%</span>
-          <span className="rounded-full border px-2 py-1">Clima {receipt.weatherFactorPercent}%</span>
-          <span className="rounded-full border px-2 py-1">Extraordinario {receipt.extraordinaryFactorPercent}%</span>
+          <span className="rounded-full border px-2 py-1">
+            Exigencia {receipt.exigencyFactorPercent}%
+          </span>
+          <span className="rounded-full border px-2 py-1">
+            Clima {receipt.weatherFactorPercent}%
+          </span>
+          <span className="rounded-full border px-2 py-1">
+            Extraordinario {receipt.extraordinaryFactorPercent}%
+          </span>
         </div>
 
         {receipt.status === "borrador" ? (
@@ -546,7 +713,12 @@ function ReceiptCard({
         ) : receipt.status === "emitido" ? (
           <form action={voidAction} className="flex flex-wrap gap-2">
             <input type="hidden" name="receipt_id" value={receipt.id} />
-            <Input name="reason" required placeholder="Motivo de anulacion" className="h-9 w-72" />
+            <Input
+              name="reason"
+              required
+              placeholder="Motivo de anulacion"
+              className="h-9 w-72"
+            />
             <Button type="submit" variant="outline" disabled={voidPending}>
               <Ban className="size-4" />
               Anular emitido
@@ -591,8 +763,12 @@ export function QbReceiptsManagement({
     voidQbReceiptAction,
     initialState,
   );
-  const draftCount = receipts.filter((receipt) => receipt.status === "borrador").length;
-  const issuedCount = receipts.filter((receipt) => receipt.status === "emitido").length;
+  const draftCount = receipts.filter(
+    (receipt) => receipt.status === "borrador",
+  ).length;
+  const issuedCount = receipts.filter(
+    (receipt) => receipt.status === "emitido",
+  ).length;
 
   return (
     <div className="space-y-5">
@@ -606,23 +782,36 @@ export function QbReceiptsManagement({
       <div className="grid gap-3 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pendientes</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pendientes
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-semibold">
-            {pendingGroups.reduce((total, group) => total + group.orders.length, 0)}
+            {pendingGroups.reduce(
+              (total, group) => total + group.orders.length,
+              0,
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Borradores</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Borradores
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{draftCount}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {draftCount}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Emitidos</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Emitidos
+            </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-semibold">{issuedCount}</CardContent>
+          <CardContent className="text-2xl font-semibold">
+            {issuedCount}
+          </CardContent>
         </Card>
       </div>
 
@@ -633,7 +822,11 @@ export function QbReceiptsManagement({
         {actionMessage(voidState)}
       </div>
 
-      <CreateReceiptPanel groups={pendingGroups} action={createAction} pending={createPending} />
+      <CreateReceiptPanel
+        groups={pendingGroups}
+        action={createAction}
+        pending={createPending}
+      />
 
       <div className="space-y-4">
         {receipts.length ? (
