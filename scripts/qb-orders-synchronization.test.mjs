@@ -23,6 +23,7 @@ const realtimeTables = [
   "qb_order_preparation_items",
   "qb_order_delivery_movements",
 ];
+const realtimeConfigurationTables = ["qb_product_unit_settings"];
 
 test("01 pedidos se recargan desde el servidor y no desde el payload Realtime", () => {
   assert.match(syncHook, /router\.refresh\(\)/);
@@ -36,9 +37,10 @@ test("02 usa la sesión normal y el cliente público del navegador", () => {
 test("03 existe un único canal con nombre estable", () => {
   assert.equal((syncHook.match(/\.channel\("qb-orders-operational-sync"\)/g) ?? []).length, 1);
 });
-test("04 observa únicamente las cinco tablas operativas", () => {
+test("04 observa las cinco tablas operativas y la configuración de producto", () => {
   for (const table of realtimeTables) assert.match(syncHook, new RegExp(`table: "${table}"`));
-  assert.equal((syncHook.match(/postgres_changes/g) ?? []).length, 5);
+  for (const table of realtimeConfigurationTables) assert.match(syncHook, new RegExp(`table: "${table}"`));
+  assert.equal((syncHook.match(/postgres_changes/g) ?? []).length, 6);
 });
 test("05 desmontar elimina el canal", () => assert.match(syncHook, /removeChannel\(channel\)/));
 test("06 eventos cercanos se agrupan con debounce", () => {
@@ -108,7 +110,7 @@ test("21 la unidad del listado prioriza la configuración QB canónica", () => {
 test("22 productos con movimientos muestran y aplican el bloqueo", () => {
   assert.match(productData, /inventory_movements/);
   assert.match(productUi, /productIdsWithMovements/);
-  assert.match(productUi, /No puedes cambiar la unidad base porque este producto ya tiene movimientos de inventario\./);
+  assert.match(productUi, /No puedes cambiar la unidad base porque este producto ya tiene[\s\S]*movimientos de inventario\./);
 });
 test("23 producto y unidades se guardan en una RPC transaccional", () => {
   assert.match(productActions, /rpc\("save_qb_product_with_units"/);
@@ -119,7 +121,7 @@ test("24 la base bloquea unidad general y unidad canónica", () => {
   assert.match(migration, /before update of base_unit_id, inventory_unit_id, base_inventory_unit_id/);
 });
 test("25 productos sin movimientos requieren confirmación para cambiar unidad", () => {
-  assert.match(productUi, /window\.confirm\("¿Confirmas el cambio de unidad base para este producto sin movimientos\?"\)/);
+  assert.match(productUi, /window\.confirm\(\s*"¿Confirmas el cambio de unidad base para este producto sin movimientos\?"/);
 });
 test("26 el SKU nuevo no hereda otro producto", () => {
   assert.match(productUi, /defaultValue=\{product\?\.sku \?\? ""\}/);
@@ -139,7 +141,7 @@ test("28 la RPC solo permite administrador y no concede ejecución a anon", () =
 test("29 las cuatro transiciones usan locks y una versión dentro de la misma transacción", () => {
   for (const operation of ["start_qb_order_preparation", "save_qb_order_preparation", "confirm_qb_order_delivery", "cancel_qb_order_before_delivery"]) {
     assert.match(migration, new RegExp(`function public\\.${operation}_versioned`));
-    assert.match(ordersActions, new RegExp(`rpc\\("${operation}_versioned"`));
+    assert.match(ordersActions, new RegExp(`rpc\\(\\s*"${operation}_versioned"`));
   }
   assert.equal((migration.match(/for update;/g) ?? []).length, 5);
   assert.equal((migration.match(/using errcode = '40001'/g) ?? []).length, 4);

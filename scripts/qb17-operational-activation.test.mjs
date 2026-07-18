@@ -43,6 +43,6 @@ test("public catalog contract never returns the internal base price", () => {
 test("price action is administrator-only and uses the guarded RPC", () => {
   const actions = read("src/lib/products/actions.ts");
   assert.match(actions, /auth\.user\.role !== "administrador"/);
-  assert.match(actions, /rpc\("update_qb_product_base_price"/);
+  assert.match(actions, /rpc\(\s*"update_qb_product_base_price"/);
   assert.match(actions, /confirm_replacement/);
 });

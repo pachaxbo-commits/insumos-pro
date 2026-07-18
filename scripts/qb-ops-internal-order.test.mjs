@@ -12,11 +12,13 @@ const [page, component, creator, actions, data, migration, sqlContract] = await 
   read("supabase/migrations/20260712092200_qb_ops_internal_order_creation.sql"),
   read("supabase/tests/qb_ops_internal_order_flow_contract.sql"),
 ]);
+const creationActions = await read("src/lib/qb-orders/creation-actions.ts");
 
 test("Nuevo pedido solo se habilita para administrador", () => {
   assert.match(page, /auth\.user\.role === "administrador"/);
-  assert.match(component, /canCreateOrder && creation/);
+  assert.match(component, /canCreateOrder \? \([\s\S]*<LazyInternalOrderCreator/);
   assert.match(actions, /auth\.user\.role !== "administrador"/);
+  assert.match(creationActions, /auth\.user\.role !== "administrador"/);
 });
 
 test("la interfaz permite cliente registrado o invitado manual", () => {

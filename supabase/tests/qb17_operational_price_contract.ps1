@@ -19,12 +19,12 @@ $checks = [ordered]@{
   "Audit captures old and new price" = $migration -match "previous_base_price" -and $migration -match "new_base_price"
   "Historical order snapshots are untouched" = $migration -notmatch "qb_order_amount_snapshots\s+(set|update|delete)"
   "Server Action is administrator-only" = $actions -match 'role !== "administrador"'
-  "Server Action calls guarded RPC" = $actions -match 'rpc\("update_qb_product_base_price"'
+  "Server Action calls guarded RPC" = $actions -match 'rpc\(\s*"update_qb_product_base_price"'
   "Replacement confirmation is required" = $actions -match "confirm_replacement"
   "UI exposes search" = $component -match "Buscar producto"
   "UI exposes category filter" = $component -match "Todas las categorías"
   "UI exposes operational price states" = $component -match "Falta precio" -and $component -match "Unidad inválida" -and $component -match "No respaldado por BS"
-  "UI explains historical price preservation" = $component -match "los recibos emitidos conservan sus importes originales"
+  "UI explains historical price preservation" = $component -match "los recibos emitidos\s+conservan sus importes originales"
   "Migration changes no stock" = $migration -notmatch "stock_current\s*="
 }
 

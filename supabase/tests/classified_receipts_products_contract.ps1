@@ -39,7 +39,7 @@ $checks = [ordered]@{
   "Classification outputs cannot be mutated directly" = $adminConfiguration -match "revoke insert, update, delete on table public.qb_product_classification_outputs"
   "Omitted outputs are deactivated without deletion" = $adminConfiguration -match "set is_active = false" -and $adminConfiguration -notmatch "delete from public.qb_product_classification_outputs"
   "Self duplicate inactive and dimension guards exist" = $adminConfiguration -match "v_output_product_id = p_source_product_id" -and $adminConfiguration -match "v_output_product_id = any\(v_output_ids\)" -and $adminConfiguration -match "product.is_active = true" -and $adminConfiguration -match "unit.dimension_id = v_source_dimension_id"
-  "Server Action uses the guarded administrative RPC" = $productActions -match 'rpc\("save_qb_product_classification_configuration"'
+  "Server Action uses the guarded administrative RPC" = $productActions -match 'rpc\(\s*"save_qb_product_classification_configuration"'
   "Ingresos derives mandatory classification server-side" = $actions -match "productResult.data.requires_classification \|\| settings.is_classifiable" -and $actions -match "requires_classification: requiresClassification"
   "Ingresos blocks missing active results" = $actions -match "Este producto requiere clasificación, pero todavía no tiene productos resultantes configurados" -and $ingresosUi -match "requiresClassification && !selectedOutputs.length"
   "Admin UI documents variable percentage and no source stock" = $classificationUi -match "distribuir el 100 %" -and $classificationUi -match "no acumula stock"

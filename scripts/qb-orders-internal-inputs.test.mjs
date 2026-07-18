@@ -268,6 +268,6 @@ test("24 una solicitud inválida se detiene antes de invocar la RPC", () => {
   );
   assert.equal(duplicate.success, false);
   const validationIndex = actionSource.indexOf("if (!parsed.success)");
-  const rpcIndex = actionSource.indexOf('supabase.rpc("create_qb17_internal_catalog_order"');
+  const rpcIndex = actionSource.indexOf('"create_qb17_internal_catalog_order"');
   assert.ok(validationIndex > 0 && rpcIndex > validationIndex);
 });

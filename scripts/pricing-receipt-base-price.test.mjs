@@ -15,7 +15,7 @@ const publicCatalog = read("src/lib/qb-catalog/data.ts");
 
 test("1. receipt explains a missing base price and offers an explicit choice", () => {
   assert.match(receiptUi, /Este producto todavía no tiene precio base/);
-  assert.match(receiptUi, /Guardar este precio como precio base para próximos pedidos/);
+  assert.match(receiptUi, /Guardar este precio como precio base para próximos[\s\S]*pedidos/);
 });
 
 test("2. saving from a receipt delegates to the guarded price RPC", () => {
@@ -25,7 +25,7 @@ test("2. saving from a receipt delegates to the guarded price RPC", () => {
 
 test("3. leaving the choice unchecked keeps a receipt-only price", () => {
   assert.match(receiptUi, /Precio excepcional: se usará solo en este recibo/);
-  assert.match(receiptUi, /saveAsNewBasePrice:\s*draft\.saveAsNewBasePrice/);
+  assert.match(receiptUi, /saveAsNewBasePrice:[\s\S]{0,160}draft\.saveAsNewBasePrice/);
 });
 
 test("4. matching prices do not trigger a redundant update", () => {

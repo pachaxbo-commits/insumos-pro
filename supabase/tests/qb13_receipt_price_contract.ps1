@@ -315,7 +315,7 @@ $securityAndPartialDraftScenarios = @(
       $update.Contains("base_price_used = v_line_price") -and
       $update.Contains("case when v_line_price is null then false else v_save_new end") -and
       $management.Contains("hasPendingDraftLines") -and
-      $management.Contains("disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates}")
+      $management -match "disabled=\{\s*updatePending \|\| hasInvalidDraftLines \|\| hasInvalidBasePriceUpdates\s*\}"
     }
   },
   @{

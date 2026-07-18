@@ -10,7 +10,9 @@ $registrationFormPath = Join-Path $root "src/components/customer-account/custome
 $loginActionPath = Join-Path $root "src/lib/auth/actions.ts"
 $loginFormPath = Join-Path $root "src/components/auth/login-form.tsx"
 $callbackPath = Join-Path $root "src/app/mi-cuenta/auth/callback/route.ts"
+$confirmationPath = Join-Path $root "src/lib/customer-registration/confirmation.ts"
 $portalPath = Join-Path $root "src/components/customer-account/customer-portal.tsx"
+$locationsManagerPath = Join-Path $root "src/components/customer-account/customer-locations-manager.tsx"
 $guestPath = Join-Path $root "src/components/catalog/guest-checkout-form.tsx"
 $cartPath = Join-Path $root "src/hooks/use-local-cart.ts"
 $sqlContractPath = Join-Path $root "supabase/tests/qb15_customer_registration_sql_contract.sql"
@@ -26,7 +28,9 @@ $registrationForm = Get-Content -LiteralPath $registrationFormPath -Raw -Encodin
 $loginAction = Get-Content -LiteralPath $loginActionPath -Raw -Encoding utf8
 $loginForm = Get-Content -LiteralPath $loginFormPath -Raw -Encoding utf8
 $callback = Get-Content -LiteralPath $callbackPath -Raw -Encoding utf8
+$confirmation = Get-Content -LiteralPath $confirmationPath -Raw -Encoding utf8
 $portal = Get-Content -LiteralPath $portalPath -Raw -Encoding utf8
+$locationsManager = Get-Content -LiteralPath $locationsManagerPath -Raw -Encoding utf8
 $guest = Get-Content -LiteralPath $guestPath -Raw -Encoding utf8
 $cart = Get-Content -LiteralPath $cartPath -Raw -Encoding utf8
 $sqlContract = Get-Content -LiteralPath $sqlContractPath -Raw -Encoding utf8
@@ -77,7 +81,8 @@ Assert-Contract "Correo repetido tiene mensaje profesional" (
 )
 Assert-Contract "Auth parcial puede completar vinculacion segura" (
   $loginAction.Contains("completeOwnCustomerAccount") -and
-  $callback.Contains("completeOwnCustomerAccount") -and
+  $callback.Contains("completeConfirmedCustomerAccount") -and
+  $confirmation.Contains("completeOwnCustomerAccount") -and
   $registrationPage.Contains("customer_accounts")
 )
 Assert-Contract "Usuario interno no puede convertirse en cliente" (
@@ -121,8 +126,9 @@ Assert-Contract "Cliente nuevo entra en Mi cuenta" (
 Assert-Contract "Historial y ubicaciones empiezan vacios" (
   -not ($migration -match 'insert\s+into\s+public\.qb_customer_locations|insert\s+into\s+public\.qb_orders') -and
   $portal.Contains("no tienes pedidos.") -and
-  $portal.Contains("no tienes ubicaciones guardadas.") -and
-  $portal.Contains("Nueva ubicacion")
+  $portal.Contains("<CustomerLocationsManager locations={locations} />") -and
+  $locationsManager.Contains("no tienes ubicaciones guardadas.") -and
+  $locationsManager -match 'Nueva ubicaci.n'
 )
 Assert-Contract "No se usa service role en registro cliente" (
   -not ($actions -match 'service_role|createSupabaseAdminClient|SUPABASE_SERVICE_ROLE_KEY') -and
@@ -168,9 +174,10 @@ Assert-Contract "Confirmacion de contrasena usa limites de 8 a 72" (
 )
 Assert-Contract "Callback conserva el retorno seguro ante error de vinculacion" (
   $callback.Contains('getSafeCustomerReturnPath(requestedNext)') -and
-  $callback.Contains('registrationUrl.searchParams.set("returnTo", next)') -and
-  $callback.Contains('registrationUrl.searchParams.set(') -and
-  $callback.Contains('"error"')
+  $callback.Contains('getLoginNoticePath("account-linking", registrationNext)') -and
+  $callback.Contains('getLoginNoticePath("email-confirmed", registrationNext)') -and
+  $callback.Contains('getLoginNoticePath("invalid-confirmation", registrationNext)') -and
+  $confirmation.Contains('new URLSearchParams({ reason, returnTo })')
 )
 Assert-Contract "Existe contrato SQL transaccional con cobertura QB-15" (
   $sqlContract.Contains("begin;") -and

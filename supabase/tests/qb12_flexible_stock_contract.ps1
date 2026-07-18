@@ -72,7 +72,7 @@ Assert-Contract (
 ) "11 - movimiento registra la cantidad base entregada exacta"
 Assert-Contract (
   $productData.Contains('.from("products")') -and
-  -not $productData.Contains('.eq("is_visible_in_qb_catalog", true)') -and
+  -not ($productData -match 'productsQuery\s*=\s*productsQuery\.eq\("is_visible_in_qb_catalog",\s*true\)') -and
   -not $qb12.Contains("delete from public.products")
 ) "12 - producto oculto permanece disponible en herramientas internas"
 

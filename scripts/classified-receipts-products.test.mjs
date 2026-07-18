@@ -121,7 +121,7 @@ test("26 cada imagen usa una ruta nueva antes de reemplazar la anterior", () => 
   assert.match(productActions, /if \(error\) \{[\s\S]*uploaded\.path[\s\S]*remove\(\[uploaded\.path\]\)/);
 });
 test("27 la configuracion administrativa usa una sola RPC atomica", () => {
-  assert.match(productActions, /rpc\("save_qb_product_classification_configuration"/);
+  assert.match(productActions, /rpc\(\s*"save_qb_product_classification_configuration"/);
   assert.doesNotMatch(productActions, /from\("qb_product_classification_outputs"\)\s*\.(insert|update|delete)/);
   assert.match(adminMigration, /create or replace function public\.save_qb_product_classification_configuration/);
 });
@@ -146,11 +146,11 @@ test("31 retirar una relacion la desactiva y no la elimina", () => {
   assert.doesNotMatch(adminMigration, /delete from public\.qb_product_classification_outputs/);
 });
 test("32 la configuracion aparece dentro de editar producto", () => {
-  assert.match(productForm, /product\.requires_classification[\s\S]*<ProductClassificationConfiguration/);
+  assert.match(productForm, /product\.requires_classification[\s\S]*<LazyProductClassificationConfiguration/);
   assert.doesNotMatch(productConfig, /ProductClassificationOutputForm/);
 });
 test("33 la interfaz explica porcentaje variable y ausencia de stock fuente", () => {
-  assert.match(classificationConfig, /distribuir el 100 % entre los productos resultantes/);
+  assert.match(classificationConfig, /distribuir el 100 %[\s\S]*productos[\s\S]*resultantes/);
   assert.match(classificationConfig, /El producto de entrada no acumula stock/);
 });
 test("34 presentaciones muestran equivalencia unitaria y total", () => {
