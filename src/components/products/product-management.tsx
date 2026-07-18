@@ -83,6 +83,7 @@ type ProductManagementProps = {
   qbProductClassificationOutputs: QbProductClassificationOutput[];
   qbParametrizationWarning?: string;
   canManage: boolean;
+  canManagePrice: boolean;
 };
 
 const initialState: ActionState = { success: false };
@@ -618,6 +619,7 @@ export function ProductManagement({
   qbProductClassificationOutputs,
   qbParametrizationWarning,
   canManage,
+  canManagePrice,
 }: ProductManagementProps) {
   const activeProducts = products.filter((product) => product.is_active).length;
   const lowStock = products.filter((product) => product.stock_status !== "ok").length;
@@ -878,6 +880,7 @@ export function ProductManagement({
         qbProductClassificationOutputs={qbProductClassificationOutputs}
         qbParametrizationWarning={qbParametrizationWarning}
         canManage={canManage}
+        canManagePrice={canManagePrice}
       />
 
       <div className="grid gap-4 xl:grid-cols-2">

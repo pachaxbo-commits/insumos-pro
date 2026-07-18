@@ -26,6 +26,7 @@ import type {
   QbUnitDimension,
 } from "@/types/products";
 import { QB_ALLOWED_UNIT_CONTEXTS } from "@/types/products";
+import { QbProductPriceManagement } from "@/components/products/qb-product-price-management";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,7 @@ type QbProductConfigPanelProps = {
   qbProductClassificationOutputs: QbProductClassificationOutput[];
   qbParametrizationWarning?: string;
   canManage: boolean;
+  canManagePrice: boolean;
 };
 
 const initialState: ActionState = { success: false };
@@ -222,17 +224,6 @@ function ProductQbSettingsForm({
               </option>
             ))}
           </NativeSelect>
-        </div>
-        <div className="space-y-2">
-          <Label>Precio base</Label>
-          <Input
-            name="base_sale_price"
-            type="number"
-            min="0"
-            step="0.01"
-            defaultValue={settings?.base_sale_price ?? ""}
-            className="rounded-xl"
-          />
         </div>
         <div className="space-y-2">
           <Label>Estado en el Catálogo</Label>
@@ -539,6 +530,7 @@ export function QbProductConfigPanel({
   qbProductClassificationOutputs,
   qbParametrizationWarning,
   canManage,
+  canManagePrice,
 }: QbProductConfigPanelProps) {
   const dimensionsById = new Map(qbUnitDimensions.map((dimension) => [dimension.id, dimension]));
   const unitsById = new Map(qbUnits.map((unit) => [unit.id, unit]));
@@ -576,6 +568,14 @@ export function QbProductConfigPanel({
           <AlertDescription>{qbParametrizationWarning}</AlertDescription>
         </Alert>
       ) : null}
+
+      <QbProductPriceManagement
+        products={products}
+        settings={qbProductUnitSettings}
+        units={qbUnits}
+        allowedUnits={qbProductAllowedUnits}
+        canManagePrice={canManagePrice && !qbParametrizationWarning}
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
@@ -704,7 +704,7 @@ export function QbProductConfigPanel({
                               <DialogHeader>
                                 <DialogTitle>Configurar producto</DialogTitle>
                                 <DialogDescription>
-                                  Define unidades, precio base y flags futuros del producto.
+                                  Define unidades y reglas operativas del producto. El precio se administra en la sección de precios.
                                 </DialogDescription>
                               </DialogHeader>
                               <ProductQbSettingsForm

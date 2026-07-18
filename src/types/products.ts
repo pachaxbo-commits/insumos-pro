@@ -98,6 +98,7 @@ export type QbProductUnitSettings = {
   base_inventory_unit_id: string | null;
   base_price_unit_id: string | null;
   base_sale_price: number | null;
+  supports_amount_bs: boolean;
   is_visible_in_qb_catalog: boolean;
   is_classifiable: boolean;
   classification_mode: QbClassificationMode;

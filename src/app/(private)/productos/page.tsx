@@ -71,6 +71,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
         qbProductClassificationOutputs={data.qbProductClassificationOutputs}
         qbParametrizationWarning={data.qbParametrizationWarning}
         canManage={canManage}
+        canManagePrice={auth.user.role === "administrador"}
       />
     </div>
   );

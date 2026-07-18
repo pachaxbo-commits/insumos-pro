@@ -46,15 +46,6 @@ const optionalPositiveNumber = z.preprocess(
   z.coerce.number().finite().positive().nullable(),
 );
 
-const optionalNonNegativeNumber = z.preprocess(
-  (value) => {
-    if (typeof value !== "string" && typeof value !== "number") return null;
-    if (typeof value === "string" && !value.trim()) return null;
-    return value;
-  },
-  z.coerce.number().finite().min(0).nullable(),
-);
-
 const optionalPercentage = z.preprocess(
   (value) => {
     if (typeof value !== "string" && typeof value !== "number") return null;
@@ -161,7 +152,6 @@ const qbProductUnitSettingsSchema = z
     product_id: z.uuid("Selecciona un producto."),
     base_inventory_unit_id: z.uuid("Selecciona la unidad base de inventario."),
     base_price_unit_id: z.uuid("Selecciona la unidad base de precio."),
-    base_sale_price: optionalNonNegativeNumber,
     is_visible_in_qb_catalog: booleanField,
     is_classifiable: booleanField,
     classification_mode: z.enum(QB_CLASSIFICATION_MODES),
@@ -178,6 +168,20 @@ const qbProductUnitSettingsSchema = z
       message: "Un producto no clasificable debe usar modo none.",
     });
   });
+
+const qbProductBasePriceSchema = z.object({
+  product_id: z.uuid("Producto invalido."),
+  expected_price: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : null),
+    z.coerce.number().finite().nonnegative().nullable(),
+  ),
+  new_price: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() ? value : null),
+    z.coerce.number().finite().positive("El precio debe ser mayor a cero.").nullable(),
+  ),
+  remove_price: booleanField,
+  confirm_replacement: z.preprocess((value) => value === "true" || value === "on", z.boolean()),
+});
 
 const qbProductPresentationSchema = z
   .object({
@@ -335,6 +339,25 @@ async function assertCanMutateProducts() {
   }
 
   return { allowed: true as const, supabase, userId: auth.user.id };
+}
+
+async function assertCanManageBasePrices() {
+  const auth = await requireAuthenticatedUser();
+
+  if (auth.user.role !== "administrador") {
+    return {
+      allowed: false as const,
+      message: "Solo un administrador puede cambiar precios base.",
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  if (!supabase) {
+    return { allowed: false as const, message: "Supabase no esta configurado." };
+  }
+
+  return { allowed: true as const, supabase };
 }
 
 function parseId(formData: FormData) {
@@ -731,9 +754,9 @@ export async function upsertQbProductUnitSettingsAction(
 
   const { data: existingRow, error: lookupError } = await access.supabase
     .from("qb_product_unit_settings")
-    .select("product_id")
+    .select("product_id, base_sale_price")
     .eq("product_id", parsed.data.product_id)
-    .maybeSingle<{ product_id: string }>();
+    .maybeSingle<{ product_id: string; base_sale_price: number | null }>();
 
   if (lookupError) return { success: false, message: lookupError.message };
 
@@ -743,7 +766,7 @@ export async function upsertQbProductUnitSettingsAction(
     inventory_unit_id: parsed.data.base_inventory_unit_id,
     base_inventory_unit_id: parsed.data.base_inventory_unit_id,
     base_price_unit_id: parsed.data.base_price_unit_id,
-    base_sale_price: parsed.data.base_sale_price,
+    base_sale_price: existingRow?.base_sale_price ?? null,
     is_visible_in_qb_catalog: parsed.data.is_visible_in_qb_catalog,
     is_classifiable: parsed.data.is_classifiable,
     classification_mode: parsed.data.is_classifiable ? parsed.data.classification_mode : "none",
@@ -767,6 +790,63 @@ export async function upsertQbProductUnitSettingsAction(
 
   revalidateQbParametrization();
   return { success: true, message: "Producto QB guardado correctamente." };
+}
+
+export async function updateQbProductBasePriceAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanManageBasePrices();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductBasePriceSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: parsed.error.issues[0]?.message ?? "Revisa el precio base.",
+    };
+  }
+
+  const input = parsed.data;
+  if (!input.remove_price && input.new_price === null) {
+    return { success: false, message: "Ingresa un precio positivo." };
+  }
+  if (
+    input.new_price !== null
+    && Math.abs(input.new_price * 100 - Math.round(input.new_price * 100)) > 0.00000001
+  ) {
+    return { success: false, message: "El precio admite como maximo dos decimales." };
+  }
+  if (input.expected_price !== null && !input.confirm_replacement) {
+    return { success: false, message: "Confirma el reemplazo del precio actual." };
+  }
+
+  const { data, error } = await access.supabase.rpc("update_qb_product_base_price", {
+    p_product_id: input.product_id,
+    p_new_price: input.remove_price ? null : input.new_price,
+    p_expected_price: input.expected_price,
+    p_remove_price: input.remove_price,
+  });
+
+  if (error) {
+    const messages: Record<string, string> = {
+      QB_PRICE_CONCURRENT_CHANGE: "El precio cambio mientras editabas. Actualiza la pagina y revisalo nuevamente.",
+      QB_PRICE_INVALID: "El precio debe ser positivo y tener como maximo dos decimales.",
+      QB_PRICE_PRODUCT_INACTIVE: "No se puede actualizar el precio de un producto inactivo.",
+      QB_PRICE_UNIT_INVALID: "La unidad de precio no es valida para este producto.",
+      QB_PRICE_ADMIN_REQUIRED: "Solo un administrador puede cambiar precios base.",
+    };
+    const code = Object.keys(messages).find((candidate) => error.message.includes(candidate));
+    return { success: false, message: code ? messages[code] : "No se pudo actualizar el precio base." };
+  }
+
+  const result = data as { status?: string } | null;
+  revalidateProducts();
+  revalidatePath("/pedidos");
+  return {
+    success: true,
+    message: result?.status === "removed" ? "Precio retirado correctamente." : "Precio actualizado correctamente.",
+  };
 }
 
 export async function createQbProductPresentationAction(
