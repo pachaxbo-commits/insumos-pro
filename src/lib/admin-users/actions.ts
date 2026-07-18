@@ -1,7 +1,7 @@
 "use server";
 
-import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import { writeAuditLog } from "@/lib/audit/log";
@@ -13,7 +13,6 @@ import { USER_ROLES, type Profile, type UserRole } from "@/types/auth";
 type ActionState = {
   success: boolean;
   message?: string;
-  temporaryPassword?: string;
 };
 
 type AdminAccess = {
@@ -40,10 +39,14 @@ const resetAccessSchema = z.object({
   id: z.string().uuid("Usuario invalido."),
 });
 
-function generateTemporaryPassword(length = 16) {
-  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*";
-  const values = randomBytes(length);
-  return Array.from(values, (value) => charset[value % charset.length]).join("");
+async function getPasswordResetRedirectUrl() {
+  const requestHeaders = await headers();
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
+  const origin = configured?.replace(/\/$/, "") ?? (host ? `${protocol}://${host}` : "http://localhost:3000");
+
+  return `${origin}/mi-cuenta/auth/callback?next=/mi-cuenta/restablecer`;
 }
 
 async function assertAdminAccess(): Promise<AdminAccess> {
@@ -145,10 +148,8 @@ export async function createUserAction(
     const { actor, adminClient } = await assertAdminAccess();
     const parsed = createUserSchema.parse(Object.fromEntries(formData));
 
-    const temporaryPassword = generateTemporaryPassword();
     const { data, error } = await adminClient.auth.admin.createUser({
       email: parsed.email,
-      password: temporaryPassword,
       email_confirm: true,
       user_metadata: { full_name: parsed.full_name },
     });
@@ -166,6 +167,16 @@ export async function createUserAction(
     if (profileError) {
       await adminClient.auth.admin.deleteUser(data.user.id);
       throw new Error(`No se pudo crear el perfil interno: ${profileError.message}`);
+    }
+
+    const { error: resetError } = await adminClient.auth.resetPasswordForEmail(
+      parsed.email,
+      { redirectTo: await getPasswordResetRedirectUrl() },
+    );
+
+    if (resetError) {
+      await adminClient.auth.admin.deleteUser(data.user.id);
+      throw new Error("No se pudo enviar el enlace de acceso. No se creo el usuario.");
     }
 
     const supabase = await createSupabaseServerClient();
@@ -187,8 +198,7 @@ export async function createUserAction(
     revalidatePath("/configuracion");
     return {
       success: true,
-      message: "Usuario creado correctamente.",
-      temporaryPassword,
+      message: "Usuario creado. Se envio un enlace para que defina su contrasena.",
     };
   } catch (error) {
     return {
@@ -274,7 +284,9 @@ export async function resetUserAccessAction(
     const supabase = await createSupabaseServerClient();
     if (!supabase) throw new Error("Faltan variables publicas de Supabase.");
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(user.email);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(user.email, {
+      redirectTo: await getPasswordResetRedirectUrl(),
+    });
     if (resetError) throw new Error(resetError.message);
 
     await writeAuditLog({

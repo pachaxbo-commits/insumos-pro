@@ -41,7 +41,6 @@ import {
 type ActionState = {
   success: boolean;
   message?: string;
-  temporaryPassword?: string;
 };
 
 type UserManagementProps = {
@@ -74,30 +73,17 @@ function NativeSelect({
 }
 
 function FormMessage({ state }: { state: ActionState }) {
-  if (!state.message && !state.temporaryPassword) return null;
+  if (!state.message) return null;
 
   return (
-    <div className="space-y-2">
-      {state.message ? (
-        <p
-          className={cn(
-            "rounded-xl px-3 py-2 text-sm",
-            state.success ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
-          )}
-        >
-          {state.message}
-        </p>
-      ) : null}
-      {state.temporaryPassword ? (
-        <Alert className="rounded-xl border-amber-200 bg-amber-50">
-          <ShieldCheck className="size-4" />
-          <AlertTitle>Contraseña temporal</AlertTitle>
-          <AlertDescription className="break-all font-mono text-sm text-amber-900">
-            {state.temporaryPassword}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-    </div>
+    <p
+      className={cn(
+        "rounded-xl px-3 py-2 text-sm",
+        state.success ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
+      )}
+    >
+      {state.message}
+    </p>
   );
 }
 
@@ -165,7 +151,7 @@ function CreateUserForm({ disabled }: { disabled: boolean }) {
       <DialogFooter>
         <Button type="submit" disabled={disabled || pending} className="rounded-xl">
           <UserPlus className="size-4" />
-          {pending ? "Creando..." : "Crear usuario"}
+          {pending ? "Enviando..." : "Invitar usuario"}
         </Button>
       </DialogFooter>
     </form>
@@ -283,14 +269,14 @@ export function UserManagement({
             <DialogTrigger asChild>
               <Button disabled={!serviceRoleConfigured} className="rounded-xl">
                 <UserPlus className="size-4" />
-                Nuevo usuario
+                Invitar usuario
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Crear usuario</DialogTitle>
+                <DialogTitle>Invitar usuario</DialogTitle>
                 <DialogDescription>
-                  Se creara en Supabase Auth desde el servidor y luego se asignara su perfil.
+                  Se creará el perfil y la persona recibirá un enlace para definir su propia contraseña.
                 </DialogDescription>
               </DialogHeader>
               <CreateUserForm disabled={!serviceRoleConfigured} />
