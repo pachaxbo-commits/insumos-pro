@@ -64,7 +64,9 @@ const productSchema = z.object({
     name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
     sku: optionalText,
     category_id: z.uuid("Selecciona una categoria."),
-    unit_id: z.uuid("Selecciona una unidad."),
+    base_unit_id: z.uuid("Selecciona la unidad base."),
+    inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
+    price_unit_id: z.uuid("Selecciona la unidad de precio."),
     stock_min: z.coerce
       .number()
       .finite("El stock minimo debe ser valido.")
@@ -98,6 +100,16 @@ const productSchema = z.object({
 
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+const PRODUCT_UNIT_MOVEMENTS_MESSAGE =
+  "No puedes cambiar la unidad base porque este producto ya tiene movimientos de inventario.";
+
+function productMutationError(message: string) {
+  if (message.includes(PRODUCT_UNIT_MOVEMENTS_MESSAGE)) {
+    return PRODUCT_UNIT_MOVEMENTS_MESSAGE;
+  }
+
+  return "No se pudo guardar el producto. Revisa los datos e inténtalo nuevamente.";
+}
 
 function detectProductImage(bytes: Uint8Array) {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
@@ -448,29 +460,31 @@ export async function createProductAction(
     return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
   }
 
-  const { data, error } = await access.supabase
-    .from("products")
-    .insert({ ...parsed.data, id: productId, image_url: uploaded.publicUrl, stock_current: 0, purchase_price: 0, sale_price: 0 })
-    .select("id")
-    .single<{ id: string }>();
+  const { error } = await access.supabase.rpc("save_qb_product_with_units", {
+    p_product_id: productId,
+    p_create: true,
+    p_name: parsed.data.name,
+    p_sku: parsed.data.sku,
+    p_category_id: parsed.data.category_id,
+    p_base_unit_id: parsed.data.base_unit_id,
+    p_inventory_unit_id: parsed.data.inventory_unit_id,
+    p_price_unit_id: parsed.data.price_unit_id,
+    p_stock_min: parsed.data.stock_min,
+    p_supplier_name: parsed.data.supplier_name,
+    p_image_url: uploaded.publicUrl,
+    p_requires_classification: parsed.data.requires_classification,
+    p_is_sellable: parsed.data.is_sellable,
+    p_catalog_description: parsed.data.catalog_description,
+    p_catalog_sort_order: parsed.data.catalog_sort_order,
+    p_catalog_min_quantity: parsed.data.catalog_min_quantity,
+    p_catalog_quantity_step: parsed.data.catalog_quantity_step,
+    p_is_active: parsed.data.is_active,
+  });
 
   if (error) {
     if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
-    return { success: false, message: error.message };
+    return { success: false, message: productMutationError(error.message) };
   }
-
-  await writeAuditLog({
-    supabase: access.supabase,
-    userId: access.userId,
-    action: "create_product",
-    entityType: "product",
-    entityId: data?.id,
-    metadata: {
-      name: parsed.data.name,
-      sku: parsed.data.sku,
-      is_sellable: parsed.data.is_sellable,
-    },
-  });
 
   revalidateProducts();
   return { success: true, message: "Producto creado correctamente." };
@@ -516,33 +530,36 @@ export async function updateProductAction(
     return { success: false, message: error instanceof Error ? error.message : "No se pudo validar la fotografía." };
   }
 
-  const { error } = await access.supabase
-    .from("products")
-    .update({ ...parsed.data, image_url: uploaded.publicUrl ?? existingImageUrl })
-    .eq("id", id);
+  const { error } = await access.supabase.rpc("save_qb_product_with_units", {
+    p_product_id: id,
+    p_create: false,
+    p_name: parsed.data.name,
+    p_sku: parsed.data.sku,
+    p_category_id: parsed.data.category_id,
+    p_base_unit_id: parsed.data.base_unit_id,
+    p_inventory_unit_id: parsed.data.inventory_unit_id,
+    p_price_unit_id: parsed.data.price_unit_id,
+    p_stock_min: parsed.data.stock_min,
+    p_supplier_name: parsed.data.supplier_name,
+    p_image_url: uploaded.publicUrl ?? existingImageUrl,
+    p_requires_classification: parsed.data.requires_classification,
+    p_is_sellable: parsed.data.is_sellable,
+    p_catalog_description: parsed.data.catalog_description,
+    p_catalog_sort_order: parsed.data.catalog_sort_order,
+    p_catalog_min_quantity: parsed.data.catalog_min_quantity,
+    p_catalog_quantity_step: parsed.data.catalog_quantity_step,
+    p_is_active: parsed.data.is_active,
+  });
 
   if (error) {
     if (uploaded.path) await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([uploaded.path]);
-    return { success: false, message: error.message };
+    return { success: false, message: productMutationError(error.message) };
   }
 
   const previousPath = productImagePath(existingImageUrl);
   if (uploaded.path && previousPath && previousPath !== uploaded.path) {
     await access.supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([previousPath]);
   }
-
-  await writeAuditLog({
-    supabase: access.supabase,
-    userId: access.userId,
-    action: "update_product",
-    entityType: "product",
-    entityId: id,
-    metadata: {
-      name: parsed.data.name,
-      sku: parsed.data.sku,
-      is_sellable: parsed.data.is_sellable,
-    },
-  });
 
   revalidateProducts();
   return { success: true, message: "Producto actualizado correctamente." };

@@ -37,6 +37,7 @@ export type ProductsCatalogData = {
   products: ProductWithRelations[];
   categories: ProductCategory[];
   units: UnitOfMeasure[];
+  productIdsWithMovements: string[];
   error?: string;
 } & QbParametrizationData;
 
@@ -162,6 +163,7 @@ export async function getProductsCatalogData(
       products: [],
       categories: [],
       units: [],
+      productIdsWithMovements: [],
       ...getEmptyQbParametrizationData(),
       error: "No pudimos cargar los productos en este momento. Comunícate con el administrador de QB Insumos.",
     };
@@ -211,6 +213,7 @@ export async function getProductsCatalogData(
       products: [],
       categories: [],
       units: [],
+      productIdsWithMovements: [],
       ...getEmptyQbParametrizationData(),
       error: "No pudimos cargar el Catálogo en este momento. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.",
     };
@@ -220,6 +223,10 @@ export async function getProductsCatalogData(
     ? await loadQbParametrizationData(supabase)
     : getEmptyQbParametrizationData();
   const rows = (productsResult.data ?? []) as unknown as ProductQueryRow[];
+  const productIds = rows.map((product) => product.id);
+  const movementProductsResult = productIds.length
+    ? await supabase.from("inventory_movements").select("product_id").in("product_id", productIds)
+    : { data: [] as Array<{ product_id: string }>, error: null };
 
   const products = rows.map((product) => ({
     ...product,
@@ -241,6 +248,9 @@ export async function getProductsCatalogData(
   return {
     categories: (categoriesResult.data ?? []) as ProductCategory[],
     units: (unitsResult.data ?? []) as UnitOfMeasure[],
+    productIdsWithMovements: movementProductsResult.error
+      ? []
+      : [...new Set(((movementProductsResult.data ?? []) as Array<{ product_id: string }>).map((row) => row.product_id))],
     ...qbParametrizationData,
     products:
       filters.stock === "low"

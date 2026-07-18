@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ChangeEventHandler, ReactNode } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import {
@@ -74,6 +74,7 @@ type ProductManagementProps = {
   products: ProductWithRelations[];
   categories: ProductCategory[];
   units: UnitOfMeasure[];
+  productIdsWithMovements: string[];
   filters: ProductFilters;
   qbUnitDimensions: QbUnitDimension[];
   qbUnits: QbUnit[];
@@ -156,17 +157,23 @@ function NativeSelect({
   defaultValue,
   children,
   disabled,
+  onChange,
+  originalValue,
 }: {
-  name: string;
+  name?: string;
   defaultValue?: string;
   children: ReactNode;
   disabled?: boolean;
+  onChange?: ChangeEventHandler<HTMLSelectElement>;
+  originalValue?: string;
 }) {
   return (
     <select
       name={name}
       defaultValue={defaultValue}
       disabled={disabled}
+      onChange={onChange}
+      data-original-value={originalValue}
       className="flex h-10 w-full rounded-xl border border-input bg-white/70 px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {children}
@@ -177,12 +184,16 @@ function NativeSelect({
 function ProductForm({
   product,
   categories,
-  units,
+  qbUnits,
+  qbSettings,
+  unitLocked = false,
   mode,
 }: {
   product?: ProductWithRelations;
   categories: ProductCategory[];
-  units: UnitOfMeasure[];
+  qbUnits: QbUnit[];
+  qbSettings?: QbProductUnitSettings;
+  unitLocked?: boolean;
   mode: "create" | "edit";
 }) {
   const [state, formAction, pending] = useActionState(
@@ -190,6 +201,26 @@ function ProductForm({
     initialState,
   );
   useActionToast(state);
+  const baseUnitId = qbSettings?.base_unit_id ?? "";
+  const inventoryUnitId =
+    qbSettings?.base_inventory_unit_id ?? qbSettings?.inventory_unit_id ?? baseUnitId;
+  const priceUnitId = qbSettings?.base_price_unit_id ?? baseUnitId;
+  const configuredUnitIds = new Set([baseUnitId, inventoryUnitId, priceUnitId]);
+  const availableQbUnits = qbUnits.filter(
+    (unit) => unit.is_active || configuredUnitIds.has(unit.id),
+  );
+
+  const confirmUnitChange: ChangeEventHandler<HTMLSelectElement> = (event) => {
+    const originalValue = event.currentTarget.dataset.originalValue ?? "";
+    if (
+      mode === "edit"
+      && originalValue
+      && event.currentTarget.value !== originalValue
+      && !window.confirm("¿Confirmas el cambio de unidad base para este producto sin movimientos?")
+    ) {
+      event.currentTarget.value = originalValue;
+    }
+  };
 
   return (
     <form action={formAction} encType="multipart/form-data" className="space-y-4">
@@ -256,17 +287,62 @@ function ProductForm({
           </NativeSelect>
         </div>
 
-        <div className="space-y-2">
-          <Label>Unidad</Label>
-          <NativeSelect name="unit_id" defaultValue={product?.unit_id ?? ""}>
+        <div className="space-y-2 md:col-span-2">
+          <Label>Unidad base</Label>
+          {unitLocked ? <input type="hidden" name="base_unit_id" value={baseUnitId} /> : null}
+          <NativeSelect
+            name={unitLocked ? undefined : "base_unit_id"}
+            defaultValue={baseUnitId}
+            disabled={unitLocked}
+            onChange={confirmUnitChange}
+            originalValue={baseUnitId}
+          >
             <option value="">Seleccionar</option>
-            {units
-              .filter((unit) => unit.is_active || unit.id === product?.unit_id)
-              .map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name} ({unit.abbreviation})
-                </option>
-              ))}
+            {availableQbUnits.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name} ({unit.symbol})
+              </option>
+            ))}
+          </NativeSelect>
+          {unitLocked ? (
+            <p className="text-xs font-medium text-amber-700">
+              No puedes cambiar la unidad base porque este producto ya tiene movimientos de inventario.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              La unidad es obligatoria. Las unidades de inventario, precio y pedido se administran en la configuración operativa.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Unidad de inventario</Label>
+          {unitLocked ? <input type="hidden" name="inventory_unit_id" value={inventoryUnitId} /> : null}
+          <NativeSelect
+            name={unitLocked ? undefined : "inventory_unit_id"}
+            defaultValue={inventoryUnitId}
+            disabled={unitLocked}
+            onChange={confirmUnitChange}
+            originalValue={inventoryUnitId}
+          >
+            <option value="">Seleccionar</option>
+            {availableQbUnits.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name} ({unit.symbol})
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Unidad de precio</Label>
+          <NativeSelect name="price_unit_id" defaultValue={priceUnitId}>
+            <option value="">Seleccionar</option>
+            {availableQbUnits.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name} ({unit.symbol})
+              </option>
+            ))}
           </NativeSelect>
         </div>
 
@@ -580,6 +656,7 @@ export function ProductManagement({
   products,
   categories,
   units,
+  productIdsWithMovements,
   filters,
   qbUnitDimensions,
   qbUnits,
@@ -604,6 +681,21 @@ export function ProductManagement({
   const qbConfiguredProductIds = new Set(
     qbProductUnitSettings.map((settings) => settings.product_id),
   );
+  const productsWithMovements = new Set(productIdsWithMovements);
+  const qbUnitsById = new Map(qbUnits.map((unit) => [unit.id, unit]));
+  const qbSettingsByProduct = new Map(
+    qbProductUnitSettings.map((settings) => [settings.product_id, settings]),
+  );
+  const effectiveUnit = (product: ProductWithRelations) => {
+    const settings = qbSettingsByProduct.get(product.id);
+    const unitId =
+      settings?.base_inventory_unit_id ?? settings?.inventory_unit_id ?? settings?.base_unit_id;
+    return (
+      (unitId ? qbUnitsById.get(unitId)?.symbol : null) ??
+      product.unit?.abbreviation ??
+      "Sin configurar"
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -653,7 +745,7 @@ export function ProductManagement({
                         Registra un producto base sin movimientos de inventario.
                       </DialogDescription>
                     </DialogHeader>
-                    <ProductForm mode="create" categories={categories} units={units} />
+                    <ProductForm mode="create" categories={categories} qbUnits={qbUnits} />
                   </DialogContent>
                 </Dialog>
               ) : (
@@ -738,7 +830,7 @@ export function ProductManagement({
                       </div>
                     </TableCell>
                     <TableCell>{product.category?.name ?? "Sin categoria"}</TableCell>
-                    <TableCell>{product.unit?.abbreviation ?? "N/D"}</TableCell>
+                    <TableCell>{effectiveUnit(product)}</TableCell>
                     <TableCell className="text-right">
                       {formatNumber(product.stock_current)}
                     </TableCell>
@@ -814,7 +906,9 @@ export function ProductManagement({
                                   mode="edit"
                                   product={product}
                                   categories={categories}
-                                  units={units}
+                                  qbUnits={qbUnits}
+                                  qbSettings={qbSettingsByProduct.get(product.id)}
+                                  unitLocked={productsWithMovements.has(product.id)}
                                 />
                               </DialogContent>
                             </Dialog>

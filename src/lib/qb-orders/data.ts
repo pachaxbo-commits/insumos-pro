@@ -20,6 +20,7 @@ type OrderRow = {
   public_reference: string;
   status: QbOrderStatus;
   submitted_at: string;
+  updated_at: string;
   customer_notes: string | null;
   customer_snapshot: Record<string, unknown> | null;
   location_snapshot: Record<string, unknown> | null;
@@ -262,7 +263,7 @@ export async function getQbInternalOrdersData(
 
   const { data: ordersData, error } = await supabase
     .from("qb_orders")
-    .select("id, public_reference, status, submitted_at, customer_notes, customer_snapshot, location_snapshot, delivered_at")
+    .select("id, public_reference, status, submitted_at, updated_at, customer_notes, customer_snapshot, location_snapshot, delivered_at")
     .order("submitted_at", { ascending: false })
     .limit(80);
 
@@ -373,6 +374,7 @@ export async function getQbInternalOrdersData(
       reference: order.public_reference,
       status: order.status,
       submittedAt: order.submitted_at,
+      updatedAt: order.updated_at,
       customerName: snapshotText(order.customer_snapshot, "full_name") ?? "Cliente",
       customerEmail: snapshotText(order.customer_snapshot, "email") ?? "Sin correo",
       customerPhone: snapshotText(order.customer_snapshot, "phone"),

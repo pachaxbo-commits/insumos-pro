@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Ban,
   CheckCircle2,
@@ -8,9 +8,12 @@ import {
   MapPin,
   PackageCheck,
   Play,
+  RefreshCw,
   Send,
   Truck,
   UserRound,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +31,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { InternalOrderCreator } from "@/components/qb-orders/internal-order-creator";
+import {
+  useQbOrdersSynchronization,
+  type QbOrdersSyncStatus,
+} from "@/components/qb-orders/use-qb-orders-synchronization";
 import {
   cancelQbOrderBeforeDeliveryAction,
   confirmQbOrderDeliveryAction,
@@ -152,15 +159,20 @@ function PreparationEditor({
   order,
   action,
   pending,
+  synchronizationBlocked,
+  onDirtyChange,
 }: {
   order: QbInternalOrder;
   action: (formData: FormData) => void;
   pending: boolean;
+  synchronizationBlocked: boolean;
+  onDirtyChange: (orderId: string, dirty: boolean) => void;
 }) {
   const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
     Object.fromEntries(order.items.map((item) => [item.id, buildInitialLine(item)])),
   );
   const [markPrepared, setMarkPrepared] = useState(true);
+  useEffect(() => () => onDirtyChange(order.id, false), [onDirtyChange, order.id]);
   const itemsPayload = useMemo(
     () =>
       JSON.stringify(
@@ -179,6 +191,7 @@ function PreparationEditor({
   );
 
   function updateLine(itemId: string, patch: Partial<LineDraft>) {
+    onDirtyChange(order.id, true);
     setLines((current) => ({
       ...current,
       [itemId]: { ...(current[itemId] ?? buildInitialLine(order.items.find((item) => item.id === itemId)!)), ...patch },
@@ -188,6 +201,7 @@ function PreparationEditor({
   return (
     <form action={action} className="rounded-lg border bg-muted/20 p-3">
       <input type="hidden" name="order_id" value={order.id} />
+      <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
       <input type="hidden" name="items" value={itemsPayload} />
       <input type="hidden" name="mark_prepared" value={markPrepared ? "true" : "false"} />
 
@@ -200,7 +214,10 @@ function PreparationEditor({
           <input
             type="checkbox"
             checked={markPrepared}
-            onChange={(event) => setMarkPrepared(event.target.checked)}
+            onChange={(event) => {
+              onDirtyChange(order.id, true);
+              setMarkPrepared(event.target.checked);
+            }}
             className="size-4"
           />
           Marcar preparado
@@ -295,11 +312,18 @@ function PreparationEditor({
           id={`notes-${order.id}`}
           name="internal_notes"
           defaultValue={order.preparation?.internalNotes ?? ""}
+          onChange={() => onDirtyChange(order.id, true)}
           rows={2}
         />
       </div>
 
-      <Button type="submit" disabled={pending} className="mt-3">
+      {synchronizationBlocked ? (
+        <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+          El pedido cambió en otro dispositivo. Actualiza la vista antes de guardar esta preparación.
+        </p>
+      ) : null}
+
+      <Button type="submit" disabled={pending || synchronizationBlocked} className="mt-3">
         <CheckCircle2 className="size-4" />
         {pending ? "Guardando..." : markPrepared ? "Guardar como preparado" : "Guardar preparacion"}
       </Button>
@@ -317,6 +341,9 @@ function OrderCard({
   deliveryPending,
   cancelAction,
   cancelPending,
+  synchronizationBlocked,
+  editorResetToken,
+  onDirtyChange,
 }: {
   order: QbInternalOrder;
   startAction: (formData: FormData) => void;
@@ -327,6 +354,9 @@ function OrderCard({
   deliveryPending: boolean;
   cancelAction: (formData: FormData) => void;
   cancelPending: boolean;
+  synchronizationBlocked: boolean;
+  editorResetToken: number;
+  onDirtyChange: (orderId: string, dirty: boolean) => void;
 }) {
   const [negativeStockConfirmed, setNegativeStockConfirmed] = useState(false);
   const canPrepare = order.status === "pendiente_preparacion";
@@ -415,7 +445,8 @@ function OrderCard({
         {canPrepare ? (
           <form action={startAction}>
             <input type="hidden" name="order_id" value={order.id} />
-            <Button type="submit" disabled={startPending}>
+            <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
+            <Button type="submit" disabled={startPending || synchronizationBlocked}>
               <Play className="size-4" />
               {startPending ? "Iniciando..." : "Iniciar preparacion"}
             </Button>
@@ -424,10 +455,12 @@ function OrderCard({
 
         {canEditPreparation ? (
           <PreparationEditor
-            key={`${order.id}-${order.status}-${order.preparation?.preparedAt ?? "draft"}`}
+            key={`${order.id}-${order.status}-${order.preparation?.preparedAt ?? "draft"}-${editorResetToken}`}
             order={order}
             action={saveAction}
             pending={savePending}
+            synchronizationBlocked={synchronizationBlocked}
+            onDirtyChange={onDirtyChange}
           />
         ) : null}
 
@@ -456,9 +489,10 @@ function OrderCard({
           {canDeliver ? (
             <form action={deliveryAction}>
               <input type="hidden" name="order_id" value={order.id} />
+              <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
               <Button
                 type="submit"
-                disabled={deliveryPending || (willLeaveNegativeStock && !negativeStockConfirmed)}
+                disabled={deliveryPending || synchronizationBlocked || (willLeaveNegativeStock && !negativeStockConfirmed)}
               >
                 <Truck className="size-4" />
                 {deliveryPending ? "Entregando..." : "Confirmar entrega"}
@@ -469,13 +503,14 @@ function OrderCard({
           {canCancel ? (
             <form action={cancelAction} className="flex flex-wrap gap-2">
               <input type="hidden" name="order_id" value={order.id} />
+              <input type="hidden" name="expected_updated_at" value={order.updatedAt} />
               <Input
                 name="reason"
                 placeholder="Motivo opcional"
                 className="h-9 w-56"
                 maxLength={500}
               />
-              <Button type="submit" variant="outline" disabled={cancelPending}>
+              <Button type="submit" variant="outline" disabled={cancelPending || synchronizationBlocked}>
                 <Ban className="size-4" />
                 Cancelar
               </Button>
@@ -484,6 +519,54 @@ function OrderCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+const syncStatusLabels: Record<QbOrdersSyncStatus, string> = {
+  connecting: "Conectando",
+  live: "Sincronización activa",
+  polling: "Actualización periódica activa",
+  offline: "Sin conexión",
+  stale: "Cambios remotos pendientes",
+};
+
+function SynchronizationStatus({
+  status,
+  lastUpdatedAt,
+  isRefreshing,
+  onRefresh,
+}: {
+  status: QbOrdersSyncStatus;
+  lastUpdatedAt: number;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 5_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+  const elapsedSeconds = Math.max(0, Math.floor((now - lastUpdatedAt) / 1_000));
+  const updatedLabel = elapsedSeconds < 10
+    ? "Actualizado hace unos segundos"
+    : `Actualizado hace ${elapsedSeconds} segundos`;
+  const online = status !== "offline";
+  const freshnessLabel = online ? updatedLabel : "Los datos visibles pueden estar desactualizados";
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-white/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2 text-sm">
+        {online ? <Wifi className="size-4 text-emerald-700" /> : <WifiOff className="size-4 text-amber-700" />}
+        <div>
+          <p className="font-medium">{syncStatusLabels[status]}</p>
+          <p className="text-xs text-muted-foreground">{freshnessLabel}</p>
+        </div>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
+        <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
+        {isRefreshing ? "Actualizando..." : "Actualizar"}
+      </Button>
+    </div>
   );
 }
 
@@ -514,6 +597,42 @@ export function QbOrdersManagement({
     cancelQbOrderBeforeDeliveryAction,
     initialState,
   );
+  const [dirtyOrderIds, setDirtyOrderIds] = useState<Set<string>>(() => new Set());
+  const [editorResetToken, setEditorResetToken] = useState(0);
+  const mutationPending = startPending || savePending || deliveryPending || cancelPending;
+  const synchronization = useQbOrdersSynchronization({
+    hasUnsavedChanges: dirtyOrderIds.size > 0,
+    mutationPending,
+  });
+  const markSynchronizationConflict = synchronization.markConflict;
+  const handleDirtyChange = useCallback((orderId: string, dirty: boolean) => {
+    setDirtyOrderIds((current) => {
+      const next = new Set(current);
+      if (dirty) next.add(orderId);
+      else next.delete(orderId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const actionStates = [startState, saveState, deliveryState, cancelState];
+    if (actionStates.some((state) => state.refreshRequired)) {
+      markSynchronizationConflict();
+    }
+  }, [cancelState, deliveryState, markSynchronizationConflict, saveState, startState]);
+
+  useEffect(() => {
+    if (!saveState.success || !saveState.orderId) return;
+    const savedOrderId = saveState.orderId;
+    const timerId = window.setTimeout(() => {
+      setDirtyOrderIds((current) => {
+        const next = new Set(current);
+        next.delete(savedOrderId);
+        return next;
+      });
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [saveState]);
   const pendingOrders = orders.filter((order) => order.status === "pendiente_preparacion");
   const preparingOrders = orders.filter((order) => order.status === "en_preparacion");
   const preparedOrders = orders.filter((order) => order.status === "preparado");
@@ -525,6 +644,43 @@ export function QbOrdersManagement({
         <Alert variant="destructive">
           <AlertTitle>No se pudieron cargar los pedidos</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <SynchronizationStatus
+        status={synchronization.status}
+        lastUpdatedAt={synchronization.lastUpdatedAt}
+        isRefreshing={synchronization.isRefreshing}
+        onRefresh={() => synchronization.refreshManually()}
+      />
+
+      {synchronization.status === "offline" ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertTitle>Sin conexión</AlertTitle>
+          <AlertDescription>
+            Conservamos los pedidos visibles, pero no podemos afirmar que estén actualizados. La vista se actualizará al recuperar la conexión.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {synchronization.remoteChangePending ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertTitle>El pedido cambió en otro dispositivo</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>Conservamos tus entradas sin guardar. Para evitar un conflicto, descártalas y carga el estado vigente antes de confirmar.</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDirtyOrderIds(new Set());
+                setEditorResetToken((current) => current + 1);
+                synchronization.discardAndRefresh();
+              }}
+            >
+              Descartar cambios y actualizar
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : null}
 
@@ -584,6 +740,9 @@ export function QbOrdersManagement({
               deliveryPending={deliveryPending}
               cancelAction={cancelAction}
               cancelPending={cancelPending}
+              synchronizationBlocked={synchronization.remoteChangePending}
+              editorResetToken={editorResetToken}
+              onDirtyChange={handleDirtyChange}
             />
           ))}
         </div>

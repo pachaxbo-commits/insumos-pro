@@ -56,6 +56,7 @@ export type QbInternalOrder = {
   reference: string;
   status: QbOrderStatus;
   submittedAt: string;
+  updatedAt: string;
   customerName: string;
   customerEmail: string;
   customerPhone: string | null;
@@ -99,4 +100,5 @@ export type QbOrderActionState = {
   message?: string;
   reference?: string;
   orderId?: string;
+  refreshRequired?: boolean;
 };

@@ -61,6 +61,7 @@ export default async function ProductosPage({ searchParams }: ProductosPageProps
         products={data.products}
         categories={data.categories}
         units={data.units}
+        productIdsWithMovements={data.productIdsWithMovements}
         filters={filters}
         qbUnitDimensions={data.qbUnitDimensions}
         qbUnits={data.qbUnits}

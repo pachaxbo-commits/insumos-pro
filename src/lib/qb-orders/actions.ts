@@ -8,9 +8,14 @@ import { parseInternalOrderFormData } from "@/lib/qb-orders/internal-order-input
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { QbOrderActionState } from "@/types/qb-orders";
 
-const actionState = (success: boolean, message: string): QbOrderActionState => ({
+const actionState = (
+  success: boolean,
+  message: string,
+  refreshRequired = false,
+): QbOrderActionState => ({
   success,
   message,
+  refreshRequired,
 });
 
 const uuidSchema = z.string().uuid();
@@ -25,6 +30,7 @@ const preparationLineSchema = z.object({
 
 const savePreparationSchema = z.object({
   orderId: z.string().uuid(),
+  expectedUpdatedAt: z.string().trim().min(1),
   internalNotes: z.string().max(1200).optional().default(""),
   markPrepared: z.coerce.boolean().optional().default(true),
   items: z.array(preparationLineSchema).min(1),
@@ -43,6 +49,39 @@ function errorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function orderMutationErrorState(error: unknown, fallback: string) {
+  const message = errorMessage(error, fallback);
+  const normalized = message.toLocaleLowerCase("es");
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  const conflictSignals = [
+    "ya fue",
+    "ya tiene",
+    "solo se puede",
+    "solo se pueden",
+    "no puede entrar",
+    "no se puede editar",
+    "no encontrado",
+    "no preparada",
+  ];
+
+  if (
+    code === "40001"
+    || normalized.includes("cambió en otro dispositivo")
+    || conflictSignals.some((signal) => normalized.includes(signal))
+  ) {
+    return actionState(
+      false,
+      "El pedido cambió en otro dispositivo. Actualiza la vista antes de continuar.",
+      true,
+    );
+  }
+
+  return actionState(false, message);
 }
 
 function internalOrderRpcErrorMessage(error: unknown) {
@@ -187,12 +226,13 @@ export async function startQbOrderPreparationAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { error } = await supabase.rpc("start_qb_order_preparation", {
+  const { error } = await supabase.rpc("start_qb_order_preparation_versioned", {
     p_order_id: orderId.data,
+    p_expected_updated_at: formData.get("expected_updated_at"),
   });
 
   if (error) {
-    return actionState(false, errorMessage(error, "No se pudo iniciar la preparacion QB."));
+    return orderMutationErrorState(error, "No se pudo iniciar la preparación QB.");
   }
 
   revalidatePath("/pedidos");
@@ -214,6 +254,7 @@ export async function saveQbOrderPreparationAction(
 
   const parsed = savePreparationSchema.safeParse({
     orderId: formData.get("order_id"),
+    expectedUpdatedAt: formData.get("expected_updated_at"),
     internalNotes: formData.get("internal_notes"),
     markPrepared: formData.get("mark_prepared") !== "false",
     items,
@@ -226,8 +267,9 @@ export async function saveQbOrderPreparationAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { error } = await supabase.rpc("save_qb_order_preparation", {
+  const { error } = await supabase.rpc("save_qb_order_preparation_versioned", {
     p_order_id: parsed.data.orderId,
+    p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_items: parsed.data.items.map((item) => ({
       order_item_id: item.orderItemId,
       status: item.status,
@@ -240,11 +282,17 @@ export async function saveQbOrderPreparationAction(
   });
 
   if (error) {
-    return actionState(false, errorMessage(error, "No se pudo guardar la preparacion QB."));
+    return {
+      ...orderMutationErrorState(error, "No se pudo guardar la preparación QB."),
+      orderId: parsed.data.orderId,
+    };
   }
 
   revalidatePath("/pedidos");
-  return actionState(true, parsed.data.markPrepared ? "Pedido QB preparado." : "Preparacion QB guardada.");
+  return {
+    ...actionState(true, parsed.data.markPrepared ? "Pedido QB preparado." : "Preparacion QB guardada."),
+    orderId: parsed.data.orderId,
+  };
 }
 
 export async function confirmQbOrderDeliveryAction(
@@ -259,12 +307,13 @@ export async function confirmQbOrderDeliveryAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { error } = await supabase.rpc("confirm_qb_order_delivery", {
+  const { error } = await supabase.rpc("confirm_qb_order_delivery_versioned", {
     p_order_id: orderId.data,
+    p_expected_updated_at: formData.get("expected_updated_at"),
   });
 
   if (error) {
-    return actionState(false, errorMessage(error, "No se pudo confirmar la entrega QB."));
+    return orderMutationErrorState(error, "No se pudo confirmar la entrega QB.");
   }
 
   revalidatePath("/pedidos");
@@ -287,13 +336,14 @@ export async function cancelQbOrderBeforeDeliveryAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { error } = await supabase.rpc("cancel_qb_order_before_delivery", {
+  const { error } = await supabase.rpc("cancel_qb_order_before_delivery_versioned", {
     p_order_id: orderId.data,
+    p_expected_updated_at: formData.get("expected_updated_at"),
     p_reason: reason.data,
   });
 
   if (error) {
-    return actionState(false, errorMessage(error, "No se pudo cancelar el pedido QB."));
+    return orderMutationErrorState(error, "No se pudo cancelar el pedido QB.");
   }
 
   revalidatePath("/pedidos");
