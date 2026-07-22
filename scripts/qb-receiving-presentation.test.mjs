@@ -60,6 +60,14 @@ test("one load converts to 112.5 kg and 0/60/40 conserves the total", () => {
   assert.equal(quantities.reduce((sum, quantity) => sum + quantity, 0), total);
 });
 
+test("ten loads convert to 1125 kg and 20/30/50 conserves the total", () => {
+  const total = 10 * presentation.conversion_factor_to_base;
+  const quantities = [20, 30, 50].map((percentage) => total * percentage / 100);
+  assert.equal(total, 1125);
+  assert.deepEqual(quantities, [225, 337.5, 562.5]);
+  assert.equal(quantities.reduce((sum, quantity) => sum + quantity, 0), total);
+});
+
 test("migration syncs only reception from allow_purchase without duplicating presentations", () => {
   const migration = readFileSync(
     "supabase/migrations/20260718173000_qb_receiving_presentation_sync.sql",
@@ -76,10 +84,18 @@ test("UI explains loading empty and error states and refreshes ingresos", () => 
   const loading = readFileSync("src/app/(private)/ingresos/loading.tsx", "utf8");
   const actions = readFileSync("src/lib/products/actions.ts", "utf8");
   const ingresoActions = readFileSync("src/lib/qb-ingresos/actions.ts", "utf8");
-  assert.match(component, /Este producto no tiene una presentación de recepción activa\./);
-  assert.match(component, /No pudimos cargar las presentaciones\. Intenta nuevamente\./);
+  assert.match(component, /Cargando unidades y presentaciones…/);
+  assert.match(component, /Este producto no tiene unidades o presentaciones activas permitidas para recepción\./);
+  assert.match(component, /No pudimos cargar las opciones de recepción\. Intenta nuevamente\./);
   assert.match(loading, /Cargando presentaciones…/);
-  assert.match(component, /presentation\.name} —/);
+  assert.match(component, /presentation\.name} — 1/);
+  assert.match(component, /Código, factura o referencia para identificar este ingreso\./);
+  assert.match(component, /Proveedor, feria o lugar de origen\. Campo informativo; no genera cuentas por pagar\./);
+  assert.match(component, /Costo por la unidad o presentación seleccionada\. Opcional\./);
+  assert.match(component, /disabled=\{!canManage \|\| receptionOptionsLoading \|\| !selectedAllowedUnit\}/);
+  assert.match(component, /if \(!state\.success\) return;[\s\S]*?formRef\.current\?\.reset\(\)/);
+  assert.match(component, /startReceptionOptionsTransition\(\(\) => \{[\s\S]*?productId,/);
+  assert.match(component, /pending[\s\S]*?Crear borrador/);
   assert.match(actions, /revalidatePath\("\/ingresos"\)/);
   assert.match(ingresoActions, /conversion_factor_to_base, allow_purchase, is_active/);
   assert.match(ingresoActions, /!presentationResult\.data\.allow_purchase/);

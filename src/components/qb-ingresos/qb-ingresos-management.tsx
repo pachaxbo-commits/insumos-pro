@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, ReactNode } from "react";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -133,7 +133,7 @@ function allowedUnitLabel(
       ? unitsById.get(presentation.base_unit_id)
       : undefined;
     if (!presentation) return "N/D";
-    return `${presentation.name} — ${formatNumber(
+    return `${presentation.name} — 1 ${presentation.symbol.toLocaleLowerCase("es")} = ${formatNumber(
       presentation.conversion_factor_to_base,
     )} ${baseUnit?.symbol ?? ""}`.trim();
   }
@@ -169,6 +169,7 @@ function CreateReceiptForm({
     initialState,
   );
   useActionToast(state);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const settingsByProductId = useMemo(
     () => new Map(qbProductUnitSettings.map((settings) => [settings.product_id, settings])),
@@ -183,7 +184,10 @@ function CreateReceiptForm({
     const settings = settingsByProductId.get(product.id);
     return product.is_active && settings?.is_qb_active;
   });
-  const [selectedProductId, setSelectedProductId] = useState(activeQbProducts[0]?.id ?? "");
+  const initialProductId = activeQbProducts[0]?.id ?? "";
+  const [selectedProductId, setSelectedProductId] = useState(initialProductId);
+  const [receptionOptionsProductId, setReceptionOptionsProductId] = useState(initialProductId);
+  const [receptionOptionsLoading, startReceptionOptionsTransition] = useTransition();
   const [selectedAllowedUnitId, setSelectedAllowedUnitId] = useState(() =>
     getActiveReceptionSources({
       productId: activeQbProducts[0]?.id ?? "",
@@ -195,12 +199,14 @@ function CreateReceiptForm({
   const [sourceQuantity, setSourceQuantity] = useState("");
   const selectedSettings = settingsByProductId.get(selectedProductId);
   const selectedProduct = activeQbProducts.find((product) => product.id === selectedProductId);
-  const receptionUnits = getActiveReceptionSources({
-    productId: selectedProductId,
-    allowedUnits: qbProductAllowedUnits,
-    presentations: qbProductPresentations,
-    units: qbUnits,
-  });
+  const receptionUnits = receptionOptionsLoading
+    ? []
+    : getActiveReceptionSources({
+        productId: receptionOptionsProductId,
+        allowedUnits: qbProductAllowedUnits,
+        presentations: qbProductPresentations,
+        units: qbUnits,
+      });
   const selectedOutputs = qbProductClassificationOutputs
     .filter(
       (output) =>
@@ -235,18 +241,46 @@ function CreateReceiptForm({
   const calculatedBaseQuantity = Number(sourceQuantity) > 0
     ? Number(sourceQuantity) * conversionFactor
     : 0;
+  const sourceQuantityNumber = Number(sourceQuantity);
+  const sourceQuantityValid = sourceQuantity.trim() !== ""
+    && Number.isFinite(sourceQuantityNumber)
+    && sourceQuantityNumber > 0;
+  const missingFields = [
+    !selectedProductId ? "producto" : null,
+    receptionOptionsLoading ? "unidades y presentaciones" : null,
+    !receptionOptionsLoading && !selectedAllowedUnit ? "unidad o presentación" : null,
+    !sourceQuantityValid ? "cantidad positiva" : null,
+    requiresClassification && !selectedOutputs.length ? "productos resultantes" : null,
+  ].filter((field): field is string => Boolean(field));
+
+  useEffect(() => {
+    if (!state.success) return;
+    const frame = window.requestAnimationFrame(() => {
+      formRef.current?.reset();
+      setSelectedProductId("");
+      setReceptionOptionsProductId("");
+      setSelectedAllowedUnitId("");
+      setSourceQuantity("");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [state]);
 
   function selectProduct(productId: string) {
     setSelectedProductId(productId);
-    setSelectedAllowedUnitId(
-      getActiveReceptionSources({
-        productId,
-        allowedUnits: qbProductAllowedUnits,
-        presentations: qbProductPresentations,
-        units: qbUnits,
-      })[0]?.id ?? "",
-    );
+    setSelectedAllowedUnitId("");
     setSourceQuantity("");
+    startReceptionOptionsTransition(() => {
+      setReceptionOptionsProductId(productId);
+      setSelectedAllowedUnitId(
+        getActiveReceptionSources({
+          productId,
+          allowedUnits: qbProductAllowedUnits,
+          presentations: qbProductPresentations,
+          units: qbUnits,
+        })[0]?.id ?? "",
+      );
+    });
   }
 
   return (
@@ -258,7 +292,7 @@ function CreateReceiptForm({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="space-y-4">
+        <form ref={formRef} action={formAction} className="space-y-4">
           <FormMessage state={state} />
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
@@ -280,6 +314,9 @@ function CreateReceiptForm({
                 className="rounded-xl"
                 disabled={!canManage}
               />
+              <p className="text-xs text-muted-foreground">
+                Código, factura o referencia para identificar este ingreso.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Producto recibido</Label>
@@ -304,7 +341,7 @@ function CreateReceiptForm({
                 name="allowed_unit_id"
                 value={selectedAllowedUnitId}
                 onChange={(event) => setSelectedAllowedUnitId(event.target.value)}
-                disabled={!canManage || !receptionUnits.length}
+                disabled={!canManage || receptionOptionsLoading || !receptionUnits.length}
               >
                 <option value="">Seleccionar</option>
                 {receptionUnits.map((allowedUnit) => (
@@ -313,13 +350,17 @@ function CreateReceiptForm({
                   </option>
                 ))}
               </NativeSelect>
-              {presentationLoadError ? (
+              {receptionOptionsLoading ? (
+                <p className="text-sm text-muted-foreground" role="status">
+                  Cargando unidades y presentaciones…
+                </p>
+              ) : presentationLoadError ? (
                 <p className="text-sm text-rose-700" role="alert">
-                  No pudimos cargar las presentaciones. Intenta nuevamente.
+                  No pudimos cargar las opciones de recepción. Intenta nuevamente.
                 </p>
               ) : selectedProductId && !receptionUnits.length ? (
                 <p className="text-sm text-amber-700" role="status">
-                  Este producto no tiene una presentación de recepción activa.
+                  Este producto no tiene unidades o presentaciones activas permitidas para recepción.
                 </p>
               ) : null}
             </div>
@@ -334,7 +375,7 @@ function CreateReceiptForm({
                 onChange={(event) => setSourceQuantity(event.target.value)}
                 required
                 className="rounded-xl"
-                disabled={!canManage}
+                disabled={!canManage || receptionOptionsLoading || !selectedAllowedUnit}
               />
             </div>
             <div className="space-y-2">
@@ -348,6 +389,9 @@ function CreateReceiptForm({
                 className="rounded-xl"
                 disabled={!canManage}
               />
+              <p className="text-xs text-muted-foreground">
+                Costo por la unidad o presentación seleccionada. Opcional.
+              </p>
             </div>
             <input
               type="hidden"
@@ -362,6 +406,9 @@ function CreateReceiptForm({
                 className="rounded-xl"
                 disabled={!canManage}
               />
+              <p className="text-xs text-muted-foreground">
+                Proveedor, feria o lugar de origen. Campo informativo; no genera cuentas por pagar.
+              </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Notas</Label>
@@ -415,8 +462,8 @@ function CreateReceiptForm({
               pending
               || !canManage
               || !selectedProductId
-              || !selectedAllowedUnitId
-              || !sourceQuantity
+              || !selectedAllowedUnit
+              || !sourceQuantityValid
               || (requiresClassification && !selectedOutputs.length)
             }
             className="rounded-xl"
@@ -424,6 +471,11 @@ function CreateReceiptForm({
             <Save className="size-4" />
             {pending ? "Guardando..." : "Crear borrador"}
           </Button>
+          {!pending && missingFields.length ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Para crear el borrador falta: {missingFields.join(", ")}.
+            </p>
+          ) : null}
         </form>
       </CardContent>
     </Card>

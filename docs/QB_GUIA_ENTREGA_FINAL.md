@@ -59,6 +59,12 @@ confirmar. Al confirmar, el producto fuente no recibe stock; solo los resultados
 válidos generan movimientos. Las relaciones de clasificación solo las cambia
 un administrador desde Productos.
 
+Para **PAPA HOLANDESA**, seleccionar `Carga` y comprobar antes de crear el
+borrador que la interfaz muestra `1 carga = 112,5 kg`. En la prueba de una carga,
+0/60/40 debe producir 0 kg, 67,5 kg y 45 kg. En la prueba de diez cargas,
+20/30/50 debe producir 225 kg, 337,5 kg y 562,5 kg. En ambos casos el total debe
+conservarse exactamente y el producto fuente no debe acumular stock.
+
 ## Stock provisional e inventario de apertura
 
 El piloto opera con control estricto desactivado hasta que los saldos sean
