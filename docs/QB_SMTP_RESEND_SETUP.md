@@ -1,109 +1,99 @@
-# QB Insumos — SMTP con Resend
+# QB Insumos — configuración SMTP de Production
 
-Esta guía configura manualmente el correo transaccional de Supabase Auth para
-QB Insumos. No copie la credencial SMTP en el repositorio, Vercel, capturas,
-chats ni tickets.
+Esta configuración se realiza manualmente en Supabase Auth. No guardar host
+privado, usuario, contraseña, token o API key en el repositorio, Vercel,
+capturas, chats o tickets.
 
-## Valores operativos
+## Estado comprobable sin secretos
 
-| Campo | Valor |
-| --- | --- |
-| Proyecto Supabase | `qb-insumos-staging-v2` (`tekfwbhvqtojpfqusosg`) |
-| Dominio verificado en Resend | `mail.pachax.net` |
-| Host SMTP | `smtp.resend.com` |
-| Puerto recomendado | `465` |
-| Cifrado | SSL/TLS implícito (SMTPS) |
-| Usuario | `resend` |
-| Contraseña | Introducir manualmente una API key de Resend; no compartirla |
-| Remitente recomendado | `no-reply@mail.pachax.net` |
-| Nombre del remitente | `QB Insumos` |
+- Proyecto autorizado: `tekfwbhvqtojpfqusosg`.
+- Site URL requerida: `https://qb-insumos.vercel.app`.
+- Redirect permitido por el código:
+  `https://qb-insumos.vercel.app/mi-cuenta/auth/callback`.
+- La API pública de Auth informa correo habilitado, registro habilitado y
+  autoconfirmación desactivada.
+
+| Campo | Valor público |
+|---|---|
 | Site URL | `https://qb-insumos.vercel.app` |
+| Redirect permitido | `https://qb-insumos.vercel.app/mi-cuenta/auth/callback` |
+- La API pública no demuestra qué proveedor SMTP está activo ni que un correo
+  haya sido entregado. Eso permanece pendiente de verificación manual.
 
-Resend también admite STARTTLS en el puerto `587`. Para esta configuración se
-recomienda `465` con SSL/TLS implícito, que evita una conexión inicial sin cifrar.
-La dirección remitente debe pertenecer al dominio verificado; si Resend tiene
-autorizada una dirección distinta bajo `mail.pachax.net`, use esa dirección.
+## Elegir proveedor
 
-## Configuración manual
+Usar un proveedor transaccional con dominio verificado, métricas de entrega y
+soporte para SMTP cifrado. Resend, Postmark, SendGrid, Mailgun y Amazon SES son
+opciones posibles; la elección depende del dominio, volumen, soporte y política
+del cliente. No se confirma ninguno como configurado desde este repositorio.
 
-1. Ingrese a Resend y confirme que `mail.pachax.net` figure como verificado.
-2. Cree una API key exclusiva para SMTP de QB Insumos o seleccione una credencial
-   vigente. Cópiela directamente al formulario de Supabase y no la guarde en un
-   archivo local.
-3. Abra Supabase Dashboard y compruebe visualmente que el proyecto sea
-   `qb-insumos-staging-v2`, ref `tekfwbhvqtojpfqusosg`.
-4. Abra **Authentication → SMTP Settings** (Custom SMTP), habilite SMTP
-   personalizado y complete los valores de la tabla anterior.
-5. En **Authentication → URL Configuration**, establezca exactamente:
+Solicitar al proveedor, sin copiar secretos a documentación:
+
+- host SMTP;
+- puerto y modo de cifrado (`465` con TLS implícito o `587` con STARTTLS);
+- usuario SMTP;
+- contraseña o token SMTP;
+- dirección remitente verificada;
+- nombre del remitente, recomendado `QB Insumos`;
+- dominio autorizado y estado de SPF/DKIM;
+- política DMARC cuando corresponda;
+- límites de envío y rate limits.
+
+## Configuración exacta en Supabase
+
+1. Verificar visualmente la ref `tekfwbhvqtojpfqusosg`.
+2. En el proveedor, confirmar dominio y remitente; revisar SPF, DKIM y DMARC.
+3. Abrir **Authentication → SMTP Settings** y habilitar Custom SMTP.
+4. Introducir directamente host, puerto, usuario y secreto proporcionados.
+5. Seleccionar el cifrado compatible con el puerto.
+6. Definir el nombre del remitente como `QB Insumos` y una dirección verificada.
+7. En **Authentication → URL Configuration**, establecer:
    - Site URL: `https://qb-insumos.vercel.app`
-   - Redirect URL requerida por el código actual:
-     `https://qb-insumos.vercel.app/mi-cuenta/auth/callback`
-6. No agregue localhost, deployments antiguos, comodines de producción ni URLs
-   de otros proyectos. Las rutas `/mi-cuenta/auth/confirm` y
-   `/mi-cuenta/restablecer` son rutas internas de la aplicación; la primera se
-   construye desde `SiteURL` en las plantillas y no necesita añadirse como un
-   `redirectTo` adicional.
-7. Guarde los cambios sin copiar la contraseña SMTP a ningún registro de trabajo.
+   - Redirect URL: `https://qb-insumos.vercel.app/mi-cuenta/auth/callback`
+8. No añadir localhost, previews, comodines ni dominios anteriores a Production.
+9. Guardar y revisar los logs sin copiar destinatarios, tokens ni contenido.
 
-## Plantilla: confirmar registro
+## Plantilla de recuperación
 
-Asunto recomendado: `Confirma tu cuenta de QB Insumos`
-
-```html
-<h2>Confirma tu cuenta de QB Insumos</h2>
-<p>Para completar tu registro, confirma tu correo mediante el siguiente botón.</p>
-<p><a href="{{ .SiteURL }}/mi-cuenta/auth/confirm?token_hash={{ .TokenHash }}&type=email&redirect_to={{ .RedirectTo }}">Confirmar mi cuenta</a></p>
-<p>Este enlace es temporal. Si no solicitaste esta cuenta, ignora este correo.</p>
-<p>Si necesitas ayuda, comunícate con el administrador de QB Insumos.</p>
-```
-
-## Plantilla: recuperar contraseña
-
-Asunto recomendado: `Restablece tu contraseña de QB Insumos`
+Asunto sugerido: `Restablece tu contraseña de QB Insumos`
 
 ```html
 <h2>Restablece tu contraseña de QB Insumos</h2>
 <p>Recibimos una solicitud para cambiar la contraseña de tu cuenta.</p>
 <p><a href="{{ .SiteURL }}/mi-cuenta/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Crear una nueva contraseña</a></p>
-<p>Este enlace es temporal y solo puede utilizarse una vez. Si no solicitaste el cambio, ignora este correo.</p>
-<p>Si necesitas ayuda, comunícate con el administrador de QB Insumos.</p>
+<p>El enlace es temporal y solo puede utilizarse una vez. Si no solicitaste el cambio, ignora este correo.</p>
 ```
 
-Esta plantilla usa `token_hash`; por ello funciona aunque el correo se abra en
-otro navegador o dispositivo. El callback anterior con `code` se conserva solo
-para enlaces emitidos antes del cambio.
+El enlace debe usar HTTPS y comenzar exactamente con
+`https://qb-insumos.vercel.app/`.
 
-## Cambio de correo
+## Prueba manual obligatoria
 
-QB Insumos no ofrece actualmente una acción de interfaz para cambiar el correo.
-No habilite ni pruebe ese flujo como parte de esta puesta en marcha. Si se adopta
-después, debe diseñarse y probarse por separado, manteniendo la verificación de
-ambas direcciones y mensajes no enumerativos.
+1. Usar una cuenta controlada, nunca una contraseña del cliente.
+2. Solicitar recuperación desde `/mi-cuenta/recuperar`.
+3. Confirmar que el mensaje de pantalla sea neutral.
+4. Verificar entrega en bandeja y revisar Spam.
+5. Confirmar remitente, dominio, HTTPS y destino `qb-insumos.vercel.app`.
+6. Abrir el enlace, cambiar la contraseña y comprobar retorno a `/login`.
+7. Iniciar sesión con la nueva contraseña.
+8. Reutilizar el enlace y confirmar rechazo.
+9. Probar un enlace realmente vencido y confirmar rechazo.
+10. Repetir solicitudes hasta el límite acordado, sin abuso, y comprobar el
+    comportamiento de rate limiting en Supabase y en el proveedor.
 
-## Prueba manual después de configurar SMTP
+## Checklist SMTP
 
-1. Use una dirección QA autorizada y realice un registro desde `/registro`.
-2. Confirme que el mensaje aparece en Resend sin revelar su contenido en logs.
-3. Abra el enlace de confirmación en otro navegador y confirme el acceso.
-4. Cierre sesión y solicite recuperación desde `/mi-cuenta/recuperar`.
-5. Compruebe que la respuesta sea neutral, exista o no la cuenta.
-6. Abra el enlace en otro navegador, establezca una contraseña nueva y confirme
-   que vuelve a `/login` con el aviso de éxito.
-7. Compruebe que un segundo uso del enlace muestre que venció o ya fue utilizado
-   y permita solicitar uno nuevo.
-
-## Solución de problemas
-
-- **No llega el correo:** revise Auth Logs de Supabase y el registro de envíos de
-  Resend, sin copiar destinatarios ni contenido sensible. Compruebe límites de
-  envío y carpeta de spam.
-- **Dominio o remitente rechazado:** confirme la verificación de
-  `mail.pachax.net`, DKIM/SPF/DMARC y que el remitente pertenezca a ese dominio.
-- **Redirect incorrecto:** confirme Site URL y la URL exacta del callback; no use
-  localhost ni una URL de preview en producción.
-- **Token vencido o usado:** solicite un enlace nuevo. No intente reutilizarlo ni
-  modificar el token.
-- **Enlaces alterados:** desactive el tracking de enlaces del proveedor para los
-  correos de autenticación.
-- **Límite de envío:** ajuste los límites de Auth solo a un valor operativo
-  razonable y revise también los límites de Resend.
+- [ ] Dominio autorizado por el cliente.
+- [ ] Remitente verificado.
+- [ ] SPF aprobado.
+- [ ] DKIM aprobado.
+- [ ] DMARC revisado cuando corresponda.
+- [ ] Cifrado y puerto confirmados.
+- [ ] Site URL exacta.
+- [ ] Redirect URL exacta.
+- [ ] Plantilla con `token_hash` y `type=recovery`.
+- [ ] Enlace HTTPS dirigido a `qb-insumos.vercel.app`.
+- [ ] Entrega y Spam comprobados.
+- [ ] Token usado y vencido rechazados.
+- [ ] Login posterior aprobado.
+- [ ] Rate limits revisados.

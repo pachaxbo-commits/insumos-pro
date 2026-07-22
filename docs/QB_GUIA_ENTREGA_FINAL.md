@@ -1,130 +1,181 @@
 # QB Insumos — guía final de entrega y activación
 
-Esta es la guía operativa canónica para `https://qb-insumos.vercel.app`. El
-proyecto autorizado de Supabase es únicamente `tekfwbhvqtojpfqusosg`. No se
-debe usar ningún proyecto anterior ni ejecutar `SUPABASE_SCHEMA.sql`.
+Documento operativo canónico para [Production](https://qb-insumos.vercel.app).
+El único proyecto Supabase autorizado es `tekfwbhvqtojpfqusosg`. No usar
+proyectos anteriores ni ejecutar `SUPABASE_SCHEMA.sql`.
+
+## Convenciones de seguridad
+
+- **Cotidiano:** operación normal después de la capacitación.
+- **Configuración inicial:** se completa una vez con información aprobada.
+- **Solo administrador:** cambia catálogo, seguridad o configuración global.
+- **Inventario:** operación física de pedidos, ingresos y existencias.
+- **Peligroso:** requiere respaldo, revisión y autorización expresa; puede
+  afectar acceso o saldos. No se ejecuta durante una demostración.
 
 ## Acceso y roles
 
-- **Administrador:** catálogo maestro, productos, unidades, presentaciones,
-  fotografías, precios, modalidad por Bs, pedidos internos, ingresos,
-  clasificación, recibos, usuarios, auditoría, activación operativa y control
-  de stock.
-- **Inventario:** consulta productos y reportes; gestiona ingresos,
-  clasificación, checklist de preparación, guardado parcial, cantidades reales
-  y entrega. No puede cambiar precios, relaciones de clasificación, usuarios ni
-  configuración administrativa.
-- **Cliente registrado:** Catálogo, Mi cuenta, ubicaciones, pedido y repetición
-  de pedidos propios. No tiene acceso a módulos internos.
-- **Invitado/visitante:** Catálogo y checkout invitado. Las rutas privadas
-  requieren inicio de sesión y rol interno activo.
+El personal usa `/login`. Cada persona debe tener su propia cuenta.
 
-El personal inicia sesión en `/login`. Los clientes pueden iniciar sesión o
-registrarse desde Catálogo/Mi cuenta. No se comparten cuentas entre personas.
+| Rol | Acceso permitido | Acceso denegado relevante |
+| --- | --- | --- |
+| Administrador | Inicio, Productos, Parametrización, Configuración, precios, fotografías, Pedidos, Ingresos, Inventario, Recibos, clasificación, usuarios y control de stock | Ningún módulo interno fuera de las restricciones del servidor |
+| Inventario | Inicio, Pedidos y checklist, cantidades reales, preparación, entrega, Ingresos e Inventario | Productos, Parametrización, Configuración, precios, modalidad Bs, roles, relaciones de clasificación, Recibos y control estricto |
+| Cliente registrado | Catálogo, Mi cuenta, ubicaciones, pedidos propios y repetir pedido | Toda ruta interna |
+| Invitado | Catálogo y checkout invitado | Cuenta y rutas internas |
+| Anónimo | Catálogo y login | Datos internos y escrituras administrativas |
 
-## Productos, unidades, fotografías y precios
+Los guards de ruta, Server Actions, RLS y RPC vuelven a validar permisos. Ocultar
+un enlace en la navegación no sustituye esas validaciones.
 
-1. En **Productos**, el administrador crea o edita el producto.
-2. Configura unidad base, unidad de inventario y unidad de precio.
-3. Habilita las unidades o presentaciones válidas por contexto.
-4. Sube una fotografía real en formato admitido y comprueba la miniatura.
-5. Registra un precio base positivo y decide si el producto será visible y
-   vendible. Los costos internos no forman parte del catálogo público.
-6. La modalidad **Por Bs** se habilita solo cuando el producto, las unidades y
-   el precio cumplen el contrato físico. El importe solicitado queda como
-   referencia fija; inventario siempre usa la cantidad real.
+## Productos, unidades, presentaciones, fotografías y precios
 
-## Pedidos, preparación, entrega y recibos
+**Configuración inicial — solo administrador:** abrir **Productos** y crear o
+editar el producto. Configurar unidad base, unidad de inventario y unidad de
+precio; después habilitar unidades o presentaciones por contexto.
 
-Los pedidos pueden originarse en el Catálogo, como invitado o cliente, o desde
-**Pedidos → Nuevo pedido** por un administrador. Crear un pedido no modifica
-stock.
+Una presentación representa un empaque real, por ejemplo Caja, Saco o Carga, y
+debe tener una equivalencia aprobada hacia la unidad base. No duplicar una
+presentación para habilitarla en otro contexto.
 
-1. Inventario abre el pedido e inicia la preparación.
-2. Marca el checklist, registra la cantidad física real y guarda avances.
-3. Confirma la preparación cuando todas las líneas estén revisadas.
-4. Confirma la entrega una sola vez. Allí se crea el movimiento de salida con
-   la cantidad real; los reintentos no deben descontar de nuevo.
-5. En **Recibos**, el administrador agrupa pedidos entregados, resuelve precios
-   pendientes, revisa la versión para cliente y emite el recibo.
+Subir únicamente fotografías JPEG, PNG o WebP reales. El precio base debe ser
+positivo y corresponder a su unidad. Habilitar **Por Bs** solo cuando producto,
+precio y conversiones estén revisados. Los costos internos y el precio base no
+se exponen en el catálogo público.
 
-El recibo no es factura fiscal ni registra pagos, caja o cuentas por cobrar.
+## Pedidos físicos y por Bs
 
-## Ingresos y recepción clasificada
+**Cotidiano:** el cliente registrado o invitado crea pedidos desde Catálogo. Un
+administrador también puede usar **Pedidos → Nuevo pedido**. Crear o preparar un
+pedido no modifica stock.
 
-En **Ingresos**, administrador e inventario registran la mercadería recibida
-con una unidad o presentación configurada. Si el producto exige clasificación,
-el borrador debe distribuir el 100 % entre resultados válidos antes de
-confirmar. Al confirmar, el producto fuente no recibe stock; solo los resultados
-válidos generan movimientos. Las relaciones de clasificación solo las cambia
-un administrador desde Productos.
+- Pedido físico: conserva cantidad y unidad solicitadas.
+- Pedido por Bs: conserva el importe exacto y una cantidad física estimada.
+- Inventario registra la cantidad realmente preparada.
+- La entrega descuenta únicamente la cantidad real.
+- Un producto sin modalidad Bs rechaza un payload manipulado en el servidor.
 
-Para **PAPA HOLANDESA**, seleccionar `Carga` y comprobar antes de crear el
-borrador que la interfaz muestra `1 carga = 112,5 kg`. En la prueba de una carga,
-0/60/40 debe producir 0 kg, 67,5 kg y 45 kg. En la prueba de diez cargas,
-20/30/50 debe producir 225 kg, 337,5 kg y 562,5 kg. En ambos casos el total debe
-conservarse exactamente y el producto fuente no debe acumular stock.
+## Preparación, entrega y recibos
 
-## Stock provisional e inventario de apertura
+**Inventario:** abrir el pedido, iniciar la preparación, completar checklist y
+cantidades reales, guardar avances y confirmar preparación. Confirmar entrega
+una sola vez; los reintentos no deben duplicar movimientos.
 
-El piloto opera con control estricto desactivado hasta que los saldos sean
-confiables. En ese modo una entrega puede producir saldo negativo, pero siempre
-deja movimiento y trazabilidad.
+**Solo administrador:** en **Recibos**, agrupar pedidos entregados, resolver
+precios pendientes, revisar la versión para cliente y emitir. El importe de un
+pedido por Bs permanece fijo. El recibo no es factura fiscal ni registra pagos,
+caja o cuentas por cobrar.
 
-Para el inventario de apertura:
+## Ingresos directos y recepción clasificada
 
-1. Contar el stock físico y acordar una única fecha de corte.
-2. Descargar la plantilla desde **Configuración → Activación operativa**.
-3. Completar solo `initial_quantity` y `cutoff_date`; no editar IDs, nombres,
-   unidades ni saldo informativo.
-4. Subir el CSV y revisar toda la vista previa. No se escribe nada en esta fase.
-5. Aplicar solo con cantidades aprobadas y la confirmación `APLICAR`.
-6. Verificar el Ingreso de apertura, snapshots, movimientos y saldos.
-7. Corregir diferencias mediante un nuevo movimiento/ingreso trazable con
-   motivo explícito; nunca editar `stock_current` directamente.
-8. Resolver negativos y recién después activar el control estricto con la
-   confirmación administrativa solicitada.
+**Administrador e Inventario:** en **Ingresos**, seleccionar producto, unidad o
+presentación y cantidad positiva. Referencia, origen, costo y notas son
+informativos u opcionales según se indica en pantalla. El botón muestra los
+campos faltantes, bloquea doble envío y limpia el formulario solo después de un
+éxito confirmado.
 
-El flujo conserva fecha de corte, unidad base, conversión, hash del archivo,
-actor y movimientos. Funciona mientras el control estricto está desactivado.
+Un ingreso directo incrementa únicamente el producto recibido. Si el producto
+requiere clasificación, el borrador debe distribuir exactamente 100 % entre
+resultados activos. Se permite 0 %; no se permite merma en este contrato. Al
+confirmar, el producto fuente no recibe stock y la cantidad total se conserva a
+seis decimales.
 
-## Usuarios reales y recuperación de contraseña
+## PAPA HOLANDESA
 
-El primer administrador se crea desde Supabase Dashboard mediante invitación y
-se vincula una sola vez a un perfil interno `administrador`, siguiendo el
-procedimiento de bootstrap revisado. Los siguientes usuarios se crean desde
-**Configuración → Invitar usuario**. La aplicación no genera ni muestra
-contraseñas temporales: cada persona recibe un enlace y define su propia clave.
+**Demostración, no confirmar sin mercadería real:** seleccionar **PAPA
+HOLANDESA**, luego `Carga — 1 carga = 112,5 kg` e ingresar una carga. Crear el
+borrador y distribuir Pequeña 0 %, Mediana 60 % y Grande 40 %. La vista previa
+debe mostrar 0 kg, 67,5 kg y 45 kg, total 112,5 kg.
 
-Para recuperar acceso, usar `/mi-cuenta/recuperar`. La respuesta es neutral y no
-revela si el correo existe. El enlace conduce a
-`/mi-cuenta/restablecer`, vence y no debe poder reutilizarse. Al cambiar la
-contraseña, la sesión de recuperación se cierra y el usuario vuelve a `/login`.
+La configuración prevista es fuente no vendible/no publicada, base kg,
+clasificación porcentual variable, una Carga de 10 arrobas, 11,25 kg por arroba,
+sin merma y sin stock en la fuente. Las relaciones Grande, Mediana y Pequeña se
+administran únicamente desde Productos.
 
-La configuración externa exacta de SMTP, remitente, Site URL, Redirect URL y
-plantillas está en [QB_SMTP_RESEND_SETUP.md](QB_SMTP_RESEND_SETUP.md). Nunca
-copiar credenciales SMTP a documentos, capturas, chats o tickets.
+## Stock provisional
 
-## Activación definitiva
+El piloto opera con control estricto desactivado. Las entregas registran
+movimientos y pueden producir saldo negativo; esos saldos deben regularizarse
+antes de la activación definitiva.
 
-Antes de operar en modo definitivo:
+## Inventario de apertura
 
-1. Confirmar backup recuperable y responsables de salida.
-2. Aprobar catálogo, unidades, conversiones, fotografías y precios reales.
-3. Completar y conciliar inventario de apertura.
-4. Probar administrador, inventario, cliente registrado, invitado y visitante.
-5. Probar invitación, recuperación, token usado/vencido y login posterior.
-6. Revisar saldos negativos, pedidos pendientes, ingresos y recibos.
-7. Ejecutar la vista previa de limpieza y obtener autorización por lista exacta.
-8. Confirmar cero candidatos ambiguos antes de cualquier limpieza.
-9. Realizar un primer ciclo real acompañado: pedido, preparación, entrega,
-   movimiento y recibo.
-10. Activar control estricto solo cuando el responsable apruebe los saldos.
+**Configuración inicial — solo administrador:** acordar una fecha de corte y
+descargar la plantilla generada desde **Configuración → Activación operativa**.
+La plantilla ya contiene el identificador interno, nombre, unidad base y saldo
+informativo. El cliente sólo completa `initial_quantity`, `cutoff_date` y
+`notes`; no debe editar columnas informativas ni identificadores.
+
+Flujo verificado:
+
+1. Descargar la plantilla vigente, generada desde Production.
+2. Completar cantidad positiva en unidad base y fecha `AAAA-MM-DD`.
+3. Subir el CSV y revisar errores, duplicados, desconocidos y ambiguos por fila.
+4. Confirmar conversión y cantidad base en la vista previa, que no escribe.
+5. Aplicar únicamente con aprobación y la frase `APLICAR`.
+6. Verificar ingreso de apertura, snapshot, actor, hash y movimientos.
+7. Un mismo hash no puede aplicarse dos veces.
+8. Corregir errores mediante un movimiento o ingreso trazable; nunca editar
+   `stock_current` directamente.
+
+Ejemplos ilustrativos, no datos reales: `25 kg`, `12 unidad`, `5 caja`, `2 saco`
+o `1 carga` solo cuando esas unidades/presentaciones ya estén configuradas. Los
+productos clasificados se cargan como resultados finales. PAPA HOLANDESA fuente
+no recibe apertura si el conteo corresponde a Grande, Mediana y Pequeña.
+
+## Control estricto
+
+**Peligroso — solo administrador:** no activar hasta completar conteo inicial,
+apertura, negativos, unidades, conversiones, prueba por roles y aceptación del
+cliente. La activación exige `ACTIVAR CONTROL ESTRICTO`, registra actor y fecha,
+no borra movimientos ni reinicia saldos y bloquea entregas insuficientes. Los
+pedidos existentes conservan su contrato; la disponibilidad se valida al
+entregar.
+
+## Recuperación de contraseña
+
+Desde `/mi-cuenta/recuperar`, la respuesta es neutral y no revela si existe la
+cuenta. El correo debe dirigir a `/mi-cuenta/auth/confirm` con `token_hash` y
+tipo `recovery`; una verificación válida abre `/mi-cuenta/restablecer`. Después
+del cambio, la sesión de recuperación se cierra y se vuelve a `/login`.
+
+El código cubre enlaces inválidos, usados o vencidos y bloquea retornos externos.
+La entrega real, límites de envío, expiración y login posterior deben probarse
+manualmente después de configurar SMTP. Véase
+[QB_SMTP_RESEND_SETUP.md](QB_SMTP_RESEND_SETUP.md).
+
+## Gestión de usuarios
+
+**Solo administrador:** existe interfaz en **Configuración → Usuarios** para
+invitar, asignar rol, activar/desactivar y restablecer acceso. `profiles` actúa
+como membresía interna: contiene rol y estado. Los clientes externos usan
+`customer_accounts` y nunca reciben rol interno.
+
+No se crean ni comparten contraseñas temporales. La persona define su clave por
+enlace. Para revocar acceso se desactiva el perfil, conservando historial. La
+aplicación impide auto-desactivación/cambio de rol y protege al último
+administrador activo. Procedimiento detallado: [CREACION_USUARIOS_REALES.md](../CREACION_USUARIOS_REALES.md).
+
+## Limpieza segura
+
+**Peligroso:** `scripts/production-close/cleanup-preview.sql` es sólo vista
+previa. Exige fecha de corte, responsable, motivo, confirmación de alcance y
+listas UUID explícitas. Muestra dependencias y mantiene en cero los candidatos
+de catálogo maestro. Nunca clasificar QA por coincidencias de nombre.
+
+Se conservan siempre catálogo, productos, unidades, presentaciones,
+conversiones, configuraciones, imágenes, clientes y operaciones reales. Una
+eliminación futura requiere respaldo, segunda revisión, autorización y un
+ejecutor transaccional separado. No existe botón destructivo en la aplicación.
 
 ## Soporte
 
-Registrar incidentes con fecha/hora, pantalla, rol y referencia no sensible.
-No adjuntar contraseñas, tokens, cookies, correos completos ni datos privados.
-Revisar primero Vercel, Supabase Auth y la bitácora de QB Insumos. Si el incidente
-puede duplicar movimientos o afectar autenticación, pausar el paso operativo y
-escalar al responsable técnico antes de reintentar.
+Registrar fecha/hora, pantalla, rol y referencia no sensible. No adjuntar
+contraseñas, tokens, cookies, correos completos ni secretos. Ante riesgo de
+duplicar movimientos o afectar autenticación, detener el flujo y escalar.
+
+## Compuertas de cierre
+
+- Reunión: [QB_CHECKLIST_REUNION_CLIENTE.md](QB_CHECKLIST_REUNION_CLIENTE.md).
+- Activación definitiva: [QB_CHECKLIST_ACTIVACION_DEFINITIVA.md](QB_CHECKLIST_ACTIVACION_DEFINITIVA.md).
+- Aceptación resumida: [QB_CHECKLIST_ACEPTACION_CLIENTE.md](QB_CHECKLIST_ACEPTACION_CLIENTE.md).

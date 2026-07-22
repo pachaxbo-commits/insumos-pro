@@ -15,6 +15,10 @@ test("cleanup preview is strictly read only", () => {
   assert.doesNotMatch(executableSql, /\b(delete|update|truncate|drop|alter|insert)\b/i);
   assert.match(executableSql, /array\[\]::uuid\[\]/);
   assert.match(executableSql, /null::date as cutoff_date/);
+  assert.match(executableSql, /review_actor/);
+  assert.match(executableSql, /review_reason/);
+  assert.match(executableSql, /scope_confirmed/);
+  assert.match(executableSql, /ready_for_authorized_review/);
 });
 
 test("cleanup preview enumerates dependencies and protects the catalog", () => {

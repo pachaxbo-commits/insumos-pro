@@ -5,7 +5,11 @@
 
 with
 parameters as (
-  select null::date as cutoff_date
+  select
+    null::date as cutoff_date,
+    nullif(pg_catalog.btrim(''::text), '') as review_actor,
+    nullif(pg_catalog.btrim(''::text), '') as review_reason,
+    false as scope_confirmed
 ),
 authorized_orders as (
   select id
@@ -30,6 +34,27 @@ authorized_demo_users as (
 preview as (
   select 'safety'::text as section, 'cutoff_date_configured'::text as item,
     count(*) filter (where cutoff_date is not null)::bigint as rows
+  from parameters
+  union all
+  select 'safety', 'review_actor_configured',
+    count(*) filter (where review_actor is not null)::bigint
+  from parameters
+  union all
+  select 'safety', 'review_reason_configured',
+    count(*) filter (where review_reason is not null)::bigint
+  from parameters
+  union all
+  select 'safety', 'scope_explicitly_confirmed',
+    count(*) filter (where scope_confirmed)::bigint
+  from parameters
+  union all
+  select 'safety', 'ready_for_authorized_review',
+    count(*) filter (
+      where cutoff_date is not null
+        and review_actor is not null
+        and review_reason is not null
+        and scope_confirmed
+    )::bigint
   from parameters
   union all
   select 'authorized', 'qb_orders', count(*) from authorized_orders

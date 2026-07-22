@@ -18,8 +18,10 @@ Un nombre parecido no convierte un producto ni una operación en dato de prueba.
 ## Procedimiento futuro
 
 1. Confirmar `tekfwbhvqtojpfqusosg`, Production, responsables y backup probado.
-2. Acordar fecha/hora de corte y listas exactas de UUID; no usar patrones amplios.
-3. Completar solo las listas de la vista previa y ejecutar sus consultas.
+2. Acordar fecha/hora de corte, responsable, motivo y listas exactas de UUID;
+   no usar patrones amplios.
+3. Completar esos metadatos, marcar la confirmación explícita de alcance y
+   ejecutar únicamente las consultas de vista previa.
 4. Revisar conteos, dependencias, actividad posterior al corte y candidatos
    ambiguos. Si la fecha de corte está vacía o existe ambigüedad, detenerse.
 5. Preparar un ejecutor separado dentro de una transacción, con bloqueo y una
