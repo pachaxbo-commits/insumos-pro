@@ -436,6 +436,7 @@ function OrderCard({
   editorResetToken,
   onDirtyChange,
   strictStockControl,
+  canConfirmDelivery,
 }: {
   order: QbInternalOrder;
   startAction: (formData: FormData) => void;
@@ -450,12 +451,13 @@ function OrderCard({
   editorResetToken: number;
   onDirtyChange: (orderId: string, dirty: boolean) => void;
   strictStockControl: boolean;
+  canConfirmDelivery: boolean;
 }) {
   const [negativeStockConfirmed, setNegativeStockConfirmed] = useState(false);
   const canPrepare = order.status === "pendiente_preparacion";
   const canEditPreparation =
     order.status === "en_preparacion" || order.status === "preparado";
-  const canDeliver = order.status === "preparado";
+  const canDeliver = canConfirmDelivery && order.status === "preparado";
   const willLeaveNegativeStock =
     canDeliver && deliveryWouldLeaveNegative(order);
   const canCancel =
@@ -739,12 +741,14 @@ export function QbOrdersManagement({
   orders,
   creation,
   canCreateOrder,
+  canConfirmDelivery,
   strictStockControl,
   error,
 }: {
   orders: QbInternalOrder[];
   creation?: QbInternalOrderCreationData;
   canCreateOrder: boolean;
+  canConfirmDelivery: boolean;
   strictStockControl: boolean;
   error?: string;
 }) {
@@ -948,6 +952,7 @@ export function QbOrdersManagement({
               editorResetToken={editorResetToken}
               onDirtyChange={handleDirtyChange}
               strictStockControl={strictStockControl}
+              canConfirmDelivery={canConfirmDelivery}
             />
           ))}
         </div>

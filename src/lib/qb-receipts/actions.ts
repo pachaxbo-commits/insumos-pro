@@ -55,7 +55,10 @@ const receiptLineUpdateSchema = z
     }
   });
 
-const receiptFactorSchema = z.coerce.number().finite().min(-100).max(1000);
+const receiptFactorSchema = z.coerce.number().refine(
+  (value) => value === 0 || value === 5,
+  "Cada factor debe estar desactivado (0%) o activado (5%).",
+);
 
 const updateDraftSchema = z.object({
   receiptId: z.string().uuid(),
@@ -163,7 +166,9 @@ export async function updateQbReceiptDraftAction(
   });
 
   if (!parsed.success) {
-    return initialFailure("El precio debe ser un número positivo válido o quedar pendiente.");
+    return initialFailure(
+      "El precio debe ser un número positivo válido o quedar pendiente. Cada factor debe ser 0% o 5%.",
+    );
   }
 
   const { supabase, state } = await getSupabaseOrState();

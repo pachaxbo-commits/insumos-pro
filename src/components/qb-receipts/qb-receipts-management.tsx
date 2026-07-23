@@ -343,40 +343,36 @@ function DraftEditor({
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="space-y-2">
-            <Label>Distancia %</Label>
-            <Input
+            <Label>Distancia</Label>
+            <select
               name="distance_factor_percent"
-              type="number"
-              step="0.001"
               defaultValue={receipt.distanceFactorPercent}
-            />
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
           </div>
           <div className="space-y-2">
-            <Label>Exigencia %</Label>
-            <Input
+            <Label>Exigencia</Label>
+            <select
               name="exigency_factor_percent"
-              type="number"
-              step="0.001"
               defaultValue={receipt.exigencyFactorPercent}
-            />
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
           </div>
           <div className="space-y-2">
-            <Label>Clima %</Label>
-            <Input
+            <Label>Clima</Label>
+            <select
               name="weather_factor_percent"
-              type="number"
-              step="0.001"
               defaultValue={receipt.weatherFactorPercent}
-            />
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
           </div>
           <div className="space-y-2">
-            <Label>Extraordinario %</Label>
-            <Input
+            <Label>Extraordinario</Label>
+            <select
               name="extraordinary_factor_percent"
-              type="number"
-              step="0.001"
               defaultValue={receipt.extraordinaryFactorPercent}
-            />
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
           </div>
         </div>
 

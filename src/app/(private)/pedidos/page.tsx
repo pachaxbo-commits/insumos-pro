@@ -8,6 +8,7 @@ import { getQbOperationalSettingsData } from "@/lib/operational-settings/data";
 export default async function PedidosPage() {
   const auth = await requireRoleAccess("/pedidos");
   const canCreateOrder = auth.user.role === "administrador";
+  const canConfirmDelivery = auth.user.role === "administrador";
   const [data, settings] = await Promise.all([
     getQbInternalOrdersData(false),
     getQbOperationalSettingsData(),
@@ -24,6 +25,7 @@ export default async function PedidosPage() {
       <QbOrdersManagement
         {...data}
         canCreateOrder={canCreateOrder}
+        canConfirmDelivery={canConfirmDelivery}
         strictStockControl={settings.strictStockControl}
       />
     </div>

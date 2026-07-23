@@ -43,7 +43,9 @@ export function ReceiptDocument({
           <p className="text-sm text-muted-foreground">
             {isCustomerExport ? "Recibo" : "Recibo no fiscal"}
           </p>
-          <h1 className="font-mono text-2xl font-semibold">{receipt.number}</h1>
+          <h1 className="font-mono text-2xl font-semibold">
+            {isCustomerExport ? "Comprobante de entrega" : receipt.number}
+          </h1>
           {!isCustomerExport ? (
             <p className="text-sm text-muted-foreground">
               Estado: {receipt.status}
@@ -86,7 +88,7 @@ export function ReceiptDocument({
         </div>
       </div>
 
-      <div className="border-b py-5">
+      {!isCustomerExport ? <div className="border-b py-5">
         <p className="text-xs font-medium uppercase text-muted-foreground">
           Pedidos incluidos
         </p>
@@ -100,7 +102,7 @@ export function ReceiptDocument({
             </span>
           ))}
         </div>
-      </div>
+      </div> : null}
 
       <div data-qb-receipt-table className="overflow-x-auto py-5">
         <table

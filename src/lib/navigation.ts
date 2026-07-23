@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   BarChart3,
   ClipboardList,
+  TableProperties,
   Package,
   PackageCheck,
   ReceiptText,
@@ -36,6 +37,12 @@ export const mainNavigation: NavItem[] = [
     href: "/pedidos",
     icon: ClipboardList,
     description: "Preparación y entrega.",
+  },
+  {
+    title: "Matriz operativa",
+    href: "/matriz-operativa",
+    icon: TableProperties,
+    description: "Solicitud, preparacion y entrega por fecha.",
   },
   {
     title: "Recibos",
