@@ -20,13 +20,24 @@ El personal usa `/login`. Cada persona debe tener su propia cuenta.
 | Rol | Acceso permitido | Acceso denegado relevante |
 | --- | --- | --- |
 | Administrador | Inicio, Productos, Parametrización, Configuración, precios, fotografías, Pedidos, Ingresos, Inventario, Recibos, clasificación, usuarios y control de stock | Ningún módulo interno fuera de las restricciones del servidor |
-| Inventario | Inicio, Pedidos y checklist, cantidades reales, preparación, entrega, Ingresos e Inventario | Productos, Parametrización, Configuración, precios, modalidad Bs, roles, relaciones de clasificación, Recibos y control estricto |
+| Inventario | Inicio, Pedidos, Matriz operativa (preparado/check de bodega), Ingresos e Inventario | Entrega final, externo, Productos, Parametrización, Configuración, precios, modalidad Bs, roles, Recibos y control estricto |
+| Entregador | Inicio y Matriz operativa (externo, entregado real, check y confirmación) | Solicitado, preparación, precios, stock y configuración |
 | Cliente registrado | Catálogo, Mi cuenta, ubicaciones, pedidos propios y repetir pedido | Toda ruta interna |
 | Invitado | Catálogo y checkout invitado | Cuenta y rutas internas |
 | Anónimo | Catálogo y login | Datos internos y escrituras administrativas |
 
 Los guards de ruta, Server Actions, RLS y RPC vuelven a validar permisos. Ocultar
 un enlace en la navegación no sustituye esas validaciones.
+
+## Matriz operativa
+
+La operación diaria nueva está en **Matriz operativa** y convive con
+**Pedidos** durante la validación. Solicitado, preparado en bodega,
+abastecimiento externo y entregado real son datos separados. Los checks de
+bodega y entrega no se sustituyen entre sí. El recibo usa únicamente entregado
+real; el stock usa únicamente preparado en bodega. Procedimiento, conflictos,
+Realtime, móvil y prueba del cliente:
+[QB_MATRIZ_OPERATIVA.md](QB_MATRIZ_OPERATIVA.md).
 
 ## Productos, unidades, presentaciones, fotografías y precios
 
