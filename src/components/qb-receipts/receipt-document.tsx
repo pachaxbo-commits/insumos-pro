@@ -121,9 +121,11 @@ export function ReceiptDocument({
             </tr>
           </thead>
           <tbody>
-            {receipt.lines.map((line) => (
+            {receipt.lines.map((line, index) => (
               <tr key={line.id} className="border-b">
-                <td className="py-3 pr-3 font-medium">{line.productName}</td>
+                <td className="py-3 pr-3 font-medium">
+                  {index + 1}. {line.productName}
+                </td>
                 {!isCustomerExport ? (
                   <td className="py-3 pr-3 font-mono text-xs text-muted-foreground">
                     {line.orderReference}
