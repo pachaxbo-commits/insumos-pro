@@ -73,14 +73,14 @@ export async function getOperationalMatrixData(
     preparationIds.length
       ? supabase
           .from("qb_order_preparation_items")
-          .select("id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, preparation_check, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)")
+          .select("id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)")
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
     itemIds.length
       ? supabase
           .from("qb_order_delivery_items")
           .select(
-            "order_item_id, externally_sourced_quantity, delivered_quantity, delivered_base_quantity, delivery_check, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
+            "order_item_id, externally_sourced_quantity, delivered_quantity, delivered_base_quantity, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
           )
           .in("order_item_id", itemIds)
       : Promise.resolve({ data: [], error: null }),
@@ -163,6 +163,11 @@ export async function getOperationalMatrixData(
       preparedQuantity: numberOr(prep?.actual_quantity),
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),
       preparationCheck: Boolean(prep?.preparation_check),
+      preparationActualWeightKg:
+        prep?.actual_weight_kg === null ||
+        typeof prep?.actual_weight_kg === "undefined"
+          ? null
+          : numberOr(prep.actual_weight_kg),
       preparationNote: String(prep?.notes ?? ""),
       preparationVersion: numberOr(prep?.row_version),
       preparedBy: String((preparedBy as { full_name?: unknown } | null)?.full_name ?? "") || null,
@@ -171,6 +176,11 @@ export async function getOperationalMatrixData(
       deliveredQuantity: numberOr(delivery?.delivered_quantity),
       deliveredBaseQuantity: numberOr(delivery?.delivered_base_quantity),
       deliveryCheck: Boolean(delivery?.delivery_check),
+      deliveryActualWeightKg:
+        delivery?.actual_weight_kg === null ||
+        typeof delivery?.actual_weight_kg === "undefined"
+          ? null
+          : numberOr(delivery.actual_weight_kg),
       deliveryNote: String(delivery?.delivery_note ?? ""),
       deliveryVersion: numberOr(delivery?.row_version),
       deliveredBy: String((deliveredBy as { full_name?: unknown } | null)?.full_name ?? "") || null,

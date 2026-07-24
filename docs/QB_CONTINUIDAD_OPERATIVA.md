@@ -11,7 +11,7 @@
 
 El cliente está dispuesto a migrar, pero su modelo mental y el de su personal es una hoja de cálculo. La prioridad no es añadir más módulos: es hacer que la operación diaria se reconozca como la tabla que ya usan, conservando las ventajas del sistema —usuarios separados, permisos, trazabilidad, cálculos y una sola fuente de datos—.
 
-La arquitectura principal ya está adelantada: existen los roles Administrador, Inventario y Entregador; la matriz operativa continua; la separación interna entre solicitado, preparado, externo y entregado; cantidades reales; observaciones; auditoría y recibos. La decisión más reciente es priorizar la réplica visual de la hoja antigua con solo `CANT | CHECK | OBSERVACIÓN` por cliente. La brecha de migración está en adaptar la superficie actual a esas tres columnas, carga masiva de inventario/productos, cierre visual del recibo y configuración completa de unidades, presentaciones y precios.
+La arquitectura principal ya está adelantada: existen los roles Administrador, Inventario y Entregador; la matriz operativa continua; la separación interna entre solicitado, preparado, externo y entregado; cantidades reales; observaciones; auditoría y recibos. La decisión más reciente aclara la lógica de la hoja: `CANT` se llena automáticamente con lo solicitado, `CHECK` confirma esa cantidad y `PESO REAL` se registra en kg como dato independiente de `OBSERVACIÓN`.
 
 **Recomendación:** usar una sola plataforma. La interfaz puede parecer una hoja de cálculo sin depender de Google Sheets. Mantener dos plataformas produciría duplicidad, conflictos de sincronización, problemas de permisos y una auditoría incompleta.
 
@@ -58,8 +58,8 @@ Las capturas son evidencia del comportamiento familiar, no una especificación c
 1. **Catálogo e inventario.** El Administrador crea/configura productos, colores, unidades, presentaciones, conversiones y precios. Los ingresos de mercadería deben poder cargarse en una tabla masiva.
 2. **Pedido.** Se elige cliente y ubicación. El histórico ayuda a repetir el producto y la unidad exactos, pero el nuevo pedido sigue siendo editable.
 3. **Matriz diaria.** Una sola cuadrícula muestra categorías y productos en filas, clientes hacia la derecha y totales al extremo derecho.
-4. **Preparación.** En la superficie tipo Excel, Inventario usa `CANT | CHECK | OBSERVACIÓN`; en esta etapa `CANT` representa lo preparado en bodega.
-5. **Entrega.** Entregador parte del snapshot de bodega y trabaja en una réplica visual `CANT | CHECK | OBSERVACIÓN`; en esta etapa `CANT` representa la cantidad realmente entregada. La separación de solicitado, preparado, externo y entregado debe conservarse internamente para trazabilidad, aunque no se exponga como siete columnas.
+4. **Preparación.** Inventario ve `CANT` precargada con lo solicitado, confirma esa cantidad con `CHECK`, registra `PESO REAL` en kg y usa `OBSERVACIÓN` solo para notas.
+5. **Entrega.** Entregador ve la misma cantidad solicitada, la confirma con su propio `CHECK`, registra el peso final y deja observaciones. La separación de solicitado, preparado, externo y entregado se conserva internamente.
 6. **Validación.** El sistema compara solicitado, preparado, externo y entregado; muestra completo o con diferencia sin depender solo del color.
 7. **Recibo.** El Administrador revisa cantidades reales, completa precios si corresponde, emite y comparte el comprobante digital.
 8. **Historial y auditoría.** Pedidos, movimientos, recibos y cambios quedan consultables por fecha, cliente, producto y actor.
@@ -79,8 +79,10 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 - El cliente enfocado solo puede recibir auto-scroll y resaltado; no puede ocultar otros clientes.
 - Totales al extremo derecho de la misma cuadrícula.
 - Color aplicado a la fila completa del producto, incluidas sus celdas operativas.
-- Por ahora, cada grupo de cliente debe mostrar solamente `CANT | CHECK | OBSERVACIÓN`, igual que la hoja antigua.
-- No añadir columnas visibles de preparado, externo, entregado o peso real hasta una fase posterior expresamente aprobada.
+- Cada grupo de cliente muestra `CANT | CHECK | PESO REAL | OBSERVACIÓN`.
+- `CANT` se precarga con la cantidad solicitada y no se edita desde la matriz.
+- `PESO REAL` es editable en kg y no reemplaza la conversión calculada ni la cantidad original.
+- No añadir columnas visibles separadas de preparado, externo o entregado hasta una fase posterior expresamente aprobada.
 
 ## 6. Estado actual frente a las notas
 
@@ -99,7 +101,7 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 | Recibo basado en entrega | Los recibos nuevos toman la cantidad realmente entregada. La exportación de cliente oculta el código interno y enumera productos. |
 | Catálogo y colores del Excel | Importados 159 productos de la hoja de referencia: 81 coincidencias actualizadas y 78 productos nuevos, sin eliminar el catálogo previo. |
 | Color editable al crear producto | Disponible en alta y edición; la matriz usa el color guardado del producto. |
-| Réplica visual de tres columnas | Implementada con `CANT | CHECK | OBSERVACIÓN` por cliente en todas las etapas, sin eliminar solicitado, preparado, externo o entregado del modelo interno. |
+| Lógica visual de la hoja | Implementada con `CANT` solicitada automática, `CHECK` de confirmación, `PESO REAL` independiente y `OBSERVACIÓN`, sin eliminar la trazabilidad interna. |
 | Incremento temporal de `0,5` | Aplicado a productos vendibles y unidades permitidas para pedido; los pedidos por importe en Bs mantienen precisión monetaria. |
 | Reapertura operativa | Administrador, Inventario y Entregador pueden reabrir sin límite temporal, con motivo, auditoría y bloqueo cuando el recibo ya fue emitido. |
 | Recibo externo mínimo | La vista del cliente quedó limitada a logo/marca, cliente, fecha de entrega, productos, cantidad, precio final y total. |
@@ -129,15 +131,15 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 
 ## 7. Decisiones aclaradas y reglas de interpretación
 
-### Tres columnas heredadas
+### Columnas y lógica heredadas
 
-El cliente confirmó que, por ahora, quiere únicamente `CANT | CHECK | OBSERVACIÓN`, lo más idéntico posible a la hoja antigua. Esta decisión reemplaza temporalmente el contrato visual de cinco/siete columnas. La simplificación es de interfaz, no de modelo: solicitado, preparado, externo y entregado deben seguir diferenciados y auditados internamente.
+El cliente aclaró que `CANT` siempre representa lo solicitado al crear el pedido y debe llenarse automáticamente. `CHECK` confirma esa cantidad en la etapa correspondiente. Se añade `PESO REAL` porque antes el personal lo escribía dentro de observaciones.
 
-- En Preparación, `CANT` es lo preparado por Inventario.
-- En Entrega, `CANT` es lo realmente entregado.
-- `CHECK` pertenece al actor y etapa correspondientes.
-- `OBSERVACIÓN` explica faltantes, sustituciones, pérdidas o diferencias.
-- El peso real se conserva como dato estructurado, pero no aparece como columna adicional en esta primera réplica.
+- `CANT` no es editable en Preparación ni Entrega.
+- Al marcar CHECK, preparado o entregado se registra internamente igual a solicitado.
+- `PESO REAL` se guarda en kg, admite decimales y tiene auditoría propia.
+- `OBSERVACIÓN` queda libre para faltantes, sustituciones, pérdidas u otras notas.
+- Solicitado, preparado, externo, entregado, conversión calculada y peso real siguen siendo datos distintos.
 
 ### “Clonar” la tabla
 
@@ -174,7 +176,8 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 - Probar Administrador, Inventario y Entregador con cuentas distintas.
 - Validar escritorio y 390 px.
 - Firmar columnas, colores, orden de clientes, estados y reglas de diferencia.
-- Confirmar que Preparación y Entrega muestran solo `CANT | CHECK | OBSERVACIÓN`.
+- Confirmar que Preparación y Entrega muestran `CANT | CHECK | PESO REAL | OBSERVACIÓN`.
+- Confirmar que CANT coincide automáticamente con el pedido y no permite edición.
 
 **Salida:** captura aprobada y checklist firmado; no añadir módulos antes de cerrar este paso.
 
@@ -256,11 +259,12 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 - [ ] La matriz funciona a 390 px con scroll táctil.
 - [ ] `N°`, `DESCRIPCIÓN`, `UD` y cabeceras permanecen sticky.
 - [ ] Categorías, numeración, colores y totales son legibles.
-- [ ] Cada cliente muestra únicamente `CANT | CHECK | OBSERVACIÓN`.
+- [ ] Cada cliente muestra `CANT | CHECK | PESO REAL | OBSERVACIÓN`.
+- [ ] CANT viene del pedido y CHECK confirma exactamente esa cantidad.
 
 ## 10. Respuestas confirmadas el 24/07/2026
 
-1. **Columnas:** mantener solo las tres originales —`CANT | CHECK | OBSERVACIÓN`—, lo más idénticas posible a la hoja antigua.
+1. **Columnas:** `CANT` viene del pedido, `CHECK` confirma esa cantidad, `PESO REAL` se separa de `OBSERVACIÓN`.
 2. **Peso real:** equivalencia física del pedido, sin reemplazar la cantidad original; puede relacionar importe, unidades y kilogramos.
 3. **Incrementos:** usar `0,5` para todos los productos por ahora.
 4. **Carga:** las arrobas varían; deben ingresarse manualmente en cada recepción.
@@ -283,6 +287,7 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 | 24/07/2026 | Capturar manualmente las arrobas reales de cada carga recibida. | Decisión confirmada |
 | 24/07/2026 | Permitir reapertura a todos los usuarios operativos, sin límite temporal y con auditoría. | Decisión temporal |
 | 24/07/2026 | Limitar el recibo del cliente a logo, cliente, fecha de entrega, productos, cantidad, precio final y total. | Decisión confirmada |
+| 24/07/2026 | Precargar CANT con lo solicitado, usar CHECK para confirmar e incorporar PESO REAL en kg como columna independiente. | Decisión confirmada |
 | Pendiente | Aprobar visualmente la matriz con datos reales en escritorio y 390 px. | Requiere cliente |
 | Pendiente | Validar la fórmula específica de cebolla blanca. | Requiere cliente |
 | Pendiente | Definir carga masiva tipo Excel. | Próxima fase |
@@ -291,13 +296,13 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 
 Al abrir una tarea nueva, indicar:
 
-> Continúa QB Insumos desde `docs/QB_CONTINUIDAD_OPERATIVA.md`. La prioridad es replicar la hoja antigua con una matriz continua y solo `CANT | CHECK | OBSERVACIÓN` visibles por cliente, sin perder internamente solicitado/preparado/externo/entregado ni auditoría. Usa incremento temporal global de `0,5`; captura arrobas reales por carga; conserva pedido, equivalencia y peso real por separado; permite reapertura auditada a todos los usuarios operativos; y limita el recibo externo a logo, cliente, fecha de entrega, productos, cantidad, precio final y total. Revisa commit y producción antes de cambiar código y actualiza este documento con cada decisión nueva.
+> Continúa QB Insumos desde `docs/QB_CONTINUIDAD_OPERATIVA.md`. La matriz continua usa `CANT | CHECK | PESO REAL | OBSERVACIÓN`: CANT viene automáticamente del pedido, CHECK confirma esa cantidad y PESO REAL se guarda en kg con auditoría independiente. No pierdas solicitado/preparado/externo/entregado ni conversiones internas. Usa incremento temporal global de `0,5`; captura arrobas reales por carga; permite reapertura auditada a todos los usuarios operativos; y limita el recibo externo a logo, cliente, fecha de entrega, productos, cantidad, precio final y total.
 
 ## Anexo — Lectura de las capturas de reunión
 
 - **Nuevo pedido:** se pide un borde más visible, histórico del cliente con producto/unidad exactos y numeración a la izquierda.
 - **Nuevo ingreso:** se pide una captura de cantidades más humana y soporte correcto de arrobas por carga.
-- **Hoja diaria:** categorías y productos en filas, colores por producto, clientes en grupos horizontales y `CANT | CHECK | OBSERVACIÓN`.
+- **Hoja diaria:** categorías y productos en filas, colores por producto, clientes en grupos horizontales y `CANT | CHECK | PESO REAL | OBSERVACIÓN`.
 - **Operación:** Inventario prepara bodega; Entregador completa faltantes, registra entrega exacta y explica diferencias.
 - **Recibo:** fecha de entrega como dato principal, productos enumerados, código conservado solo internamente y cabeceras resaltadas.
 - **Histórico:** navegación por fecha y hacia la derecha, evitando una secuencia extensa de cards.

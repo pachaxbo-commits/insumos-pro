@@ -111,10 +111,12 @@ assert.match(matrix, /deliveryCheck/);
 assert.doesNotMatch(matrix, /<Card/);
 assert.match(
   matrix,
-  /return \["CANT", "CHECK", "OBSERVACIÓN"\]/,
+  /return \["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"\]/,
 );
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
-assert.doesNotMatch(matrix, /"PESO REAL"/);
+assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
+assert.match(matrix, /Peso real bodega/);
+assert.match(matrix, /Peso real entrega/);
 assert.match(matrix, /externalQuantity/);
 assert.match(matrix, /preparedQuantity/);
 assert.match(matrix, /deliveredQuantity/);

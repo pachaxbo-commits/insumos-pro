@@ -30,21 +30,23 @@ se distinguen por referencia y ubicación.
 
 ## Inventario
 
-Cada cliente conserva las tres columnas de la hoja anterior: **CANT, CHECK y
-OBSERVACIÓN**. En esta etapa CANT registra lo preparado, CHECK es el control de
-bodega y OBSERVACIÓN guarda la nota. Un faltante admite cero o preparación
-parcial. Finalizar preparación exige revisar todas las líneas. Inventario no
-puede escribir entrega, precios, stock o configuración, aunque manipule el
-payload.
+Cada cliente muestra **CANT, CHECK, PESO REAL y OBSERVACIÓN**. CANT se llena
+automáticamente con la cantidad solicitada por el cliente y no se edita en la
+matriz. CHECK confirma esa cantidad para bodega; al marcarlo, el sistema
+registra internamente preparado igual a solicitado. PESO REAL guarda una
+medición manual en kg, independiente de las conversiones calculadas, y
+OBSERVACIÓN conserva la nota. Finalizar preparación exige revisar todas las
+líneas. Inventario no puede escribir entrega, precios, stock o configuración,
+aunque manipule el payload.
 
 ## Entregador
 
-También trabaja con **CANT, CHECK y OBSERVACIÓN**. CANT registra la cantidad
-real entregada. Si supera lo preparado, el sistema conserva internamente como
-externo la diferencia necesaria; CHECK y OBSERVACIÓN pertenecen a la entrega.
-Entregar más o menos está permitido, pero la observación es obligatoria si
-entregado difiere de solicitado. No puede editar preparación, precios, stock o
-configuración.
+También trabaja con **CANT, CHECK, PESO REAL y OBSERVACIÓN**. CANT conserva la
+cantidad solicitada y CHECK la confirma como entregada; si bodega no cubrió
+toda la solicitud, el sistema conserva internamente como externo el faltante.
+PESO REAL registra la medición final en kg sin reemplazar CANT. CHECK, peso y
+observación quedan atribuidos al Entregador. No puede editar preparación,
+precios, stock o configuración.
 
 ## Estado visual, totales y móvil
 
@@ -57,10 +59,13 @@ Escritorio y móvil renderizan la misma matriz continua: categorías como filas
 separadoras, productos en filas y todos los clientes agrupados horizontalmente.
 Las columnas N°, DESCRIPCIÓN y UD, además de las cabeceras, permanecen visibles
 durante el desplazamiento. En celular no existe selector ni filtrado de
-clientes; cada grupo tiene exactamente CANT, CHECK y OBSERVACIÓN. El
+clientes; cada grupo tiene CANT, CHECK, PESO REAL y OBSERVACIÓN. El
 desplazamiento horizontal táctil recorre todos los grupos y llega a los totales
 del extremo derecho. Un cliente enfocado sólo se resalta y recibe auto-scroll.
 Todos los anchos usan las mismas RPC y auditoría.
+
+PESO REAL admite milésimas de kg y se audita por separado en Preparación y
+Entrega. No es la cantidad base calculada por una conversión.
 
 Los pedidos por cantidad avanzan temporalmente en incrementos de 0,5 para todos
 los productos. Los pedidos por importe en Bs conservan precisión monetaria y la

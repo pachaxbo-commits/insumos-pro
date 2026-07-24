@@ -17,6 +17,7 @@ const [
   receiptDocument,
   docs,
   legacyFlow,
+  actualWeight,
 ] =
   await Promise.all([
     read("supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql"),
@@ -31,6 +32,7 @@ const [
     read("src/components/qb-receipts/receipt-document.tsx"),
     read("docs/QB_MATRIZ_OPERATIVA.md"),
     read("supabase/migrations/20260724100000_qb_legacy_three_column_flow.sql"),
+    read("supabase/migrations/20260724110000_qb_matrix_actual_weight.sql"),
   ]);
 
 const newSources = [foundation, workflows, factors, matrix, actions, docs].join("\n");
@@ -72,13 +74,27 @@ assert.match(matrix, /postgres_changes/);
 assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|MobileRow|<select/);
 assert.match(matrix, /orders\.map\(\(order/);
 assert.match(matrix, /scrollIntoView/);
-assert.match(matrix, /return \["CANT", "CHECK", "OBSERVACIÓN"\]/);
+assert.match(
+  matrix,
+  /return \["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"\]/,
+);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
-assert.doesNotMatch(matrix, /"PESO REAL"/);
+assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
+assert.match(matrix, /preparedQuantity: checked \? line\.requestedQuantity : 0/);
+assert.match(matrix, /deliveredQuantity: checked \? line\.requestedQuantity : 0/);
+assert.match(matrix, /preparationActualWeightKg/);
+assert.match(matrix, /deliveryActualWeightKg/);
 assert.match(matrix, /line\.deliveredQuantity - line\.preparedQuantity/);
 assert.match(legacyFlow, /'admin', 'administrador', 'inventario', 'entregador'/);
 assert.match(legacyFlow, /catalog_quantity_step = 0\.5/);
 assert.match(legacyFlow, /usage_context = 'pedido'/);
+assert.match(actualWeight, /add column if not exists actual_weight_kg numeric/);
+assert.match(actualWeight, /'actual_weight_kg'/);
+assert.match(
+  actualWeight,
+  /save_qb_matrix_preparation_item_with_weight/,
+);
+assert.match(actualWeight, /save_qb_matrix_delivery_item_with_weight/);
 assert.match(factors, /factor_mode', 'additive_percent'/);
 assert.match(factors, /v_factor_total/);
 assert.doesNotMatch(

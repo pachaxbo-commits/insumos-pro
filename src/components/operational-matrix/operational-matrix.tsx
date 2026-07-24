@@ -58,7 +58,7 @@ function rowKey(line: MatrixLine) {
 }
 
 function stageHeaders() {
-  return ["CANT", "CHECK", "OBSERVACIÓN"];
+  return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
 }
 
 type MatrixProps = {
@@ -276,6 +276,7 @@ export function OperationalMatrix({
       expectedVersion: line.preparationVersion,
       preparedQuantity: line.preparedQuantity,
       preparationCheck: line.preparationCheck,
+      actualWeightKg: line.preparationActualWeightKg,
       note: line.preparationNote,
       idempotencyKey: idempotencyKey("prep"),
     });
@@ -304,6 +305,7 @@ export function OperationalMatrix({
       externalQuantity,
       deliveredQuantity: line.deliveredQuantity,
       deliveryCheck: line.deliveryCheck,
+      actualWeightKg: line.deliveryActualWeightKg,
       note: line.deliveryNote,
       idempotencyKey: idempotencyKey("delivery"),
     });
@@ -563,7 +565,13 @@ export function OperationalMatrix({
                         order.id === focusedOrderId
                           ? "border-sky-400 bg-sky-50"
                           : "bg-slate-50"
-                      } ${header === "OBSERVACIÓN" ? "min-w-36" : ""}`}
+                      } ${
+                        header === "OBSERVACIÓN"
+                          ? "min-w-36"
+                          : header === "PESO REAL"
+                            ? "min-w-24"
+                            : ""
+                      }`}
                     >
                       {header}
                     </th>
@@ -715,31 +723,6 @@ type CellProps = {
   onCorrect: () => void;
 };
 
-function NumberEditor({
-  label,
-  value,
-  onChange,
-  onBlur,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  onBlur: () => void;
-}) {
-  return (
-    <Input
-      aria-label={label}
-      className="h-7 min-w-20 px-2 text-right text-xs"
-      type="number"
-      min={0}
-      step="0.001"
-      value={value}
-      onChange={(event) => onChange(Number(event.target.value))}
-      onBlur={onBlur}
-    />
-  );
-}
-
 function CheckEditor({
   label,
   checked,
@@ -788,6 +771,41 @@ function NoteEditor({
   );
 }
 
+function WeightEditor({
+  label,
+  value,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <div className="relative min-w-24">
+      <Input
+        aria-label={label}
+        className="h-7 min-w-24 pr-7 text-right text-xs"
+        type="number"
+        min={0}
+        step="0.001"
+        value={value ?? ""}
+        placeholder="0"
+        onChange={(event) =>
+          onChange(
+            event.target.value === "" ? null : Number(event.target.value),
+          )
+        }
+        onBlur={onBlur}
+      />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">
+        kg
+      </span>
+    </div>
+  );
+}
+
 function DesktopOrderCells(props: CellProps) {
   const {
     line,
@@ -816,6 +834,9 @@ function DesktopOrderCells(props: CellProps) {
           <span className="text-muted-foreground">—</span>
         </td>
         <td style={cellStyle} className={cellClass}>
+          <span className="text-muted-foreground">—</span>
+        </td>
+        <td style={cellStyle} className={cellClass}>
           {canAdmin ? (
             <Button
               size="xs"
@@ -836,18 +857,30 @@ function DesktopOrderCells(props: CellProps) {
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
-          <NumberEditor
-            label={`Preparado ${line.productName}`}
-            value={line.preparedQuantity}
-            onChange={(value) => onChange({ preparedQuantity: value })}
-            onBlur={onSavePreparation}
-          />
+          <span className="font-semibold">
+            {formatQuantity(line.requestedQuantity)}
+          </span>
         </td>
         <td style={cellStyle} className={cellClass}>
           <CheckEditor
             label={`Check bodega ${line.productName}`}
             checked={line.preparationCheck}
-            onChange={(checked) => onChange({ preparationCheck: checked })}
+            onChange={(checked) =>
+              onChange({
+                preparationCheck: checked,
+                preparedQuantity: checked ? line.requestedQuantity : 0,
+              })
+            }
+            onBlur={onSavePreparation}
+          />
+        </td>
+        <td style={cellStyle} className={cellClass}>
+          <WeightEditor
+            label={`Peso real bodega ${line.productName}`}
+            value={line.preparationActualWeightKg}
+            onChange={(value) =>
+              onChange({ preparationActualWeightKg: value })
+            }
             onBlur={onSavePreparation}
           />
         </td>
@@ -866,18 +899,28 @@ function DesktopOrderCells(props: CellProps) {
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
-          <NumberEditor
-            label={`Entregado ${line.productName}`}
-            value={line.deliveredQuantity}
-            onChange={(value) => onChange({ deliveredQuantity: value })}
-            onBlur={onSaveDelivery}
-          />
+          <span className="font-semibold">
+            {formatQuantity(line.requestedQuantity)}
+          </span>
         </td>
         <td style={cellStyle} className={cellClass}>
           <CheckEditor
             label={`Check entrega ${line.productName}`}
             checked={line.deliveryCheck}
-            onChange={(checked) => onChange({ deliveryCheck: checked })}
+            onChange={(checked) =>
+              onChange({
+                deliveryCheck: checked,
+                deliveredQuantity: checked ? line.requestedQuantity : 0,
+              })
+            }
+            onBlur={onSaveDelivery}
+          />
+        </td>
+        <td style={cellStyle} className={cellClass}>
+          <WeightEditor
+            label={`Peso real entrega ${line.productName}`}
+            value={line.deliveryActualWeightKg}
+            onChange={(value) => onChange({ deliveryActualWeightKg: value })}
             onBlur={onSaveDelivery}
           />
         </td>
@@ -897,9 +940,7 @@ function DesktopOrderCells(props: CellProps) {
   return (
     <>
       <td style={cellStyle} className={`${cellClass} border-l-2`}>
-        {formatQuantity(
-          line.deliveredQuantity || line.preparedQuantity || line.requestedQuantity,
-        )}
+        {formatQuantity(line.requestedQuantity)}
       </td>
       <td
         style={cellStyle}
@@ -913,6 +954,13 @@ function DesktopOrderCells(props: CellProps) {
           )}
           {differs ? "Diferencia" : "Completo"}
         </span>
+      </td>
+      <td style={cellStyle} className={cellClass}>
+        {line.deliveryActualWeightKg ?? line.preparationActualWeightKg ?? "—"}
+        {line.deliveryActualWeightKg !== null ||
+        line.preparationActualWeightKg !== null
+          ? " kg"
+          : ""}
       </td>
       <td style={cellStyle} className={`${cellClass} min-w-36 text-left`}>
         {line.deliveryNote || line.preparationNote || "—"}

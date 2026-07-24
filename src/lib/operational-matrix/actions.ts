@@ -40,15 +40,17 @@ export async function saveMatrixPreparationAction(input: unknown) {
     expectedVersion: z.number().int().min(0),
     preparedQuantity: quantity,
     preparationCheck: z.boolean(),
+    actualWeightKg: quantity.nullable(),
     note: z.string().max(500),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_item", {
+  return rpc("save_qb_matrix_preparation_item_with_weight", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
     p_preparation_check: parsed.data.preparationCheck,
+    p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
   });
@@ -61,16 +63,18 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     externalQuantity: quantity,
     deliveredQuantity: quantity,
     deliveryCheck: z.boolean(),
+    actualWeightKg: quantity.nullable(),
     note: z.string().max(500),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Entrega invalida." };
-  return rpc("save_qb_matrix_delivery_item", {
+  return rpc("save_qb_matrix_delivery_item_with_weight", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_externally_sourced_quantity: parsed.data.externalQuantity,
     p_delivered_quantity: parsed.data.deliveredQuantity,
     p_delivery_check: parsed.data.deliveryCheck,
+    p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
   });
@@ -149,4 +153,3 @@ export async function reorderMatrixOrdersAction(input: unknown) {
     p_idempotency_key: parsed.data.idempotencyKey,
   });
 }
-
