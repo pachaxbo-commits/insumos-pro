@@ -42,7 +42,15 @@ export const transitionModules: TransitionModule[] = [
     title: "Pedidos",
     href: "/pedidos",
     status: "active_transitional",
-    reason: "Prepara pedidos y confirma las cantidades efectivamente entregadas.",
+    reason: "Crea, busca y consulta el historial y detalle administrativo de pedidos.",
+    visibleInNavigation: true,
+  },
+  {
+    id: "matriz-operativa",
+    title: "Matriz operativa",
+    href: "/matriz-operativa",
+    status: "active_transitional",
+    reason: "Prepara y entrega pedidos en una planilla operativa por fecha.",
     visibleInNavigation: true,
   },
   {
@@ -177,9 +185,9 @@ export const transitionModules: TransitionModule[] = [
   {
     id: "entregas",
     title: "Entregas",
-    href: "/pedidos",
+    href: "/matriz-operativa",
     status: "active_transitional",
-    reason: "Confirma la entrega desde Pedidos; luego genera el recibo acumulativo correspondiente.",
+    reason: "Confirma la entrega desde la Matriz operativa; luego genera el recibo acumulativo correspondiente.",
     visibleInNavigation: false,
   },
   {

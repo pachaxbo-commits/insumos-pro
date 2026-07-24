@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { OperationalMatrix } from "@/components/operational-matrix/operational-matrix";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
+import type { MatrixStage } from "@/types/operational-matrix";
 
 function boliviaToday() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -18,13 +19,27 @@ function validDate(value: string | undefined) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : boliviaToday();
 }
 
+function validMode(value: string | undefined): MatrixStage | undefined {
+  return value &&
+    ["pedido", "preparacion", "entrega", "resumen"].includes(value)
+    ? (value as MatrixStage)
+    : undefined;
+}
+
 export default async function MatrizOperativaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ fecha?: string }>;
+  searchParams: Promise<{
+    date?: string;
+    fecha?: string;
+    mode?: string;
+    order?: string;
+  }>;
 }) {
   const auth = await requireRoleAccess("/matriz-operativa");
-  const date = validDate((await searchParams).fecha);
+  const params = await searchParams;
+  const date = validDate(params.date ?? params.fecha);
+  const mode = validMode(params.mode);
   const data = await getOperationalMatrixData(date, auth.user.role!);
 
   return (
@@ -40,7 +55,7 @@ export default async function MatrizOperativaPage({
           <input
             className="mt-1 block h-10 rounded-md border bg-background px-3"
             type="date"
-            name="fecha"
+            name="date"
             defaultValue={date}
           />
         </label>
@@ -51,6 +66,8 @@ export default async function MatrizOperativaPage({
       <OperationalMatrix
         key={`${date}:${data.orders.map((order) => `${order.id}:${order.updatedAt}:${order.positionVersion}`).join("|")}:${data.lines.map((line) => `${line.orderItemId}:${line.requestedVersion}:${line.preparationVersion}:${line.deliveryVersion}`).join("|")}`}
         data={data}
+        initialStage={mode}
+        initialOrderId={params.order}
       />
     </div>
   );

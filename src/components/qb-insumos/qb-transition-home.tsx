@@ -104,7 +104,9 @@ export function QbTransitionHome({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm leading-6 text-emerald-950/75">
-              <p>Los pedidos se preparan y entregan desde Pedidos.</p>
+              <p>
+                Los pedidos se preparan y entregan desde la Matriz operativa.
+              </p>
               <p>
                 El inventario se actualiza al confirmar Ingresos y Entregas.
               </p>
@@ -254,7 +256,7 @@ export function QbTransitionHome({
           <CardContent className="grid gap-3 text-sm leading-6 text-muted-foreground md:grid-cols-2">
             <p>Consulta y administra el Catálogo de productos.</p>
             <p>Registra mercadería recibida desde Ingresos.</p>
-            <p>Prepara y confirma entregas desde Pedidos.</p>
+            <p>Prepara y confirma entregas desde la Matriz operativa.</p>
             <p>Da seguimiento a Inventario, Recibos y Reportes.</p>
           </CardContent>
         </Card>

@@ -55,6 +55,7 @@ export type QbInternalOrder = {
   id: string;
   reference: string;
   status: QbOrderStatus;
+  operationalDate: string;
   submittedAt: string;
   updatedAt: string;
   customerName: string;
@@ -93,6 +94,24 @@ export type QbInternalOrderCustomer = {
 export type QbInternalOrderCreationData = {
   customers: QbInternalOrderCustomer[];
   products: QbCatalogProduct[];
+};
+
+export type QbRepeatableOrderLine = {
+  productId: string;
+  allowedUnitId: string | null;
+  inputMode: "quantity" | "amount_bs";
+  quantity: number;
+  requestedAmountBs: number | null;
+  notes: string;
+};
+
+export type QbRepeatableOrder = {
+  id: string;
+  submittedAt: string;
+  locationId: string | null;
+  locationLabel: string;
+  sameLocation: boolean;
+  lines: QbRepeatableOrderLine[];
 };
 
 export type QbOrderActionState = {

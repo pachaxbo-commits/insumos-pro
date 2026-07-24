@@ -21,6 +21,7 @@ type OrderRow = {
   id: string;
   public_reference: string;
   status: QbOrderStatus;
+  operational_date: string;
   submitted_at: string;
   updated_at: string;
   customer_notes: string | null;
@@ -289,7 +290,7 @@ export async function getQbInternalOrdersData(
   const { data: ordersData, error } = await supabase
     .from("qb_orders")
     .select(
-      "id, public_reference, status, submitted_at, updated_at, customer_notes, customer_snapshot, location_snapshot, delivered_at",
+      "id, public_reference, status, operational_date, submitted_at, updated_at, customer_notes, customer_snapshot, location_snapshot, delivered_at",
     )
     .order("submitted_at", { ascending: false })
     .limit(80);
@@ -415,6 +416,7 @@ export async function getQbInternalOrdersData(
       id: order.id,
       reference: order.public_reference,
       status: order.status,
+      operationalDate: String(order.operational_date),
       submittedAt: order.submitted_at,
       updatedAt: order.updated_at,
       customerName:

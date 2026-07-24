@@ -36,13 +36,13 @@ export const mainNavigation: NavItem[] = [
     title: "Pedidos",
     href: "/pedidos",
     icon: ClipboardList,
-    description: "Preparación y entrega.",
+    description: "Creación, historial y detalle.",
   },
   {
     title: "Matriz operativa",
     href: "/matriz-operativa",
     icon: TableProperties,
-    description: "Solicitud, preparacion y entrega por fecha.",
+    description: "Preparación y entrega por fecha.",
   },
   {
     title: "Recibos",

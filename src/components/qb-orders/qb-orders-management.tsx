@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import Link from "next/link";
 import {
   Ban,
   CheckCircle2,
@@ -17,6 +18,8 @@ import {
   RefreshCw,
   Send,
   Truck,
+  TableProperties,
+  Eye,
   UserRound,
   Wifi,
   WifiOff,
@@ -466,7 +469,7 @@ function OrderCard({
     order.status === "preparado";
 
   return (
-    <Card>
+    <Card id={`pedido-${order.id}`}>
       <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="font-mono text-base">
@@ -623,6 +626,27 @@ function OrderCard({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link
+              href={`/matriz-operativa?date=${order.operationalDate}&mode=${
+                order.status === "preparado" ? "entrega" : "preparacion"
+              }&order=${order.id}`}
+            >
+              <TableProperties className="size-4" />
+              {order.status === "preparado"
+                ? "Completar entrega en matriz"
+                : order.status === "pendiente_preparacion" ||
+                    order.status === "en_preparacion"
+                  ? "Preparar en matriz"
+                  : "Abrir en matriz"}
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/pedidos#pedido-${order.id}`}>
+              <Eye className="size-4" />
+              Ver detalle
+            </Link>
+          </Button>
           {canDeliver ? (
             <form action={deliveryAction}>
               <input type="hidden" name="order_id" value={order.id} />
