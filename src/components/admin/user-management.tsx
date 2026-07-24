@@ -111,6 +111,15 @@ function RoleBadge({ role }: { role: UserRole }) {
   );
 }
 
+function RoleScopeHint() {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Inventario prepara pedidos y gestiona bodega. Entregador registra únicamente la entrega en
+      la Matriz operativa.
+    </p>
+  );
+}
+
 function formatDate(value: string | null) {
   if (!value) return "N/D";
 
@@ -146,6 +155,7 @@ function CreateUserForm({ disabled }: { disabled: boolean }) {
               </option>
             ))}
           </NativeSelect>
+          <RoleScopeHint />
         </div>
       </div>
       <DialogFooter>
@@ -193,9 +203,10 @@ function EditUserForm({
               </option>
             ))}
           </NativeSelect>
+          <RoleScopeHint />
         </div>
         <div className="space-y-2">
-          <Label>Estado</Label>
+          <Label>Estado de membresía</Label>
           <NativeSelect name="is_active" defaultValue={String(user.is_active)}>
             <option value="true">Activo</option>
             <option value="false">Inactivo</option>
