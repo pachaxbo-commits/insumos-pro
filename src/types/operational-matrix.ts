@@ -26,6 +26,7 @@ export type MatrixLine = {
   requestedQuantity: number;
   requestedVersion: number;
   preparedQuantity: number;
+  preparedBaseQuantity: number;
   preparationCheck: boolean;
   preparationNote: string;
   preparationVersion: number;
@@ -33,6 +34,7 @@ export type MatrixLine = {
   preparedAt: string | null;
   externalQuantity: number;
   deliveredQuantity: number;
+  deliveredBaseQuantity: number;
   deliveryCheck: boolean;
   deliveryNote: string;
   deliveryVersion: number;

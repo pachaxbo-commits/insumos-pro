@@ -48,9 +48,13 @@ pendiente. Los totales del extremo derecho separan solicitado, preparado,
 externo, entregado y diferencia por producto/unidad. Cada cliente muestra
 conteos de líneas solicitadas, preparadas, entregadas y pendientes.
 
-En escritorio se virtualizan filas y columnas y se mantienen cabeceras y
-producto visibles durante el desplazamiento. En móvil se elige un cliente y se
-muestra la lista correspondiente al rol. Ambos usan las mismas RPC y auditoría.
+Escritorio y móvil renderizan la misma matriz continua: categorías como filas
+separadoras, productos en filas y todos los clientes agrupados horizontalmente.
+Las columnas N°, DESCRIPCIÓN y UD, además de las cabeceras, permanecen visibles
+durante el desplazamiento. En celular no existe selector ni filtrado de
+clientes; el desplazamiento horizontal táctil recorre todos los grupos y llega
+a los totales del extremo derecho. Un cliente enfocado sólo se resalta y recibe
+auto-scroll. Todos los anchos usan las mismas RPC y auditoría.
 
 ## Guardado, conflictos y Realtime
 
@@ -101,4 +105,3 @@ usa fixtures sintéticos dentro de una transacción con rollback.
 - visualización horizontal de históricos;
 - migración final y controlada desde el archivo exportado de Sheets;
 - rutas/GPS, proveedores y costos externos sólo en fases expresamente aprobadas.
-

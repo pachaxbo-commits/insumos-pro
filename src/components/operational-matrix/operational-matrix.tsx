@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -58,20 +58,20 @@ function rowKey(line: MatrixLine) {
 }
 
 function stageHeaders(stage: MatrixStage) {
-  if (stage === "pedido") return ["Solicitado", "Acción"];
+  if (stage === "pedido") return ["CANT", "ACCIÓN"];
   if (stage === "preparacion")
-    return ["Solicitado", "Preparado", "Check bodega", "Observación"];
+    return ["CANT", "PREP.", "CHECK", "PESO REAL", "OBS."];
   if (stage === "entrega")
     return [
-      "Solicitado",
-      "Preparado",
-      "Faltante",
-      "Externo",
-      "Entregado",
-      "Check entrega",
-      "Observación",
+      "CANT",
+      "PREP.",
+      "EXT.",
+      "ENTR.",
+      "CHECK",
+      "PESO REAL",
+      "OBS.",
     ];
-  return ["Solicitado", "Preparado", "Externo", "Entregado", "Estado"];
+  return ["CANT", "PREP.", "EXT.", "ENTR.", "ESTADO"];
 }
 
 function statusTone(line: MatrixLine, stage: MatrixStage) {
@@ -106,12 +106,25 @@ export function OperationalMatrix({
   const [message, setMessage] = useState<string | null>(null);
   const [remotePending, setRemotePending] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
-  const [selectedMobileOrder, setSelectedMobileOrder] = useState(
-    data.orders.some((order) => order.id === initialOrderId)
-      ? initialOrderId!
-      : data.orders[0]?.id ?? "",
-  );
+  const matrixScrollRef = useRef<HTMLDivElement>(null);
+  const focusedOrderId = data.orders.some(
+    (order) => order.id === initialOrderId,
+  )
+    ? initialOrderId
+    : undefined;
   const dirty = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!focusedOrderId) return;
+    const target = matrixScrollRef.current?.querySelector<HTMLElement>(
+      `[data-order-group="${focusedOrderId}"]`,
+    );
+    target?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [focusedOrderId]);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -378,12 +391,8 @@ export function OperationalMatrix({
   const visibleStages: MatrixStage[] = canAdmin
     ? ["pedido", "preparacion", "entrega", "resumen"]
     : [defaultStage(data.role)];
-  const selectedOrder =
-    orders.find((order) => order.id === selectedMobileOrder) ?? orders[0];
-  const selectedLines = selectedOrder
-    ? lines.filter((line) => line.orderId === selectedOrder.id)
-    : [];
-
+  const headers = stageHeaders(stage);
+  const matrixColumnCount = 3 + orders.length * headers.length + 1;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -432,195 +441,195 @@ export function OperationalMatrix({
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {orders.map((order, index) => {
-          const orderLines = lines.filter((line) => line.orderId === order.id);
-          return (
-            <div
-              key={order.id}
-              className="flex min-w-[260px] items-center justify-between gap-2 rounded-md border bg-background px-3 py-2 text-xs"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">
-                  {order.customerName}
-                </p>
-                <p className="truncate text-muted-foreground">
-                  {order.reference}
-                  {order.locationLabel ? ` · ${order.locationLabel}` : ""}
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {orderLines.length} líneas ·{" "}
-                  {orderLines.filter((line) => line.preparationCheck).length}{" "}
-                  bodega ·{" "}
-                  {orderLines.filter((line) => line.deliveryCheck).length}{" "}
-                  entrega
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-1">
-                {canAdmin ? (
-                  <>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="Mover cliente antes"
-                      onClick={() => void moveOrder(index, -1)}
-                    >
-                      <ChevronLeft />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="Mover cliente después"
-                      onClick={() => void moveOrder(index, 1)}
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </>
-                ) : null}
-                {stage === "preparacion" &&
-                ["en_preparacion", "pendiente_preparacion"].includes(
-                  order.status,
-                ) ? (
-                  <Button
-                    size="sm"
-                    onClick={() => void actionForOrder(order, "prepare")}
-                  >
-                    Finalizar
-                  </Button>
-                ) : null}
-                {stage === "entrega" && order.status === "preparado" ? (
-                  <Button
-                    size="sm"
-                    onClick={() => void actionForOrder(order, "confirm")}
-                  >
-                    Confirmar
-                  </Button>
-                ) : null}
-                {canAdmin &&
-                stage === "entrega" &&
-                order.deliveryStatus === "confirmado" ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void actionForOrder(order, "reopen")}
-                  >
-                    Reabrir
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
       {!orders.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
           automáticamente y conservan su orden.
         </div>
       ) : (
-        <>
-          <div
-            className="hidden max-h-[68vh] overflow-auto rounded-lg border md:block"
-            data-matrix-layout="desktop-table"
-          >
-            <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
-              <thead>
-                <tr>
-                  <th
-                    rowSpan={2}
-                    className="sticky left-0 top-0 z-40 w-11 min-w-11 border-b border-r bg-slate-100 px-2 py-2 text-center"
-                  >
-                    #
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="sticky left-11 top-0 z-40 w-32 min-w-32 border-b border-r bg-slate-100 px-2 py-2 text-left"
-                  >
-                    Categoría
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="sticky left-[172px] top-0 z-40 w-56 min-w-56 border-b border-r bg-slate-100 px-2 py-2 text-left"
-                  >
-                    Producto
-                  </th>
-                  <th
-                    rowSpan={2}
-                    className="sticky left-[396px] top-0 z-40 w-24 min-w-24 border-b border-r bg-slate-100 px-2 py-2 text-left"
-                  >
-                    Unidad
-                  </th>
-                  {orders.map((order) => (
+        <div
+          ref={matrixScrollRef}
+          className="max-h-[68vh] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg border"
+          data-matrix-layout="continuous-sheet"
+          aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
+        >
+          <table className="w-max min-w-full border-separate border-spacing-0 text-[10px] sm:text-xs">
+            <thead>
+              <tr>
+                <th
+                  rowSpan={2}
+                  className="sticky left-0 top-0 z-50 w-9 min-w-9 border-b border-r bg-slate-100 px-1 py-2 text-center"
+                >
+                  N°
+                </th>
+                <th
+                  rowSpan={2}
+                  className="sticky left-9 top-0 z-50 w-40 min-w-40 border-b border-r bg-slate-100 px-2 py-2 text-left md:w-56 md:min-w-56"
+                >
+                  DESCRIPCIÓN
+                </th>
+                <th
+                  rowSpan={2}
+                  className="sticky left-[196px] top-0 z-50 w-[72px] min-w-[72px] border-b border-r bg-slate-100 px-2 py-2 text-left md:left-[260px]"
+                >
+                  UD
+                </th>
+                {orders.map((order, orderIndex) => {
+                  const focused = order.id === focusedOrderId;
+                  return (
                     <th
                       key={order.id}
-                      colSpan={stageHeaders(stage).length}
-                      className="sticky top-0 z-30 border-b border-l-2 border-r bg-slate-100 px-3 py-2 text-left"
+                      data-order-group={order.id}
+                      colSpan={headers.length}
+                      className={`sticky top-0 z-40 h-[74px] border-b border-l-2 border-r px-2 py-1.5 text-left ${
+                        focused
+                          ? "border-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
+                          : "bg-slate-100"
+                      }`}
                     >
-                      <span className="block max-w-64 truncate text-sm font-semibold">
-                        {order.customerName}
-                      </span>
-                      <span className="block max-w-64 truncate font-normal text-muted-foreground">
-                        {order.reference} · {order.locationLabel}
-                      </span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block max-w-64 truncate text-xs font-semibold sm:text-sm">
+                            {order.customerName}
+                          </span>
+                          <span className="block max-w-64 truncate font-normal text-muted-foreground">
+                            {order.reference} · {order.locationLabel}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 gap-0.5">
+                          {canAdmin ? (
+                            <>
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Mover cliente antes"
+                                onClick={() => void moveOrder(orderIndex, -1)}
+                              >
+                                <ChevronLeft />
+                              </Button>
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Mover cliente después"
+                                onClick={() => void moveOrder(orderIndex, 1)}
+                              >
+                                <ChevronRight />
+                              </Button>
+                            </>
+                          ) : null}
+                          {stage === "preparacion" &&
+                          ["en_preparacion", "pendiente_preparacion"].includes(
+                            order.status,
+                          ) ? (
+                            <Button
+                              size="xs"
+                              onClick={() =>
+                                void actionForOrder(order, "prepare")
+                              }
+                            >
+                              Finalizar
+                            </Button>
+                          ) : null}
+                          {stage === "entrega" &&
+                          order.status === "preparado" ? (
+                            <Button
+                              size="xs"
+                              onClick={() =>
+                                void actionForOrder(order, "confirm")
+                              }
+                            >
+                              Confirmar
+                            </Button>
+                          ) : null}
+                          {canAdmin &&
+                          stage === "entrega" &&
+                          order.deliveryStatus === "confirmado" ? (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={() =>
+                                void actionForOrder(order, "reopen")
+                              }
+                            >
+                              Reabrir
+                            </Button>
+                          ) : null}
+                        </span>
+                      </div>
                     </th>
-                  ))}
-                  <th
-                    rowSpan={2}
-                    className="sticky top-0 z-30 min-w-40 border-b border-l-2 bg-emerald-100 px-3 py-2 text-left"
-                  >
-                    Totales por producto
-                  </th>
-                </tr>
-                <tr>
-                  {orders.flatMap((order) =>
-                    stageHeaders(stage).map((header, index) => (
-                      <th
-                        key={`${order.id}:${header}`}
-                        className={`sticky top-[53px] z-30 min-w-20 border-b border-r bg-slate-50 px-2 py-1.5 text-center font-medium ${
-                          index === 0 ? "border-l-2" : ""
-                        } ${header === "Observación" ? "min-w-40" : ""}`}
-                      >
-                        {header}
-                      </th>
-                    )),
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => {
-                  const rowLines = lines.filter(
-                    (line) => rowKey(line) === rowKey(row),
                   );
-                  return (
-                    <tr key={rowKey(row)} className="hover:bg-muted/20">
-                      <td className="sticky left-0 z-20 border-b border-r bg-background px-2 py-1.5 text-center text-muted-foreground">
+                })}
+                <th
+                  rowSpan={2}
+                  className="sticky top-0 z-40 min-w-40 border-b border-l-2 bg-emerald-100 px-3 py-2 text-left"
+                >
+                  TOTALES
+                </th>
+              </tr>
+              <tr>
+                {orders.flatMap((order) =>
+                  headers.map((header, index) => (
+                    <th
+                      key={`${order.id}:${header}`}
+                      className={`sticky top-[74px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
+                        index === 0 ? "border-l-2" : ""
+                      } ${
+                        order.id === focusedOrderId
+                          ? "border-sky-400 bg-sky-50"
+                          : "bg-slate-50"
+                      } ${header === "OBS." ? "min-w-36" : ""}`}
+                    >
+                      {header}
+                    </th>
+                  )),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const rowLines = lines.filter(
+                  (line) => rowKey(line) === rowKey(row),
+                );
+                const categoryStarts =
+                  index === 0 ||
+                  rows[index - 1]?.categoryName !== row.categoryName;
+                return (
+                  <Fragment key={rowKey(row)}>
+                    {categoryStarts ? (
+                      <tr data-category-row={row.categoryName}>
+                        <td
+                          colSpan={matrixColumnCount}
+                          className="border-b border-t bg-slate-200 px-2 py-1.5 text-left font-bold uppercase tracking-wide text-slate-700"
+                        >
+                          {row.categoryName}
+                        </td>
+                      </tr>
+                    ) : null}
+                    <tr className="hover:bg-muted/20">
+                      <td className="sticky left-0 z-30 border-b border-r bg-background px-1 py-1.5 text-center text-muted-foreground">
                         {index + 1}
                       </td>
-                      <td className="sticky left-11 z-20 max-w-32 border-b border-r bg-background px-2 py-1.5">
-                        <span className="line-clamp-2">
-                          {row.categoryName}
-                        </span>
-                      </td>
-                      <td className="sticky left-[172px] z-20 max-w-56 border-b border-r bg-background px-2 py-1.5 font-medium">
+                      <td className="sticky left-9 z-30 max-w-40 border-b border-r bg-background px-2 py-1.5 font-medium md:max-w-56">
                         {row.productName}
                       </td>
-                      <td className="sticky left-[396px] z-20 border-b border-r bg-background px-2 py-1.5">
+                      <td className="sticky left-[196px] z-30 border-b border-r bg-background px-1.5 py-1.5 md:left-[260px]">
                         <span className="block">{row.sourceLabel}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          Base {row.baseUnitSymbol}
+                        <span className="text-[9px] text-muted-foreground">
+                          {row.baseUnitSymbol}
                         </span>
                       </td>
                       {orders.map((order) => {
                         const line = lineMap.get(
                           `${rowKey(row)}:${order.id}`,
                         );
+                        const focused = order.id === focusedOrderId;
                         return line ? (
                           <DesktopOrderCells
                             key={order.id}
                             line={line}
                             stage={stage}
                             canAdmin={canAdmin}
+                            focused={focused}
                             onChange={(patch) =>
                               updateLine(line.orderItemId, patch)
                             }
@@ -635,8 +644,10 @@ export function OperationalMatrix({
                         ) : (
                           <td
                             key={order.id}
-                            colSpan={stageHeaders(stage).length}
-                            className="border-b border-l-2 border-r px-2 py-1.5 text-center text-muted-foreground"
+                            colSpan={headers.length}
+                            className={`border-b border-l-2 border-r px-2 py-1.5 text-center text-muted-foreground ${
+                              focused ? "bg-sky-50/60" : ""
+                            }`}
                           >
                             —
                           </td>
@@ -644,99 +655,48 @@ export function OperationalMatrix({
                       })}
                       <RowTotals lines={rowLines} stage={stage} />
                     </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th
+                  colSpan={3}
+                  className="sticky bottom-0 left-0 z-40 border-t bg-slate-100 px-3 py-2 text-left"
+                >
+                  TOTALES POR CLIENTE
+                </th>
+                {orders.map((order) => {
+                  const orderLines = lines.filter(
+                    (line) => line.orderId === order.id,
+                  );
+                  const completed =
+                    stage === "entrega"
+                      ? orderLines.filter((line) => line.deliveryCheck).length
+                      : orderLines.filter((line) => line.preparationCheck)
+                          .length;
+                  return (
+                    <th
+                      key={order.id}
+                      colSpan={headers.length}
+                      className={`sticky bottom-0 z-30 border-l-2 border-t border-r px-3 py-2 text-left ${
+                        order.id === focusedOrderId
+                          ? "bg-sky-100"
+                          : "bg-slate-100"
+                      }`}
+                    >
+                      {orderLines.length} líneas · {completed} checks
+                    </th>
                   );
                 })}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th
-                    colSpan={4}
-                    className="sticky bottom-0 left-0 z-30 border-t bg-slate-100 px-3 py-2 text-left"
-                  >
-                    Totales por cliente
-                  </th>
-                  {orders.map((order) => {
-                    const orderLines = lines.filter(
-                      (line) => line.orderId === order.id,
-                    );
-                    const completed =
-                      stage === "entrega"
-                        ? orderLines.filter((line) => line.deliveryCheck).length
-                        : orderLines.filter((line) => line.preparationCheck)
-                            .length;
-                    return (
-                      <th
-                        key={order.id}
-                        colSpan={stageHeaders(stage).length}
-                        className="sticky bottom-0 z-20 border-l-2 border-t border-r bg-slate-100 px-3 py-2 text-left"
-                      >
-                        {orderLines.length} líneas · {completed} checks
-                      </th>
-                    );
-                  })}
-                  <th className="sticky bottom-0 z-20 border-l-2 border-t bg-emerald-100 px-3 py-2">
-                    {lines.length} líneas
-                  </th>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="space-y-3 md:hidden" data-matrix-layout="mobile-table">
-            <label className="block text-sm font-medium">
-              Cliente
-              <select
-                className="mt-1 h-10 w-full rounded-md border bg-background px-3"
-                value={selectedOrder?.id ?? ""}
-                onChange={(event) =>
-                  setSelectedMobileOrder(event.target.value)
-                }
-              >
-                {orders.map((order) => (
-                  <option key={order.id} value={order.id}>
-                    {order.customerName} · {order.reference}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {selectedOrder ? (
-              <section className="overflow-hidden rounded-lg border">
-                <header className="sticky top-0 z-30 border-b bg-slate-100 px-3 py-2">
-                  <p className="font-semibold">{selectedOrder.customerName}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {selectedOrder.reference} · {selectedOrder.locationLabel}
-                  </p>
-                </header>
-                <div className="overflow-x-auto">
-                  <table className="w-max min-w-full border-separate border-spacing-0 text-[11px]">
-                    <MobileHeader stage={stage} />
-                    <tbody>
-                      {selectedLines.map((line, index) => (
-                        <MobileRow
-                          key={line.orderItemId}
-                          index={index}
-                          line={line}
-                          stage={stage}
-                          canAdmin={canAdmin}
-                          onChange={(patch) =>
-                            updateLine(line.orderItemId, patch)
-                          }
-                          onSavePreparation={() =>
-                            void savePreparation(line.orderItemId)
-                          }
-                          onSaveDelivery={() =>
-                            void saveDelivery(line.orderItemId)
-                          }
-                          onCorrect={() => void correctRequest(line)}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        </>
+                <th className="sticky bottom-0 z-30 border-l-2 border-t bg-emerald-100 px-3 py-2">
+                  {lines.length} líneas
+                </th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -746,6 +706,7 @@ type CellProps = {
   line: MatrixLine;
   stage: MatrixStage;
   canAdmin: boolean;
+  focused: boolean;
   onChange: (patch: Partial<MatrixLine>) => void;
   onSavePreparation: () => void;
   onSaveDelivery: () => void;
@@ -830,14 +791,16 @@ function DesktopOrderCells(props: CellProps) {
     line,
     stage,
     canAdmin,
+    focused,
     onChange,
     onSavePreparation,
     onSaveDelivery,
     onCorrect,
   } = props;
-  const missing = Math.max(0, line.requestedQuantity - line.preparedQuantity);
   const tone = statusTone(line, stage);
-  const cellClass = `border-b border-r px-2 py-1.5 text-center ${tone}`;
+  const cellClass = `border-b border-r px-2 py-1.5 text-center ${
+    focused ? "bg-sky-50/60" : tone
+  }`;
 
   if (stage === "pedido") {
     return (
@@ -885,6 +848,14 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td className={cellClass}>
+          <span className="whitespace-nowrap font-medium">
+            {formatQuantity(line.preparedBaseQuantity)}
+          </span>
+          <span className="ml-1 text-[9px] text-muted-foreground">
+            {line.baseUnitSymbol}
+          </span>
+        </td>
+        <td className={cellClass}>
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
@@ -903,9 +874,6 @@ function DesktopOrderCells(props: CellProps) {
         </td>
         <td className={cellClass}>
           {formatQuantity(line.preparedQuantity)}
-        </td>
-        <td className={`${cellClass} ${missing ? "text-amber-700" : ""}`}>
-          {formatQuantity(missing)}
         </td>
         <td className={cellClass}>
           <NumberEditor
@@ -930,6 +898,14 @@ function DesktopOrderCells(props: CellProps) {
             onChange={(checked) => onChange({ deliveryCheck: checked })}
             onBlur={onSaveDelivery}
           />
+        </td>
+        <td className={cellClass}>
+          <span className="whitespace-nowrap font-medium">
+            {formatQuantity(line.deliveredBaseQuantity)}
+          </span>
+          <span className="ml-1 text-[9px] text-muted-foreground">
+            {line.baseUnitSymbol}
+          </span>
         </td>
         <td className={cellClass}>
           <NoteEditor
@@ -995,182 +971,5 @@ function RowTotals({
         </>
       ) : null}
     </td>
-  );
-}
-
-function MobileHeader({ stage }: { stage: MatrixStage }) {
-  const headers =
-    stage === "preparacion"
-      ? ["Producto", "Solicitado", "Preparado", "Check", "Faltante", "Nota"]
-      : stage === "entrega"
-        ? [
-            "Producto",
-            "Preparado",
-            "Externo",
-            "Entregado",
-            "Check",
-            "Nota",
-          ]
-        : stage === "pedido"
-          ? ["Producto", "Solicitado", "Acción"]
-          : [
-              "Producto",
-              "Solicitado",
-              "Preparado",
-              "Externo",
-              "Entregado",
-              "Estado",
-            ];
-  return (
-    <thead>
-      <tr>
-        {headers.map((header, index) => (
-          <th
-            key={header}
-            className={`sticky top-0 z-20 border-b border-r bg-slate-50 px-2 py-2 text-left ${
-              index === 0 ? "left-0 z-30 min-w-40" : "min-w-20"
-            }`}
-          >
-            {header}
-          </th>
-        ))}
-      </tr>
-    </thead>
-  );
-}
-
-function MobileRow(props: CellProps & { index: number }) {
-  const {
-    line,
-    stage,
-    canAdmin,
-    index,
-    onChange,
-    onSavePreparation,
-    onSaveDelivery,
-    onCorrect,
-  } = props;
-  const missing = Math.max(0, line.requestedQuantity - line.preparedQuantity);
-  const productCell = (
-    <td className="sticky left-0 z-10 max-w-40 border-b border-r bg-background px-2 py-2 align-top">
-      <span className="font-medium">
-        {index + 1}. {line.productName}
-      </span>
-      <span className="block text-[10px] text-muted-foreground">
-        {line.sourceLabel}
-      </span>
-    </td>
-  );
-  const cell = "border-b border-r px-2 py-2 text-center align-middle";
-
-  if (stage === "preparacion") {
-    return (
-      <tr className={statusTone(line, stage)}>
-        {productCell}
-        <td className={cell}>{formatQuantity(line.requestedQuantity)}</td>
-        <td className={cell}>
-          <NumberEditor
-            label={`Preparado ${line.productName}`}
-            value={line.preparedQuantity}
-            onChange={(value) => onChange({ preparedQuantity: value })}
-            onBlur={onSavePreparation}
-          />
-        </td>
-        <td className={cell}>
-          <CheckEditor
-            label={`Check bodega ${line.productName}`}
-            checked={line.preparationCheck}
-            onChange={(checked) => onChange({ preparationCheck: checked })}
-            onBlur={onSavePreparation}
-          />
-        </td>
-        <td className={cell}>{formatQuantity(missing)}</td>
-        <td className={cell}>
-          <details className="text-left">
-            <summary className="cursor-pointer text-emerald-800">Nota</summary>
-            <NoteEditor
-              label={`Nota bodega ${line.productName}`}
-              value={line.preparationNote}
-              onChange={(value) => onChange({ preparationNote: value })}
-              onBlur={onSavePreparation}
-            />
-          </details>
-        </td>
-      </tr>
-    );
-  }
-  if (stage === "entrega") {
-    return (
-      <tr className={statusTone(line, stage)}>
-        {productCell}
-        <td className={cell}>{formatQuantity(line.preparedQuantity)}</td>
-        <td className={cell}>
-          <NumberEditor
-            label={`Externo ${line.productName}`}
-            value={line.externalQuantity}
-            onChange={(value) => onChange({ externalQuantity: value })}
-            onBlur={onSaveDelivery}
-          />
-        </td>
-        <td className={cell}>
-          <NumberEditor
-            label={`Entregado ${line.productName}`}
-            value={line.deliveredQuantity}
-            onChange={(value) => onChange({ deliveredQuantity: value })}
-            onBlur={onSaveDelivery}
-          />
-        </td>
-        <td className={cell}>
-          <CheckEditor
-            label={`Check entrega ${line.productName}`}
-            checked={line.deliveryCheck}
-            onChange={(checked) => onChange({ deliveryCheck: checked })}
-            onBlur={onSaveDelivery}
-          />
-        </td>
-        <td className={cell}>
-          <details className="text-left">
-            <summary className="cursor-pointer text-blue-800">Nota</summary>
-            <NoteEditor
-              label={`Nota entrega ${line.productName}`}
-              value={line.deliveryNote}
-              onChange={(value) => onChange({ deliveryNote: value })}
-              onBlur={onSaveDelivery}
-            />
-          </details>
-        </td>
-      </tr>
-    );
-  }
-  if (stage === "pedido") {
-    return (
-      <tr>
-        {productCell}
-        <td className={cell}>{formatQuantity(line.requestedQuantity)}</td>
-        <td className={cell}>
-          {canAdmin ? (
-            <Button size="xs" variant="outline" onClick={onCorrect}>
-              Editar
-            </Button>
-          ) : (
-            "—"
-          )}
-        </td>
-      </tr>
-    );
-  }
-  const differs =
-    Math.abs(line.requestedQuantity - line.deliveredQuantity) > 0.000001;
-  return (
-    <tr>
-      {productCell}
-      <td className={cell}>{formatQuantity(line.requestedQuantity)}</td>
-      <td className={cell}>{formatQuantity(line.preparedQuantity)}</td>
-      <td className={cell}>{formatQuantity(line.externalQuantity)}</td>
-      <td className={cell}>{formatQuantity(line.deliveredQuantity)}</td>
-      <td className={`${cell} ${differs ? "text-amber-700" : "text-emerald-700"}`}>
-        {differs ? "Diferencia" : "Completo"}
-      </td>
-    </tr>
   );
 }

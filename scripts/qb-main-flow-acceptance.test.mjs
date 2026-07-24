@@ -80,44 +80,44 @@ assert.match(matrixPage, /requireRoleAccess\("\/matriz-operativa"\)/);
 assert.match(matrixPage, /params\.date \?\? params\.fecha/);
 assert.match(matrixPage, /initialOrderId=\{params\.order\}/);
 
-// Matriz tabular real en escritorio y tabla compacta móvil.
-assert.match(matrix, /data-matrix-layout="desktop-table"/);
-assert.match(matrix, /data-matrix-layout="mobile-table"/);
-assert.ok((matrix.match(/<table className=/g) ?? []).length >= 2);
-assert.match(matrix, /overflow-x-auto/);
-assert.match(matrix, /sticky left-0/);
-assert.match(matrix, /Categoría/);
-assert.match(matrix, /Producto/);
-assert.match(matrix, /Unidad/);
-assert.match(matrix, /Totales por producto/);
-assert.match(matrix, /Totales por cliente/);
+// Una sola matriz continua en escritorio y móvil, sin selector ni filtrado.
+assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
+assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
+assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|selectedLines/);
+assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
+assert.doesNotMatch(matrix, /<select/);
+assert.doesNotMatch(matrix, /orders\.filter/);
+assert.match(matrix, /touch-pan-x[\s\S]*overflow-auto/);
+assert.match(matrix, /orders\.map\(\(order/);
+assert.match(matrix, /data-order-group=\{order\.id\}/);
+assert.match(matrix, /scrollIntoView/);
+assert.match(matrix, /focusedOrderId/);
+
+// N°, DESCRIPCIÓN y UD permanecen sticky también a 390 px.
+assert.match(matrix, /sticky left-0 top-0[\s\S]*N°/);
+assert.match(matrix, /sticky left-9 top-0[\s\S]*DESCRIPCIÓN/);
+assert.match(matrix, /sticky left-\[196px\] top-0[\s\S]*UD/);
+assert.match(matrix, /sticky left-0 z-30/);
+assert.match(matrix, /sticky left-9 z-30/);
+assert.match(matrix, /sticky left-\[196px\] z-30/);
+assert.match(matrix, /sticky top-\[74px\]/);
+assert.match(matrix, /data-category-row=/);
+assert.match(matrix, /TOTALES/);
+assert.match(matrix, /TOTALES POR CLIENTE/);
 assert.match(matrix, /Check bodega/);
 assert.match(matrix, /Check entrega/);
 assert.match(matrix, /preparationCheck/);
 assert.match(matrix, /deliveryCheck/);
-assert.doesNotMatch(
-  matrix.match(/data-matrix-layout="mobile-table"[\s\S]*$/)?.[0] ?? "",
-  /<Card/,
+assert.doesNotMatch(matrix, /<Card/);
+assert.match(
+  matrix,
+  /\["CANT", "PREP\.", "CHECK", "PESO REAL", "OBS\."\]/,
 );
-for (const mobileInventoryColumn of [
-  "Producto",
-  "Solicitado",
-  "Preparado",
-  "Check",
-  "Faltante",
-  "Nota",
-]) {
-  assert.match(matrix, new RegExp(`"${mobileInventoryColumn}"`));
-}
-for (const mobileDeliveryColumn of [
-  "Producto",
-  "Preparado",
-  "Externo",
-  "Entregado",
-  "Check",
-  "Nota",
-]) {
-  assert.match(matrix, new RegExp(`"${mobileDeliveryColumn}"`));
-}
+assert.match(
+  matrix,
+  /"CANT",[\s\S]*"PREP\.",[\s\S]*"EXT\.",[\s\S]*"ENTR\.",[\s\S]*"CHECK",[\s\S]*"PESO REAL",[\s\S]*"OBS\."/,
+);
+assert.match(matrix, /preparedBaseQuantity/);
+assert.match(matrix, /deliveredBaseQuantity/);
 
 console.log("QB main-flow acceptance contracts: OK");
