@@ -37,6 +37,7 @@ declare
   v_location_id uuid := extensions.gen_random_uuid();
   v_product_id uuid;
   v_allowed_unit_id uuid;
+  v_unit_id uuid;
   v_source_unit text;
   v_base_unit text;
   v_step numeric(18, 6);
@@ -121,7 +122,46 @@ begin
   limit 1;
 
   if v_product_id is null or v_source_unit is null or v_base_unit is null then
-    raise exception 'QB-PILOT preflight: no existe producto con precio y unidad aptos para el QA.';
+    select id, symbol into v_unit_id, v_base_unit
+    from public.qb_units
+    where code = 'kg' and is_active
+    limit 1;
+    if v_unit_id is null then
+      raise exception 'QB-PILOT preflight: no existe unidad local kg.';
+    end if;
+
+    v_product_id := extensions.gen_random_uuid();
+    v_allowed_unit_id := extensions.gen_random_uuid();
+    v_source_unit := v_base_unit;
+    v_step := 1;
+    v_requested := 2;
+    v_stock_before := 100;
+
+    insert into public.products (
+      id, name, stock_current, stock_minimum, requires_classification,
+      is_sellable, is_active
+    ) values (
+      v_product_id, v_marker || '-PRODUCT', v_stock_before, 0, false, true, true
+    );
+
+    insert into public.qb_product_unit_settings (
+      product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id,
+      base_price_unit_id, base_sale_price, supports_amount_bs,
+      is_visible_in_qb_catalog, is_classifiable, classification_mode,
+      is_qb_active, created_by, updated_by
+    ) values (
+      v_product_id, v_unit_id, v_unit_id, v_unit_id,
+      v_unit_id, 10, false, true, false, 'none',
+      true, v_admin_id, v_admin_id
+    );
+
+    insert into public.qb_product_allowed_units (
+      id, product_id, usage_context, unit_id, is_default,
+      quantity_step, min_quantity, is_active, created_by, updated_by
+    ) values (
+      v_allowed_unit_id, v_product_id, 'pedido', v_unit_id, true,
+      v_step, 1, true, v_admin_id, v_admin_id
+    );
   end if;
 
   v_registered_actual := v_requested - v_step;

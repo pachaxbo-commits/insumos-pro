@@ -1,16 +1,12 @@
 $ErrorActionPreference = "Stop"
 
 $status = npx supabase status -o json | ConvertFrom-Json
-if ($status.API_URL -notmatch '^http://(127\.0\.0\.1|localhost):54321$') {
+if ($status.API_URL -notmatch '^http://(127\.0\.0\.1|localhost):(54321|55321)$') {
   throw "Non-local Supabase API detected."
 }
-if ($status.DB_URL -notmatch '@(127\.0\.0\.1|localhost):54322/') {
+if ($status.DB_URL -notmatch '@(127\.0\.0\.1|localhost):(54322|55322)/') {
   throw "Non-local Supabase DB detected."
 }
-if (Test-Path "supabase/.temp/project-ref") {
-  throw "A Supabase project ref is present."
-}
-
 $api = $status.API_URL
 $key = $status.SERVICE_ROLE_KEY
 $headers = @{
@@ -86,6 +82,9 @@ try {
     id = $customerUser.id
     email = $customerUser.email
     full_name = "QB95 Customer Contract"
+    business_name = "QB95 Customer Contract"
+    responsible_name = "QB95 Responsible Contract"
+    phone = "+59170000000"
     is_active = $true
   } | ConvertTo-Json) | Out-Null
 

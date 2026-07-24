@@ -13,6 +13,8 @@ declare
   v_snapshots bigint;
   v_audit_before bigint;
   v_available boolean;
+  v_unit_id uuid;
+  v_marker text := 'QB17-PRICE-' || substr(replace(extensions.gen_random_uuid()::text, '-', ''), 1, 10);
 begin
   select id into v_admin_id from public.profiles where role in ('admin', 'administrador') and is_active order by id limit 1;
   select id into v_inventory_id from public.profiles where role = 'inventario' and is_active order by id limit 1;
@@ -27,11 +29,67 @@ begin
   where p.is_active and p.is_sellable and s.is_qb_active and s.is_visible_in_qb_catalog
     and s.supports_amount_bs and s.base_sale_price is null
   order by p.id limit 1;
-  if v_product_id is null then raise exception 'QA_REQUIRES_BACKED_PRICELESS_PRODUCT'; end if;
+  if v_product_id is null then
+    select id into v_unit_id from public.qb_units where code = 'kg' and is_active limit 1;
+    if v_unit_id is null then raise exception 'QA_REQUIRES_ACTIVE_KG_UNIT'; end if;
+
+    v_product_id := extensions.gen_random_uuid();
+    v_stock := 100;
+
+    insert into public.products (
+      id, name, stock_current, stock_minimum, requires_classification, is_sellable, is_active
+    ) values (
+      v_product_id, v_marker || '-BACKED', v_stock, 0, false, true, true
+    );
+
+    insert into public.qb_product_unit_settings (
+      product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id,
+      base_price_unit_id, base_sale_price, supports_amount_bs,
+      is_visible_in_qb_catalog, is_classifiable, classification_mode,
+      is_qb_active, created_by, updated_by
+    ) values (
+      v_product_id, v_unit_id, v_unit_id, v_unit_id,
+      v_unit_id, null, true, true, false, 'none',
+      true, v_admin_id, v_admin_id
+    );
+
+    insert into public.qb_product_allowed_units (
+      product_id, usage_context, unit_id, is_default,
+      quantity_step, min_quantity, is_active, created_by, updated_by
+    ) values (
+      v_product_id, 'pedido', v_unit_id, true,
+      0.001, 0.001, true, v_admin_id, v_admin_id
+    );
+  end if;
+
+  if v_unit_id is null then
+    select base_price_unit_id into v_unit_id
+    from public.qb_product_unit_settings
+    where product_id = v_product_id;
+  end if;
 
   select p.id into v_non_backed_id
   from public.products p join public.qb_product_unit_settings s on s.product_id = p.id
   where p.is_active and not s.supports_amount_bs order by p.id limit 1;
+
+  if v_non_backed_id is null then
+    v_non_backed_id := extensions.gen_random_uuid();
+    insert into public.products (
+      id, name, stock_current, stock_minimum, requires_classification, is_sellable, is_active
+    ) values (
+      v_non_backed_id, v_marker || '-NOT-BACKED', 0, 0, false, true, true
+    );
+    insert into public.qb_product_unit_settings (
+      product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id,
+      base_price_unit_id, base_sale_price, supports_amount_bs,
+      is_visible_in_qb_catalog, is_classifiable, classification_mode,
+      is_qb_active, created_by, updated_by
+    ) values (
+      v_non_backed_id, v_unit_id, v_unit_id, v_unit_id,
+      v_unit_id, 8, false, true, false, 'none',
+      true, v_admin_id, v_admin_id
+    );
+  end if;
 
   select count(*) into v_movements from public.inventory_movements;
   select count(*) into v_snapshots from private.qb_order_amount_snapshots;

@@ -35,7 +35,9 @@ begin
   order by category.id
   limit 1;
   if v_category_id is null then
-    raise exception 'QB_SYNC_UNITS_ACTIVE_CATEGORY_REQUIRED';
+    insert into public.product_categories (name, is_active)
+    values ('QB TEST UNIDADES CATEGORY', true)
+    returning id into v_category_id;
   end if;
 
   select unit.* into v_primary_unit

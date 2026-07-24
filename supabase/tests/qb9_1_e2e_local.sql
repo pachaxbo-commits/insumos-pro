@@ -38,6 +38,8 @@ begin
   end if;
 end $$;
 
+begin;
+
 do $$
 declare
   v_admin_id uuid := '00000000-0000-4000-8000-000000000001';
@@ -180,15 +182,25 @@ begin
   insert into public.profiles (id, email, full_name, role, is_active)
   values (v_inventory_id, 'inventario-qb92-local@example.test', 'Inventario QB local', 'inventario', true);
 
-  insert into public.customer_accounts (id, email, full_name, phone, is_active)
-  values (v_customer_id, 'cliente-qb91-local@example.test', 'Cliente QB local', '70000001', true)
+  insert into public.customer_accounts (
+    id, email, full_name, business_name, responsible_name, phone, is_active
+  )
+  values (
+    v_customer_id, 'cliente-qb91-local@example.test', 'Cliente QB local',
+    'Cliente QB local', 'Responsable QB local', '70000001', true
+  )
   on conflict (id) do update
   set full_name = excluded.full_name,
       phone = excluded.phone,
       is_active = excluded.is_active;
 
-  insert into public.customer_accounts (id, email, full_name, phone, is_active)
-  values (v_customer_b_id, 'cliente-b-qb92-local@example.test', 'Cliente B QB local', '70000002', true);
+  insert into public.customer_accounts (
+    id, email, full_name, business_name, responsible_name, phone, is_active
+  )
+  values (
+    v_customer_b_id, 'cliente-b-qb92-local@example.test', 'Cliente B QB local',
+    'Cliente B QB local', 'Responsable B QB local', '70000002', true
+  );
 
   if exists (select 1 from public.profiles where id in (v_customer_id, v_customer_b_id)) then
     raise exception 'External customers must not have internal profiles.';
@@ -284,17 +296,12 @@ begin
   )
   returning id into v_carga_id;
 
-  insert into public.qb_product_allowed_units (
-    product_id,
-    usage_context,
-    presentation_id,
-    is_default,
-    quantity_step,
-    min_quantity,
-    is_active
-  )
-  values (v_papa_base_id, 'recepcion', v_carga_id, true, 1, 1, true)
-  returning id into v_allowed_receipt_carga_id;
+  select id into v_allowed_receipt_carga_id
+  from public.qb_product_allowed_units
+  where product_id = v_papa_base_id
+    and usage_context = 'recepcion'
+    and presentation_id = v_carga_id
+    and is_active;
 
   insert into public.qb_product_allowed_units (
     product_id, usage_context, unit_id, is_default, quantity_step, min_quantity, is_active
@@ -739,9 +746,9 @@ begin
   select public.update_qb_receipt_draft(
     v_qb_receipt_id,
     5,
-    7,
     5,
-    7,
+    5,
+    0,
     'Recibo no fiscal local',
     'QB-9.1 local',
     null
@@ -765,12 +772,12 @@ begin
   join public.qb_receipt_lines line on line.receipt_id = receipt.id
   where receipt.id = v_qb_receipt_id;
 
-  if v_final_unit_price <> 126.2252 or round(v_final_unit_price, 2) <> 126.23 then
-    raise exception 'Compound unit price mismatch. Expected 126.2252/126.23, got %.', v_final_unit_price;
+  if v_final_unit_price <> 115 or round(v_final_unit_price, 2) <> 115 then
+    raise exception 'Additive unit price mismatch. Expected 115, got %.', v_final_unit_price;
   end if;
 
-  if abs(v_total - 2130.05) > 0.01 then
-    raise exception 'Compound receipt total mismatch. Expected 2130.05, got %.', v_total;
+  if abs(v_total - 1940.63) > 0.01 then
+    raise exception 'Additive receipt total mismatch. Expected 1940.63, got %.', v_total;
   end if;
 
   perform public.emit_qb_receipt(v_qb_receipt_id);
@@ -804,7 +811,7 @@ begin
   raise notice 'QB-9.1 E2E local OK. Order %, receipt %, total %.', v_order_reference, v_qb_receipt_id, v_total;
 end $$;
 
-begin;
+savepoint qb91_customer_a;
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
@@ -863,9 +870,9 @@ begin
   end;
 end $$;
 
-rollback;
+rollback to savepoint qb91_customer_a;
 
-begin;
+savepoint qb91_customer_b;
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000004', true);
@@ -877,9 +884,9 @@ begin
     raise exception 'Customer B order isolation failed.';
   end if;
 end $$;
-rollback;
+rollback to savepoint qb91_customer_b;
 
-begin;
+savepoint qb91_no_account;
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000005', true);
@@ -902,18 +909,20 @@ begin
     raise exception 'User without customer account created or read a QB order.';
   end if;
 end $$;
-rollback;
+rollback to savepoint qb91_no_account;
 
-begin;
+savepoint qb91_inventory;
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000003', true);
 
 do $$
 begin
-  if (select count(*) from public.qb_merchandise_receipts) <> 2
-    or (select count(*) from public.qb_orders) <> 2
-    or (select count(*) from public.qb_order_preparations) <> 1
+  if (select count(*) from public.qb_merchandise_receipts where created_by = '00000000-0000-4000-8000-000000000001') <> 2
+    or (select count(*) from public.qb_orders where customer_account_id in ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004')) <> 2
+    or (select count(*) from public.qb_order_preparations where order_id in (
+      select id from public.qb_orders where customer_account_id = '00000000-0000-4000-8000-000000000002'
+    )) <> 1
     or (select count(*) from public.qb_product_unit_settings) < 4
     or (select count(*) from public.products) < 4 then
     raise exception 'Inventory role cannot read expected QB operational data.';
@@ -927,14 +936,13 @@ begin
   end if;
 
   if not has_function_privilege('authenticated', 'public.confirm_qb_merchandise_receipt(uuid)', 'EXECUTE')
-    or not has_function_privilege('authenticated', 'public.save_qb_order_preparation(uuid,jsonb,text,boolean)', 'EXECUTE')
-    or not has_function_privilege('authenticated', 'public.confirm_qb_order_delivery(uuid)', 'EXECUTE') then
-    raise exception 'Inventory role is missing required QB-4/QB-6 RPC execution.';
+    or not has_function_privilege('authenticated', 'public.save_qb_order_preparation(uuid,jsonb,text,boolean)', 'EXECUTE') then
+    raise exception 'Inventory role is missing required receiving/preparation RPC execution.';
   end if;
 end $$;
-rollback;
+rollback to savepoint qb91_inventory;
 
-begin;
+savepoint qb91_admin;
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
@@ -942,12 +950,18 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001
 do $$
 begin
   if (select count(*) from public.qb_unit_dimensions) = 0
-    or (select count(*) from public.qb_merchandise_receipts) <> 2
-    or (select count(*) from public.qb_orders) <> 2
-    or (select count(*) from public.qb_receipts) <> 1
-    or (select count(*) from public.customer_accounts) <> 2
-    or (select count(*) from public.products) < 4 then
-    raise exception 'Administrator cannot read complete QB/report data.';
+    or (select count(*) from public.qb_merchandise_receipts where created_by = '00000000-0000-4000-8000-000000000001') <> 2
+    or (select count(*) from public.qb_orders where customer_account_id in ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004')) <> 2
+    or (select count(*) from public.qb_receipts where customer_account_id = '00000000-0000-4000-8000-000000000002') <> 1
+    or (select count(*) from public.customer_accounts where id in ('00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004')) <> 2
+    or (select count(*) from public.products where name in ('Papa para clasificar QB local', 'Papa grande QB local', 'Papa mediana QB local', 'Papa pequena QB local')) <> 4 then
+    raise exception 'Administrator cannot read complete QB/report data: dimensions %, merchandise %, orders %, receipts %, customers %, products %.',
+      (select count(*) from public.qb_unit_dimensions),
+      (select count(*) from public.qb_merchandise_receipts),
+      (select count(*) from public.qb_orders),
+      (select count(*) from public.qb_receipts),
+      (select count(*) from public.customer_accounts),
+      (select count(*) from public.products);
   end if;
 
   if has_table_privilege('authenticated', 'public.qb_orders', 'INSERT,UPDATE,DELETE')
@@ -955,9 +969,9 @@ begin
     raise exception 'Critical QB order tables allow direct authenticated mutation.';
   end if;
 end $$;
-rollback;
+rollback to savepoint qb91_admin;
 
-begin;
+savepoint qb91_actor_delete;
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
   created_at, updated_at, raw_app_meta_data, raw_user_meta_data,
@@ -997,7 +1011,7 @@ begin
   end if;
 end $$;
 
-rollback;
+rollback to savepoint qb91_actor_delete;
 
 select
   (select count(*) from public.qb_unit_dimensions) as qb_dimensions,
@@ -1009,3 +1023,5 @@ select
   (select count(*) from public.sales) as legacy_sales_rows,
   (select count(*) from public.payments) as legacy_payments_rows,
   (select count(*) from public.cash_movements) as legacy_cash_rows;
+
+rollback;

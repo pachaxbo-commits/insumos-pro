@@ -13,6 +13,7 @@ declare
   v_receipts bigint;
   v_movements bigint;
   v_result jsonb;
+  v_marker text := 'QB18-' || substr(replace(extensions.gen_random_uuid()::text, '-', ''), 1, 10);
 begin
   select id into v_admin from public.profiles where role in ('admin','administrador') and is_active order by id limit 1;
   if v_admin is null then raise exception 'QA_ADMIN_REQUIRED'; end if;
@@ -25,7 +26,41 @@ begin
   into v_stock_product,v_base_unit,v_old_stock
   from public.products p join public.qb_product_unit_settings s on s.product_id=p.id
   where p.is_active and s.is_qb_active and not s.is_classifiable order by p.id limit 1;
-  if v_price_product is null or v_stock_product is null then raise exception 'QA_FIXTURE_REQUIRED'; end if;
+  if v_price_product is null then
+    select id into v_base_unit from public.qb_units where code = 'kg' and is_active limit 1;
+    if v_base_unit is null then raise exception 'QA_ACTIVE_KG_REQUIRED'; end if;
+
+    v_price_product := extensions.gen_random_uuid();
+    v_stock_product := v_price_product;
+    v_old_price := null;
+    v_old_stock := 10;
+
+    insert into public.products (
+      id, name, stock_current, stock_minimum, requires_classification, is_sellable, is_active
+    ) values (
+      v_price_product, v_marker || '-PRODUCT', v_old_stock, 0, false, true, true
+    );
+
+    insert into public.qb_product_unit_settings (
+      product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id,
+      base_price_unit_id, base_sale_price, supports_amount_bs,
+      is_visible_in_qb_catalog, is_classifiable, classification_mode,
+      is_qb_active, created_by, updated_by
+    ) values (
+      v_price_product, v_base_unit, v_base_unit, v_base_unit,
+      v_base_unit, null, true, true, false, 'none',
+      true, v_admin, v_admin
+    );
+  elsif v_stock_product is null then
+    v_stock_product := v_price_product;
+    select coalesce(base_inventory_unit_id, inventory_unit_id, base_unit_id)
+    into v_base_unit
+    from public.qb_product_unit_settings
+    where product_id = v_stock_product;
+    select stock_current into v_old_stock
+    from public.products
+    where id = v_stock_product;
+  end if;
 
   select count(*) into v_orders from public.qb_orders;
   select count(*) into v_receipts from public.qb_receipts;

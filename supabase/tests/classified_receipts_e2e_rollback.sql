@@ -75,7 +75,33 @@ begin
   order by account.id, location.is_primary desc, location.id
   limit 1;
   if v_customer_id is null or v_location_id is null then
-    raise exception 'QB_TEST_ACTIVE_CUSTOMER_LOCATION_REQUIRED';
+    v_customer_id := extensions.gen_random_uuid();
+    v_location_id := extensions.gen_random_uuid();
+
+    insert into auth.users (
+      id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) values (
+      v_customer_id, '00000000-0000-0000-0000-000000000000',
+      'authenticated', 'authenticated', lower(v_suffix) || '-classified@example.test',
+      '', now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+      now(), now()
+    );
+
+    insert into public.customer_accounts (
+      id, email, full_name, business_name, responsible_name, phone, is_active
+    ) values (
+      v_customer_id, lower(v_suffix) || '-classified@example.test',
+      'Cliente clasificado ' || v_suffix, 'Cliente clasificado ' || v_suffix,
+      'Responsable ' || v_suffix, '+59170000000', true
+    );
+
+    insert into public.qb_customer_locations (
+      id, customer_account_id, label, address, is_primary, is_active
+    ) values (
+      v_location_id, v_customer_id, 'Ubicacion ' || v_suffix,
+      'Direccion sintetica local', true, true
+    );
   end if;
 
   select id into v_kg_id
@@ -124,14 +150,31 @@ begin
     (v_tomato_presentation_id, v_tomato_id, 'Caja QB TEST', 'caja-test', 25, v_kg_id, 25, v_kg_id, 25, true, true, '1 caja = 25 kg', v_admin_id, v_admin_id),
     (v_vaina_presentation_id, v_vaina_id, 'Saco QB TEST', 'saco-test', 1.9, v_arroba_id, 21.375, v_kg_id, 21.375, true, true, '1 saco = 1.9 arrobas = 21.375 kg', v_admin_id, v_admin_id);
 
+  select id into v_papa_receipt_unit_id
+  from public.qb_product_allowed_units
+  where product_id = v_papa_input_id
+    and usage_context = 'recepcion'
+    and presentation_id = v_papa_presentation_id;
+
+  select id into v_tomato_receipt_unit_id
+  from public.qb_product_allowed_units
+  where product_id = v_tomato_id
+    and usage_context = 'recepcion'
+    and presentation_id = v_tomato_presentation_id;
+
+  select id into v_vaina_receipt_unit_id
+  from public.qb_product_allowed_units
+  where product_id = v_vaina_id
+    and usage_context = 'recepcion'
+    and presentation_id = v_vaina_presentation_id;
+
   insert into public.qb_product_allowed_units (
     id, product_id, usage_context, unit_id, presentation_id,
     is_default, quantity_step, min_quantity, is_active, created_by, updated_by
-  ) values
-    (v_papa_receipt_unit_id, v_papa_input_id, 'recepcion', null, v_papa_presentation_id, true, 1, 1, true, v_admin_id, v_admin_id),
-    (v_tomato_receipt_unit_id, v_tomato_id, 'recepcion', null, v_tomato_presentation_id, true, 1, 1, true, v_admin_id, v_admin_id),
-    (v_vaina_receipt_unit_id, v_vaina_id, 'recepcion', null, v_vaina_presentation_id, true, 1, 1, true, v_admin_id, v_admin_id),
-    (v_large_order_unit_id, v_papa_large_id, 'pedido', v_kg_id, null, true, 0.001, 0.001, true, v_admin_id, v_admin_id);
+  ) values (
+    v_large_order_unit_id, v_papa_large_id, 'pedido', v_kg_id, null,
+    true, 0.001, 0.001, true, v_admin_id, v_admin_id
+  );
 
   perform public.save_qb_product_classification_configuration(
     v_papa_input_id,

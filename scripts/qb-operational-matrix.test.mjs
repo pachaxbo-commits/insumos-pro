@@ -4,11 +4,27 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [foundation, workflows, factors, matrix, actions, receiptDocument, docs] =
+const [
+  foundation,
+  workflows,
+  factors,
+  guestOrders,
+  confirmationIdempotency,
+  entregadorAdmin,
+  userManagement,
+  matrix,
+  actions,
+  receiptDocument,
+  docs,
+] =
   await Promise.all([
     read("supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql"),
     read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql"),
     read("supabase/migrations/20260723130200_qb_receipt_additive_factors.sql"),
+    read("supabase/migrations/20260723210100_qb_operational_guest_orders.sql"),
+    read("supabase/migrations/20260723210200_qb_matrix_confirmation_idempotency.sql"),
+    read("supabase/migrations/20260723210000_qb_entregador_admin_role.sql"),
+    read("src/components/admin/user-management.tsx"),
     read("src/components/operational-matrix/operational-matrix.tsx"),
     read("src/lib/operational-matrix/actions.ts"),
     read("src/components/qb-receipts/receipt-document.tsx"),
@@ -22,6 +38,14 @@ assert.match(foundation, /'entregador'/);
 assert.match(foundation, /qb_order_delivery_items/);
 assert.match(foundation, /qb_order_line_change_events/);
 assert.match(foundation, /qb_operational_day_orders/);
+assert.match(guestOrders, /qb_operational_day_orders[\s\S]*customer_account_id drop not null/);
+assert.match(guestOrders, /qb_order_line_change_events[\s\S]*customer_account_id drop not null/);
+assert.match(
+  confirmationIdempotency,
+  /v_confirmation\.status = 'confirmado'[\s\S]*v_confirmation\.idempotency_key = p_idempotency_key/,
+);
+assert.match(entregadorAdmin, /'administrador', 'ventas', 'inventario', 'entregador', 'finanzas'/);
+assert.match(userManagement, /Entregador registra únicamente la entrega en[\s\S]*Matriz operativa/);
 assert.match(workflows, /row_version <> p_expected_version/);
 assert.match(workflows, /using errcode = '40001'/);
 assert.match(workflows, /last_idempotency_key = p_idempotency_key/);
