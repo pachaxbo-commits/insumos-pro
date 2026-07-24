@@ -5,11 +5,13 @@ import test from "node:test";
 import { canAccessPath } from "../src/lib/auth/roles.ts";
 
 test("inventory role is limited to the final operational surface", () => {
-  for (const path of ["/", "/pedidos", "/pedidos/uno", "/ingresos", "/inventario"]) {
+  for (const path of ["/", "/matriz-operativa", "/ingresos", "/inventario"]) {
     assert.equal(canAccessPath("inventario", path), true, path);
   }
 
   for (const path of [
+    "/pedidos",
+    "/pedidos/uno",
     "/productos",
     "/parametrizacion",
     "/configuracion",

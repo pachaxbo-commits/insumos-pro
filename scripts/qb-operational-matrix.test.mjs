@@ -60,7 +60,11 @@ assert.match(workflows, /v_role not in \('admin', 'administrador', 'entregador'\
 assert.match(workflows, /v_role not in \('admin', 'administrador', 'inventario'\)/);
 assert.match(actions, /save_qb_matrix_preparation_item/);
 assert.match(actions, /save_qb_matrix_delivery_item/);
-assert.match(matrix, /Renderizado virtual/);
+assert.match(matrix, /data-matrix-layout="desktop-table"/);
+assert.match(matrix, /data-matrix-layout="mobile-table"/);
+assert.match(matrix, /<table className=/);
+assert.match(matrix, /sticky left-0/);
+assert.match(matrix, /Totales por cliente/);
 assert.match(matrix, /dirty\.current\.size/);
 assert.match(matrix, /postgres_changes/);
 assert.match(matrix, /selectedMobileOrder/);
