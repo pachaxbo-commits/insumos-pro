@@ -21,6 +21,7 @@ export type MatrixLine = {
   productId: string;
   productName: string;
   productColor: string | null;
+  controlsActualWeight: boolean;
   categoryName: string;
   sourceLabel: string;
   baseUnitSymbol: string;

@@ -49,7 +49,7 @@ export async function getOperationalMatrixData(
       supabase
         .from("qb_order_items")
         .select(
-          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, row_version, product:products(name, matrix_color, category:product_categories(name))",
+          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true }),
@@ -155,6 +155,10 @@ export async function getOperationalMatrixData(
         String(
           (product as { matrix_color?: unknown } | null)?.matrix_color ?? "",
         ) || null,
+      controlsActualWeight: Boolean(
+        (product as { controls_actual_weight?: unknown } | null)
+          ?.controls_actual_weight,
+      ),
       categoryName: String((category as { name?: unknown } | null)?.name ?? "Sin categoría"),
       sourceLabel: String(item.source_label),
       baseUnitSymbol: String(item.base_unit_symbol),

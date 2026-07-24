@@ -18,6 +18,10 @@ const [
   docs,
   legacyFlow,
   actualWeight,
+  weightControl,
+  productActions,
+  productForm,
+  newProduct,
 ] =
   await Promise.all([
     read("supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql"),
@@ -33,6 +37,10 @@ const [
     read("docs/QB_MATRIZ_OPERATIVA.md"),
     read("supabase/migrations/20260724100000_qb_legacy_three_column_flow.sql"),
     read("supabase/migrations/20260724110000_qb_matrix_actual_weight.sql"),
+    read("supabase/migrations/20260724120000_qb_product_actual_weight_control.sql"),
+    read("src/lib/products/actions.ts"),
+    read("src/components/products/product-management.tsx"),
+    read("src/components/products/new-product-dialog.tsx"),
   ]);
 
 const newSources = [foundation, workflows, factors, matrix, actions, docs].join("\n");
@@ -84,6 +92,12 @@ assert.match(matrix, /preparedQuantity: checked \? line\.requestedQuantity : 0/)
 assert.match(matrix, /deliveredQuantity: checked \? line\.requestedQuantity : 0/);
 assert.match(matrix, /preparationActualWeightKg/);
 assert.match(matrix, /deliveryActualWeightKg/);
+assert.match(matrix, /function WeightEditor[\s\S]*step="0\.5"/);
+assert.match(matrix, /line\.controlsActualWeight \? \(/);
+assert.match(
+  matrix,
+  /title="Este producto se controla solo por cantidad o unidad"/,
+);
 assert.match(matrix, /line\.deliveredQuantity - line\.preparedQuantity/);
 assert.match(legacyFlow, /'admin', 'administrador', 'inventario', 'entregador'/);
 assert.match(legacyFlow, /catalog_quantity_step = 0\.5/);
@@ -95,6 +109,17 @@ assert.match(
   /save_qb_matrix_preparation_item_with_weight/,
 );
 assert.match(actualWeight, /save_qb_matrix_delivery_item_with_weight/);
+assert.match(
+  weightControl,
+  /add column if not exists controls_actual_weight boolean not null default false/,
+);
+assert.match(
+  weightControl,
+  /enforce_qb_product_actual_weight_control/,
+);
+assert.match(productActions, /p_controls_actual_weight/);
+assert.match(productForm, /name="controls_actual_weight"/);
+assert.match(newProduct, /name="controls_actual_weight"/);
 assert.match(factors, /factor_mode', 'additive_percent'/);
 assert.match(factors, /v_factor_total/);
 assert.doesNotMatch(

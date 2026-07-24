@@ -110,6 +110,23 @@ export function NewProductDialog({
               />
             </div>
 
+            <div className="space-y-2 md:col-span-2">
+              <Label>Control de peso real</Label>
+              <select
+                name="controls_actual_weight"
+                defaultValue="false"
+                className={selectClassName}
+              >
+                <option value="false">Solo controlar cantidad / unidad</option>
+                <option value="true">Controlar también peso real en kg</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Actívalo para frutas, verduras u otros productos que deban
+                pesarse. Déjalo desactivado para botellas, latas y unidades
+                cerradas.
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label>Categoría</Label>
               <select

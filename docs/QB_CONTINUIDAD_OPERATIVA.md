@@ -11,7 +11,7 @@
 
 El cliente está dispuesto a migrar, pero su modelo mental y el de su personal es una hoja de cálculo. La prioridad no es añadir más módulos: es hacer que la operación diaria se reconozca como la tabla que ya usan, conservando las ventajas del sistema —usuarios separados, permisos, trazabilidad, cálculos y una sola fuente de datos—.
 
-La arquitectura principal ya está adelantada: existen los roles Administrador, Inventario y Entregador; la matriz operativa continua; la separación interna entre solicitado, preparado, externo y entregado; cantidades reales; observaciones; auditoría y recibos. La decisión más reciente aclara la lógica de la hoja: `CANT` se llena automáticamente con lo solicitado, `CHECK` confirma esa cantidad y `PESO REAL` se registra en kg como dato independiente de `OBSERVACIÓN`.
+La arquitectura principal ya está adelantada: existen los roles Administrador, Inventario y Entregador; la matriz operativa continua; la separación interna entre solicitado, preparado, externo y entregado; cantidades reales; observaciones; auditoría y recibos. La decisión más reciente aclara la lógica de la hoja: `CANT` se llena automáticamente con lo solicitado, `CHECK` confirma esa cantidad y `PESO REAL` solo se habilita para productos configurados para pesaje.
 
 **Recomendación:** usar una sola plataforma. La interfaz puede parecer una hoja de cálculo sin depender de Google Sheets. Mantener dos plataformas produciría duplicidad, conflictos de sincronización, problemas de permisos y una auditoría incompleta.
 
@@ -82,6 +82,7 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 - Cada grupo de cliente muestra `CANT | CHECK | PESO REAL | OBSERVACIÓN`.
 - `CANT` se precarga con la cantidad solicitada y no se edita desde la matriz.
 - `PESO REAL` es editable en kg y no reemplaza la conversión calculada ni la cantidad original.
+- Cada producto define `Controlar peso real`: desactivado muestra un guion; activado permite flechas de `0,5 kg` y escritura manual precisa.
 - No añadir columnas visibles separadas de preparado, externo o entregado hasta una fase posterior expresamente aprobada.
 
 ## 6. Estado actual frente a las notas
@@ -102,6 +103,7 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 | Catálogo y colores del Excel | Importados 159 productos de la hoja de referencia: 81 coincidencias actualizadas y 78 productos nuevos, sin eliminar el catálogo previo. |
 | Color editable al crear producto | Disponible en alta y edición; la matriz usa el color guardado del producto. |
 | Lógica visual de la hoja | Implementada con `CANT` solicitada automática, `CHECK` de confirmación, `PESO REAL` independiente y `OBSERVACIÓN`, sin eliminar la trazabilidad interna. |
+| Peso real por producto | La creación y edición permite activar el pesaje solo para productos aplicables; productos cerrados por unidad no muestran editor de peso. |
 | Incremento temporal de `0,5` | Aplicado a productos vendibles y unidades permitidas para pedido; los pedidos por importe en Bs mantienen precisión monetaria. |
 | Reapertura operativa | Administrador, Inventario y Entregador pueden reabrir sin límite temporal, con motivo, auditoría y bloqueo cuando el recibo ya fue emitido. |
 | Recibo externo mínimo | La vista del cliente quedó limitada a logo/marca, cliente, fecha de entrega, productos, cantidad, precio final y total. |
@@ -138,6 +140,8 @@ El cliente aclaró que `CANT` siempre representa lo solicitado al crear el pedid
 - `CANT` no es editable en Preparación ni Entrega.
 - Al marcar CHECK, preparado o entregado se registra internamente igual a solicitado.
 - `PESO REAL` se guarda en kg, admite decimales y tiene auditoría propia.
+- Las flechas de PESO REAL avanzan de `0,5 kg`; la entrada manual admite valores más precisos.
+- El producto debe tener activado `Controlar peso real`; de lo contrario se trabaja solo con CANT y CHECK.
 - `OBSERVACIÓN` queda libre para faltantes, sustituciones, pérdidas u otras notas.
 - Solicitado, preparado, externo, entregado, conversión calculada y peso real siguen siendo datos distintos.
 
@@ -288,6 +292,7 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 | 24/07/2026 | Permitir reapertura a todos los usuarios operativos, sin límite temporal y con auditoría. | Decisión temporal |
 | 24/07/2026 | Limitar el recibo del cliente a logo, cliente, fecha de entrega, productos, cantidad, precio final y total. | Decisión confirmada |
 | 24/07/2026 | Precargar CANT con lo solicitado, usar CHECK para confirmar e incorporar PESO REAL en kg como columna independiente. | Decisión confirmada |
+| 24/07/2026 | Habilitar PESO REAL por producto; usar paso de 0,5 kg con entrada manual libre y dejar productos cerrados solo por unidad. | Decisión confirmada |
 | Pendiente | Aprobar visualmente la matriz con datos reales en escritorio y 390 px. | Requiere cliente |
 | Pendiente | Validar la fórmula específica de cebolla blanca. | Requiere cliente |
 | Pendiente | Definir carga masiva tipo Excel. | Próxima fase |
@@ -296,7 +301,7 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 
 Al abrir una tarea nueva, indicar:
 
-> Continúa QB Insumos desde `docs/QB_CONTINUIDAD_OPERATIVA.md`. La matriz continua usa `CANT | CHECK | PESO REAL | OBSERVACIÓN`: CANT viene automáticamente del pedido, CHECK confirma esa cantidad y PESO REAL se guarda en kg con auditoría independiente. No pierdas solicitado/preparado/externo/entregado ni conversiones internas. Usa incremento temporal global de `0,5`; captura arrobas reales por carga; permite reapertura auditada a todos los usuarios operativos; y limita el recibo externo a logo, cliente, fecha de entrega, productos, cantidad, precio final y total.
+> Continúa QB Insumos desde `docs/QB_CONTINUIDAD_OPERATIVA.md`. La matriz continua usa `CANT | CHECK | PESO REAL | OBSERVACIÓN`: CANT viene automáticamente del pedido, CHECK confirma esa cantidad y PESO REAL solo se edita cuando el producto tiene activado `Controlar peso real`; sus flechas avanzan 0,5 kg y acepta entrada manual precisa. No pierdas solicitado/preparado/externo/entregado ni conversiones internas.
 
 ## Anexo — Lectura de las capturas de reunión
 

@@ -52,6 +52,7 @@ const productSchema = z.object({
     .string()
     .trim()
     .regex(/^#[0-9a-fA-F]{6}$/, "Selecciona un color válido."),
+  controls_actual_weight: booleanField,
   category_id: z.uuid("Selecciona una categoria."),
   base_unit_id: z.uuid("Selecciona la unidad base."),
   inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
@@ -496,6 +497,7 @@ export async function createProductAction(
     p_catalog_quantity_step: parsed.data.catalog_quantity_step,
     p_is_active: parsed.data.is_active,
     p_matrix_color: parsed.data.matrix_color.toUpperCase(),
+    p_controls_actual_weight: parsed.data.controls_actual_weight,
   });
 
   if (error) {
@@ -587,6 +589,7 @@ export async function updateProductAction(
     p_catalog_quantity_step: parsed.data.catalog_quantity_step,
     p_is_active: parsed.data.is_active,
     p_matrix_color: parsed.data.matrix_color.toUpperCase(),
+    p_controls_actual_weight: parsed.data.controls_actual_weight,
   });
 
   if (error) {

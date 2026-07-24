@@ -276,7 +276,9 @@ export function OperationalMatrix({
       expectedVersion: line.preparationVersion,
       preparedQuantity: line.preparedQuantity,
       preparationCheck: line.preparationCheck,
-      actualWeightKg: line.preparationActualWeightKg,
+      actualWeightKg: line.controlsActualWeight
+        ? line.preparationActualWeightKg
+        : null,
       note: line.preparationNote,
       idempotencyKey: idempotencyKey("prep"),
     });
@@ -305,7 +307,9 @@ export function OperationalMatrix({
       externalQuantity,
       deliveredQuantity: line.deliveredQuantity,
       deliveryCheck: line.deliveryCheck,
-      actualWeightKg: line.deliveryActualWeightKg,
+      actualWeightKg: line.controlsActualWeight
+        ? line.deliveryActualWeightKg
+        : null,
       note: line.deliveryNote,
       idempotencyKey: idempotencyKey("delivery"),
     });
@@ -789,7 +793,7 @@ function WeightEditor({
         className="h-7 min-w-24 pr-7 text-right text-xs"
         type="number"
         min={0}
-        step="0.001"
+        step="0.5"
         value={value ?? ""}
         placeholder="0"
         onChange={(event) =>
@@ -875,14 +879,23 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td style={cellStyle} className={cellClass}>
-          <WeightEditor
-            label={`Peso real bodega ${line.productName}`}
-            value={line.preparationActualWeightKg}
-            onChange={(value) =>
-              onChange({ preparationActualWeightKg: value })
-            }
-            onBlur={onSavePreparation}
-          />
+          {line.controlsActualWeight ? (
+            <WeightEditor
+              label={`Peso real bodega ${line.productName}`}
+              value={line.preparationActualWeightKg}
+              onChange={(value) =>
+                onChange({ preparationActualWeightKg: value })
+              }
+              onBlur={onSavePreparation}
+            />
+          ) : (
+            <span
+              className="text-muted-foreground"
+              title="Este producto se controla solo por cantidad o unidad"
+            >
+              —
+            </span>
+          )}
         </td>
         <td style={cellStyle} className={cellClass}>
           <NoteEditor
@@ -917,12 +930,21 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td style={cellStyle} className={cellClass}>
-          <WeightEditor
-            label={`Peso real entrega ${line.productName}`}
-            value={line.deliveryActualWeightKg}
-            onChange={(value) => onChange({ deliveryActualWeightKg: value })}
-            onBlur={onSaveDelivery}
-          />
+          {line.controlsActualWeight ? (
+            <WeightEditor
+              label={`Peso real entrega ${line.productName}`}
+              value={line.deliveryActualWeightKg}
+              onChange={(value) => onChange({ deliveryActualWeightKg: value })}
+              onBlur={onSaveDelivery}
+            />
+          ) : (
+            <span
+              className="text-muted-foreground"
+              title="Este producto se controla solo por cantidad o unidad"
+            >
+              —
+            </span>
+          )}
         </td>
         <td style={cellStyle} className={cellClass}>
           <NoteEditor
@@ -956,9 +978,14 @@ function DesktopOrderCells(props: CellProps) {
         </span>
       </td>
       <td style={cellStyle} className={cellClass}>
-        {line.deliveryActualWeightKg ?? line.preparationActualWeightKg ?? "—"}
-        {line.deliveryActualWeightKg !== null ||
-        line.preparationActualWeightKg !== null
+        {line.controlsActualWeight
+          ? (line.deliveryActualWeightKg ??
+            line.preparationActualWeightKg ??
+            "—")
+          : "—"}
+        {line.controlsActualWeight &&
+        (line.deliveryActualWeightKg !== null ||
+          line.preparationActualWeightKg !== null)
           ? " kg"
           : ""}
       </td>

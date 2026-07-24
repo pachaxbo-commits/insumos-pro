@@ -64,8 +64,12 @@ desplazamiento horizontal táctil recorre todos los grupos y llega a los totales
 del extremo derecho. Un cliente enfocado sólo se resalta y recibe auto-scroll.
 Todos los anchos usan las mismas RPC y auditoría.
 
-PESO REAL admite milésimas de kg y se audita por separado en Preparación y
-Entrega. No es la cantidad base calculada por una conversión.
+PESO REAL solo es editable si el producto tiene activado **Controlar peso
+real**. Las flechas del campo avanzan de 0,5 kg, pero el personal puede escribir
+manualmente una medición con más precisión. El dato se audita por separado en
+Preparación y Entrega y no es la cantidad base calculada por una conversión.
+Para botellas, latas u otras unidades cerradas se deja desactivado y la matriz
+muestra un guion.
 
 Los pedidos por cantidad avanzan temporalmente en incrementos de 0,5 para todos
 los productos. Los pedidos por importe en Bs conservan precisión monetaria y la

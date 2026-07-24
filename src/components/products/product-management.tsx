@@ -312,6 +312,22 @@ function ProductForm({
           />
         </div>
 
+        <div className="space-y-2 md:col-span-2">
+          <Label>Control de peso real</Label>
+          <NativeSelect
+            name="controls_actual_weight"
+            defaultValue={String(product?.controls_actual_weight ?? false)}
+          >
+            <option value="false">Solo controlar cantidad / unidad</option>
+            <option value="true">Controlar también peso real en kg</option>
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">
+            Actívalo únicamente cuando el personal necesite registrar el peso
+            medido. En productos cerrados por unidad, la matriz mostrará un
+            guion en PESO REAL.
+          </p>
+        </div>
+
         <div className="space-y-2">
           <Label>Estado</Label>
           <NativeSelect
