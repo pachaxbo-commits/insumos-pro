@@ -111,13 +111,12 @@ assert.match(matrix, /deliveryCheck/);
 assert.doesNotMatch(matrix, /<Card/);
 assert.match(
   matrix,
-  /\["CANT", "PREP\.", "CHECK", "PESO REAL", "OBS\."\]/,
+  /return \["CANT", "CHECK", "OBSERVACIÓN"\]/,
 );
-assert.match(
-  matrix,
-  /"CANT",[\s\S]*"PREP\.",[\s\S]*"EXT\.",[\s\S]*"ENTR\.",[\s\S]*"CHECK",[\s\S]*"PESO REAL",[\s\S]*"OBS\."/,
-);
-assert.match(matrix, /preparedBaseQuantity/);
-assert.match(matrix, /deliveredBaseQuantity/);
+assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
+assert.doesNotMatch(matrix, /"PESO REAL"/);
+assert.match(matrix, /externalQuantity/);
+assert.match(matrix, /preparedQuantity/);
+assert.match(matrix, /deliveredQuantity/);
 
 console.log("QB main-flow acceptance contracts: OK");

@@ -57,21 +57,8 @@ function rowKey(line: MatrixLine) {
   return `${line.productId}:${line.sourceLabel}`;
 }
 
-function stageHeaders(stage: MatrixStage) {
-  if (stage === "pedido") return ["CANT", "ACCIÓN"];
-  if (stage === "preparacion")
-    return ["CANT", "PREP.", "CHECK", "PESO REAL", "OBS."];
-  if (stage === "entrega")
-    return [
-      "CANT",
-      "PREP.",
-      "EXT.",
-      "ENTR.",
-      "CHECK",
-      "PESO REAL",
-      "OBS.",
-    ];
-  return ["CANT", "PREP.", "EXT.", "ENTR.", "ESTADO"];
+function stageHeaders() {
+  return ["CANT", "CHECK", "OBSERVACIÓN"];
 }
 
 type MatrixProps = {
@@ -298,10 +285,23 @@ export function OperationalMatrix({
   const saveDelivery = async (id: string) => {
     const line = latestLine(id);
     if (!line) return;
+    const externalQuantity = Math.max(
+      line.deliveredQuantity - line.preparedQuantity,
+      0,
+    );
+    if (externalQuantity !== line.externalQuantity) {
+      setLines((current) =>
+        current.map((currentLine) =>
+          currentLine.orderItemId === id
+            ? { ...currentLine, externalQuantity }
+            : currentLine,
+        ),
+      );
+    }
     const result = await saveMatrixDeliveryAction({
       orderItemId: line.orderItemId,
       expectedVersion: line.deliveryVersion,
-      externalQuantity: line.externalQuantity,
+      externalQuantity,
       deliveredQuantity: line.deliveredQuantity,
       deliveryCheck: line.deliveryCheck,
       note: line.deliveryNote,
@@ -379,7 +379,7 @@ export function OperationalMatrix({
   const visibleStages: MatrixStage[] = canAdmin
     ? ["pedido", "preparacion", "entrega", "resumen"]
     : [defaultStage(data.role)];
-  const headers = stageHeaders(stage);
+  const headers = stageHeaders();
   const matrixColumnCount = 3 + orders.length * headers.length + 1;
   return (
     <div className="space-y-4">
@@ -529,9 +529,7 @@ export function OperationalMatrix({
                               Confirmar
                             </Button>
                           ) : null}
-                          {canAdmin &&
-                          stage === "entrega" &&
-                          order.deliveryStatus === "confirmado" ? (
+                          {order.deliveryStatus === "confirmado" ? (
                             <Button
                               size="xs"
                               variant="outline"
@@ -565,7 +563,7 @@ export function OperationalMatrix({
                         order.id === focusedOrderId
                           ? "border-sky-400 bg-sky-50"
                           : "bg-slate-50"
-                      } ${header === "OBS." ? "min-w-36" : ""}`}
+                      } ${header === "OBSERVACIÓN" ? "min-w-36" : ""}`}
                     >
                       {header}
                     </th>
@@ -815,6 +813,9 @@ function DesktopOrderCells(props: CellProps) {
           {formatQuantity(line.requestedQuantity)}
         </td>
         <td style={cellStyle} className={cellClass}>
+          <span className="text-muted-foreground">—</span>
+        </td>
+        <td style={cellStyle} className={cellClass}>
           {canAdmin ? (
             <Button
               size="xs"
@@ -835,9 +836,6 @@ function DesktopOrderCells(props: CellProps) {
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
-          {formatQuantity(line.requestedQuantity)}
-        </td>
-        <td style={cellStyle} className={cellClass}>
           <NumberEditor
             label={`Preparado ${line.productName}`}
             value={line.preparedQuantity}
@@ -854,14 +852,6 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td style={cellStyle} className={cellClass}>
-          <span className="whitespace-nowrap font-medium">
-            {formatQuantity(line.preparedBaseQuantity)}
-          </span>
-          <span className="ml-1 text-[9px] text-muted-foreground">
-            {line.baseUnitSymbol}
-          </span>
-        </td>
-        <td style={cellStyle} className={cellClass}>
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
@@ -876,20 +866,6 @@ function DesktopOrderCells(props: CellProps) {
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
-          {formatQuantity(line.requestedQuantity)}
-        </td>
-        <td style={cellStyle} className={cellClass}>
-          {formatQuantity(line.preparedQuantity)}
-        </td>
-        <td style={cellStyle} className={cellClass}>
-          <NumberEditor
-            label={`Externo ${line.productName}`}
-            value={line.externalQuantity}
-            onChange={(value) => onChange({ externalQuantity: value })}
-            onBlur={onSaveDelivery}
-          />
-        </td>
-        <td style={cellStyle} className={cellClass}>
           <NumberEditor
             label={`Entregado ${line.productName}`}
             value={line.deliveredQuantity}
@@ -904,14 +880,6 @@ function DesktopOrderCells(props: CellProps) {
             onChange={(checked) => onChange({ deliveryCheck: checked })}
             onBlur={onSaveDelivery}
           />
-        </td>
-        <td style={cellStyle} className={cellClass}>
-          <span className="whitespace-nowrap font-medium">
-            {formatQuantity(line.deliveredBaseQuantity)}
-          </span>
-          <span className="ml-1 text-[9px] text-muted-foreground">
-            {line.baseUnitSymbol}
-          </span>
         </td>
         <td style={cellStyle} className={cellClass}>
           <NoteEditor
@@ -929,11 +897,10 @@ function DesktopOrderCells(props: CellProps) {
   return (
     <>
       <td style={cellStyle} className={`${cellClass} border-l-2`}>
-        {formatQuantity(line.requestedQuantity)}
+        {formatQuantity(
+          line.deliveredQuantity || line.preparedQuantity || line.requestedQuantity,
+        )}
       </td>
-      <td style={cellStyle} className={cellClass}>{formatQuantity(line.preparedQuantity)}</td>
-      <td style={cellStyle} className={cellClass}>{formatQuantity(line.externalQuantity)}</td>
-      <td style={cellStyle} className={cellClass}>{formatQuantity(line.deliveredQuantity)}</td>
       <td
         style={cellStyle}
         className={`${cellClass} ${differs ? "text-amber-700" : "text-emerald-700"}`}
@@ -946,6 +913,9 @@ function DesktopOrderCells(props: CellProps) {
           )}
           {differs ? "Diferencia" : "Completo"}
         </span>
+      </td>
+      <td style={cellStyle} className={`${cellClass} min-w-36 text-left`}>
+        {line.deliveryNote || line.preparationNote || "—"}
       </td>
     </>
   );

@@ -16,6 +16,7 @@ const [
   actions,
   receiptDocument,
   docs,
+  legacyFlow,
 ] =
   await Promise.all([
     read("supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql"),
@@ -29,6 +30,7 @@ const [
     read("src/lib/operational-matrix/actions.ts"),
     read("src/components/qb-receipts/receipt-document.tsx"),
     read("docs/QB_MATRIZ_OPERATIVA.md"),
+    read("supabase/migrations/20260724100000_qb_legacy_three_column_flow.sql"),
   ]);
 
 const newSources = [foundation, workflows, factors, matrix, actions, docs].join("\n");
@@ -70,6 +72,13 @@ assert.match(matrix, /postgres_changes/);
 assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|MobileRow|<select/);
 assert.match(matrix, /orders\.map\(\(order/);
 assert.match(matrix, /scrollIntoView/);
+assert.match(matrix, /return \["CANT", "CHECK", "OBSERVACIÓN"\]/);
+assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
+assert.doesNotMatch(matrix, /"PESO REAL"/);
+assert.match(matrix, /line\.deliveredQuantity - line\.preparedQuantity/);
+assert.match(legacyFlow, /'admin', 'administrador', 'inventario', 'entregador'/);
+assert.match(legacyFlow, /catalog_quantity_step = 0\.5/);
+assert.match(legacyFlow, /usage_context = 'pedido'/);
 assert.match(factors, /factor_mode', 'additive_percent'/);
 assert.match(factors, /v_factor_total/);
 assert.doesNotMatch(
@@ -79,6 +88,8 @@ assert.doesNotMatch(
 assert.match(factors, /old\.status <> 'borrador'/);
 assert.match(receiptDocument, /isCustomerExport \? "Comprobante de entrega" : receipt\.number/);
 assert.match(receiptDocument, /!isCustomerExport \? <div className="border-b py-5">/);
+assert.match(receiptDocument, /isCustomerExport \? "Fecha de entrega" : "Periodo"/);
+assert.match(receiptDocument, /!isCustomerExport && receipt\.visibleNote/);
 
 const scenarios = [
   { requested: 5, prepared: 5, external: 0, delivered: 5, stock: 5, receipt: 5 },

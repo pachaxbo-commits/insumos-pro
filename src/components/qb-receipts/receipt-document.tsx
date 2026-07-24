@@ -54,38 +54,54 @@ export function ReceiptDocument({
         </div>
       </div>
 
-      <div className="grid gap-4 border-b py-5 md:grid-cols-3">
+      <div
+        className={`grid gap-4 border-b py-5 ${
+          isCustomerExport ? "md:grid-cols-2" : "md:grid-cols-3"
+        }`}
+      >
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">
             Cliente
           </p>
           <p className="mt-1 font-semibold">{receipt.customerName}</p>
-          <p className="text-sm text-muted-foreground">
-            {receipt.customerEmail}
-          </p>
-          {receipt.customerPhone ? (
-            <p className="text-sm text-muted-foreground">
-              {receipt.customerPhone}
-            </p>
+          {!isCustomerExport ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {receipt.customerEmail}
+              </p>
+              {receipt.customerPhone ? (
+                <p className="text-sm text-muted-foreground">
+                  {receipt.customerPhone}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            Periodo
+            {isCustomerExport ? "Fecha de entrega" : "Periodo"}
           </p>
           <p className="mt-1 text-sm">
-            {formatBoliviaDate(receipt.periodStart)} -{" "}
-            {formatBoliviaDate(receipt.periodEnd)}
+            {isCustomerExport ? (
+              formatBoliviaDate(receipt.periodEnd ?? receipt.periodStart)
+            ) : (
+              <>
+                {formatBoliviaDate(receipt.periodStart)} -{" "}
+                {formatBoliviaDate(receipt.periodEnd)}
+              </>
+            )}
           </p>
         </div>
-        <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Emision
-          </p>
-          <p className="mt-1 text-sm">
-            {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
-          </p>
-        </div>
+        {!isCustomerExport ? (
+          <div>
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Emision
+            </p>
+            <p className="mt-1 text-sm">
+              {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {!isCustomerExport ? <div className="border-b py-5">
@@ -195,7 +211,7 @@ export function ReceiptDocument({
         </div>
       </div>
 
-      {receipt.visibleNote ? (
+      {!isCustomerExport && receipt.visibleNote ? (
         <div className="mb-5 rounded-md bg-muted p-3 text-sm">
           <p className="font-medium">Nota</p>
           <p className="mt-1 text-muted-foreground">{receipt.visibleNote}</p>

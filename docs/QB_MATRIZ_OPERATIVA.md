@@ -22,39 +22,49 @@ Puede alternar Pedido, Preparación, Entrega y Resumen; ordenar clientes por
 fecha; corregir solicitado con motivo; consultar diferencias, actores y horas;
 finalizar preparación; confirmar o reabrir una entrega con motivo. La
 reapertura no revierte stock automáticamente y se rechaza si existe un recibo
-emitido.
+emitido. Administrador, Inventario y Entregador pueden reabrir sin límite
+temporal; siempre deben indicar el motivo y queda auditado.
 
 El orden se guarda atómicamente por fecha. Pedidos repetidos del mismo cliente
 se distinguen por referencia y ubicación.
 
 ## Inventario
 
-Ve solicitado, escribe preparado, observa el faltante, marca el check de bodega
-y deja una nota. Un faltante admite cero o preparación parcial. Finalizar
-preparación exige revisar todas las líneas. Inventario no puede escribir externo
-o entregado ni confirmar entrega, aunque manipule el payload.
+Cada cliente conserva las tres columnas de la hoja anterior: **CANT, CHECK y
+OBSERVACIÓN**. En esta etapa CANT registra lo preparado, CHECK es el control de
+bodega y OBSERVACIÓN guarda la nota. Un faltante admite cero o preparación
+parcial. Finalizar preparación exige revisar todas las líneas. Inventario no
+puede escribir entrega, precios, stock o configuración, aunque manipule el
+payload.
 
 ## Entregador
 
-Ve solicitado, snapshot de bodega y faltante. Escribe externo, entregado real,
-check y observación; luego confirma. Entregar más o menos está permitido, pero
-la observación es obligatoria si entregado difiere de solicitado. No puede
-editar preparación, precios, stock o configuración.
+También trabaja con **CANT, CHECK y OBSERVACIÓN**. CANT registra la cantidad
+real entregada. Si supera lo preparado, el sistema conserva internamente como
+externo la diferencia necesaria; CHECK y OBSERVACIÓN pertenecen a la entrega.
+Entregar más o menos está permitido, pero la observación es obligatoria si
+entregado difiere de solicitado. No puede editar preparación, precios, stock o
+configuración.
 
 ## Estado visual, totales y móvil
 
 La pantalla acompaña color con texto e iconos: completo, con diferencia o
-pendiente. Los totales del extremo derecho separan solicitado, preparado,
-externo, entregado y diferencia por producto/unidad. Cada cliente muestra
-conteos de líneas solicitadas, preparadas, entregadas y pendientes.
+pendiente. Los totales del extremo derecho conservan solicitado, preparado,
+externo y entregado aunque esas magnitudes no se conviertan en columnas
+visibles. Cada cliente muestra conteos de líneas y checks.
 
 Escritorio y móvil renderizan la misma matriz continua: categorías como filas
 separadoras, productos en filas y todos los clientes agrupados horizontalmente.
 Las columnas N°, DESCRIPCIÓN y UD, además de las cabeceras, permanecen visibles
 durante el desplazamiento. En celular no existe selector ni filtrado de
-clientes; el desplazamiento horizontal táctil recorre todos los grupos y llega
-a los totales del extremo derecho. Un cliente enfocado sólo se resalta y recibe
-auto-scroll. Todos los anchos usan las mismas RPC y auditoría.
+clientes; cada grupo tiene exactamente CANT, CHECK y OBSERVACIÓN. El
+desplazamiento horizontal táctil recorre todos los grupos y llega a los totales
+del extremo derecho. Un cliente enfocado sólo se resalta y recibe auto-scroll.
+Todos los anchos usan las mismas RPC y auditoría.
+
+Los pedidos por cantidad avanzan temporalmente en incrementos de 0,5 para todos
+los productos. Los pedidos por importe en Bs conservan precisión monetaria y la
+equivalencia real puede tener más decimales.
 
 ## Guardado, conflictos y Realtime
 
@@ -77,8 +87,10 @@ Los recibos nuevos toman la cantidad realmente entregada. Cada factor interno
 (Distancia, Exigencia, Clima y Extraordinario) está desactivado o vale 5%; se
 suman sobre el subtotal y nunca se componen. El snapshot interno conserva
 subtotal, selección, porcentaje total, recargo, total, actor y fecha. La vista
-del cliente oculta factores, subtotal administrativo y código interno. Un
-recibo emitido no se recalcula.
+del cliente muestra únicamente marca/logo, nombre del cliente, fecha de
+entrega, productos, cantidad, precio final y total. Oculta contacto, periodo
+administrativo, factores, notas internas, subtotal administrativo y código
+interno. Un recibo emitido no se recalcula.
 
 ## Guía de prueba para el cliente
 

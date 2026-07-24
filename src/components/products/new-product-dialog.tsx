@@ -296,7 +296,7 @@ export function NewProductDialog({
                   type="number"
                   min="0.001"
                   step="0.001"
-                  defaultValue="1"
+                  defaultValue="0.5"
                   required
                   className="rounded-xl"
                 />
