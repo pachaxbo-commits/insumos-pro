@@ -98,7 +98,7 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 | Producto externo/fresco | Implementado como cantidad externa separada del stock de bodega. |
 | Autoría y conflictos | Implementadas auditoría transaccional, versiones, idempotencia y avisos de cambios remotos. |
 | Orden de clientes | El Administrador puede ordenar clientes por fecha; se conserva en la operación diaria. |
-| Histórico para repetir pedido | “Repetir último pedido” carga producto y unidad exactos y deja las líneas editables. |
+| Histórico para repetir pedido | “Repetir último pedido” carga producto y unidad exactos y deja las líneas editables. En “Nuevo pedido”, sus productos aparecen primero dentro de una tabla seleccionable; el catálogo interno restante sigue en orden alfabético y se amplía en lotes de 40 sin ocultarlo detrás de un selector. |
 | Recibo basado en entrega | Los recibos nuevos toman la cantidad realmente entregada. La exportación de cliente oculta el código interno y enumera productos. |
 | Catálogo y colores del Excel | Importados 159 productos de la hoja de referencia: 81 coincidencias actualizadas y 78 productos nuevos, sin eliminar el catálogo previo. |
 | Color editable al crear producto | Disponible en alta y edición; la matriz usa el color guardado del producto. |

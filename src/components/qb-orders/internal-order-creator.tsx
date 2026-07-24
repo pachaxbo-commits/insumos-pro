@@ -9,14 +9,13 @@ import {
   type FormEvent,
 } from "react";
 import Link from "next/link";
-import { Clock3, Minus, Plus, RotateCcw, Send, X } from "lucide-react";
+import { Check, Clock3, Plus, RotateCcw, Search, Send, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ProductCombobox } from "@/components/products/product-combobox";
 import { createQbInternalOrderAction } from "@/lib/qb-orders/actions";
 import { getLastRepeatableOrderAction } from "@/lib/qb-orders/creation-actions";
 import type {
@@ -26,6 +25,8 @@ import type {
 } from "@/types/qb-orders";
 
 const initialState: QbOrderActionState = { success: false };
+const PRODUCT_BATCH_SIZE = 40;
+const MAX_ORDER_PRODUCTS = 30;
 
 type DraftLine = {
   key: number;
@@ -36,18 +37,6 @@ type DraftLine = {
   requestedAmountBs: string;
   notes: string;
 };
-
-function blankLine(key: number): DraftLine {
-  return {
-    key,
-    productId: "",
-    allowedUnitId: "",
-    quantity: "",
-    inputMode: "quantity",
-    requestedAmountBs: "",
-    notes: "",
-  };
-}
 
 type GuestDraft = {
   businessName: string;
@@ -82,6 +71,14 @@ function shortDate(value: string) {
   }).format(new Date(value));
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es")
+    .trim();
+}
+
 export function InternalOrderCreator({
   customers,
   products,
@@ -96,8 +93,11 @@ export function InternalOrderCreator({
   const [idempotencyKey, setIdempotencyKey] = useState(() =>
     initiallyOpen ? crypto.randomUUID() : "",
   );
-  const [nextLineKey, setNextLineKey] = useState(2);
-  const [lines, setLines] = useState<DraftLine[]>([blankLine(1)]);
+  const [nextLineKey, setNextLineKey] = useState(1);
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [catalogLimit, setCatalogLimit] = useState(PRODUCT_BATCH_SIZE);
+  const [selectionMessage, setSelectionMessage] = useState("");
   const [state, setState] = useState<QbOrderActionState>(initialState);
   const [pending, startTransition] = useTransition();
   const [historyPending, startHistoryTransition] = useTransition();
@@ -113,6 +113,44 @@ export function InternalOrderCreator({
   const selectedCustomer = customers.find(
     (customer) => customer.id === customerId,
   );
+  const linesByProductId = useMemo(
+    () => new Map(lines.map((line) => [line.productId, line])),
+    [lines],
+  );
+  const productIndex = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products],
+  );
+  const catalogGroups = useMemo(() => {
+    const query = normalizeSearch(productSearch);
+    const matchesSearch = (productId: string) => {
+      const product = productIndex.get(productId);
+      if (!product) return false;
+      if (!query) return true;
+      return normalizeSearch(
+        `${product.name} ${product.categoryName ?? ""}`,
+      ).includes(query);
+    };
+    const lastOrderIds = [
+      ...new Set(history?.lines.map((line) => line.productId) ?? []),
+    ].filter((productId) => productIndex.has(productId));
+    const lastOrderSet = new Set(lastOrderIds);
+    const latest = lastOrderIds
+      .filter(matchesSearch)
+      .map((productId) => productIndex.get(productId)!);
+    const alphabetical = products
+      .filter(
+        (product) =>
+          !lastOrderSet.has(product.id) && matchesSearch(product.id),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name, "es"));
+
+    return {
+      latest,
+      alphabetical,
+      visibleAlphabetical: alphabetical.slice(0, catalogLimit),
+    };
+  }, [catalogLimit, history, productIndex, productSearch, products]);
 
   useEffect(() => {
     const request = ++historyRequestRef.current;
@@ -160,18 +198,200 @@ export function InternalOrderCreator({
     );
   }
 
-  function selectProduct(key: number, productId: string) {
+  function toggleProduct(productId: string) {
+    const selectedLine = linesByProductId.get(productId);
+    if (selectedLine) {
+      setLines((current) =>
+        current.filter((line) => line.productId !== productId),
+      );
+      setSelectionMessage("");
+      return;
+    }
+    if (lines.length >= MAX_ORDER_PRODUCTS) {
+      setSelectionMessage(
+        `Puedes incluir hasta ${MAX_ORDER_PRODUCTS} productos por pedido.`,
+      );
+      return;
+    }
     const product = products.find((item) => item.id === productId);
     const defaultUnit =
       product?.allowedUnits.find((unit) => unit.isDefault) ??
       product?.allowedUnits[0];
+    if (!product || !defaultUnit) return;
+    setLines((current) => [
+      ...current,
+      {
+        key: nextLineKey,
+        productId,
+        allowedUnitId: defaultUnit.id,
+        quantity: String(defaultUnit.minQuantity),
+        inputMode: "quantity",
+        requestedAmountBs: "",
+        notes: "",
+      },
+    ]);
+    setNextLineKey((current) => current + 1);
+    setSelectionMessage("");
+  }
+
+  function selectProductMode(
+    key: number,
+    inputMode: "quantity" | "amount_bs",
+  ) {
     updateLine(key, {
-      productId,
-      allowedUnitId: defaultUnit?.id ?? "",
-      quantity: defaultUnit ? String(defaultUnit.minQuantity) : "",
-      inputMode: "quantity",
+      inputMode,
       requestedAmountBs: "",
     });
+  }
+
+  function resetProductSelection() {
+    setLines([]);
+    setProductSearch("");
+    setCatalogLimit(PRODUCT_BATCH_SIZE);
+    setSelectionMessage("");
+  }
+
+  function productRow(productId: string, rowNumber: number) {
+    const product = productIndex.get(productId);
+    if (!product) return null;
+    const line = linesByProductId.get(productId);
+    const selected = Boolean(line);
+    const allowedUnit = line
+      ? product.allowedUnits.find((unit) => unit.id === line.allowedUnitId)
+      : undefined;
+
+    return (
+      <tr
+        key={product.id}
+        className={
+          selected
+            ? "border-b bg-emerald-50/80"
+            : "border-b bg-background hover:bg-muted/35"
+        }
+      >
+        <td className="sticky left-0 z-10 w-12 bg-inherit px-3 py-2 text-center">
+          <input
+            type="checkbox"
+            aria-label={`Seleccionar ${product.name}`}
+            checked={selected}
+            onChange={() => toggleProduct(product.id)}
+            className="size-4 rounded border-input accent-emerald-700"
+          />
+        </td>
+        <td className="sticky left-12 z-10 min-w-64 bg-inherit px-3 py-2 shadow-[1px_0_0_0_hsl(var(--border))]">
+          <button
+            type="button"
+            onClick={() => toggleProduct(product.id)}
+            className="w-full text-left"
+          >
+            <span className="flex items-center gap-2 font-medium">
+              {selected ? (
+                <Check className="size-4 text-emerald-700" aria-hidden />
+              ) : null}
+              {product.name}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {product.categoryName ?? "Sin categoría"} · Producto {rowNumber}
+            </span>
+          </button>
+        </td>
+        <td className="w-44 min-w-44 px-2 py-2">
+          {line ? (
+            <select
+              aria-label={`Forma de pedido de ${product.name}`}
+              value={line.inputMode}
+              onChange={(event) =>
+                selectProductMode(
+                  line.key,
+                  event.target.value as "quantity" | "amount_bs",
+                )
+              }
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="quantity">Por cantidad</option>
+              {product.amountBsAvailable ? (
+                <option value="amount_bs">Por importe en Bs</option>
+              ) : null}
+            </select>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </td>
+        <td className="w-44 min-w-44 px-2 py-2">
+          {line?.inputMode === "quantity" ? (
+            <select
+              aria-label={`Unidad de ${product.name}`}
+              value={line.allowedUnitId}
+              onChange={(event) =>
+                updateLine(line.key, { allowedUnitId: event.target.value })
+              }
+              required
+              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              {product.allowedUnits.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {line ? "Cálculo automático" : "—"}
+            </span>
+          )}
+        </td>
+        <td className="w-36 min-w-36 px-2 py-2">
+          {line?.inputMode === "quantity" ? (
+            <Input
+              aria-label={`Cantidad de ${product.name}`}
+              type="number"
+              min={allowedUnit?.minQuantity ?? 0.001}
+              step={allowedUnit?.quantityStep ?? 0.001}
+              value={line.quantity}
+              onChange={(event) =>
+                updateLine(line.key, { quantity: event.target.value })
+              }
+              required
+              className="h-9"
+            />
+          ) : line ? (
+            <Input
+              aria-label={`Importe en Bs de ${product.name}`}
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={line.requestedAmountBs}
+              onChange={(event) =>
+                updateLine(line.key, {
+                  requestedAmountBs: event.target.value,
+                })
+              }
+              placeholder="Bs"
+              required
+              className="h-9"
+            />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </td>
+        <td className="min-w-64 px-2 py-2">
+          {line ? (
+            <Input
+              aria-label={`Nota de ${product.name}`}
+              value={line.notes}
+              onChange={(event) =>
+                updateLine(line.key, { notes: event.target.value })
+              }
+              placeholder="Nota opcional"
+              maxLength={500}
+              className="h-9"
+            />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </td>
+      </tr>
+    );
   }
 
   function selectCustomer(value: string) {
@@ -192,11 +412,6 @@ export function InternalOrderCreator({
     setHistoryError("");
     setRepeatMessage("");
     setRepeatedOrderId("");
-  }
-
-  function addLine() {
-    setLines((current) => [...current, blankLine(nextLineKey)]);
-    setNextLineKey((current) => current + 1);
   }
 
   function repeatLastOrder() {
@@ -249,8 +464,7 @@ export function InternalOrderCreator({
   }
 
   function cancelRepeat() {
-    setLines([blankLine(nextLineKey)]);
-    setNextLineKey((current) => current + 1);
+    resetProductSelection();
     setRepeatedOrderId("");
     setRepeatMessage("");
   }
@@ -274,8 +488,8 @@ export function InternalOrderCreator({
     setHistoryChecked(false);
     setRepeatMessage("");
     setRepeatedOrderId("");
-    setLines([blankLine(1)]);
-    setNextLineKey(2);
+    resetProductSelection();
+    setNextLineKey(1);
     setIdempotencyKey(crypto.randomUUID());
     formRef.current?.reset();
   }
@@ -581,142 +795,146 @@ export function InternalOrderCreator({
             </div>
           )}
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="font-medium">Productos</h3>
+          <section
+            className="space-y-3"
+            aria-labelledby="order-products-title"
+            data-product-order-table
+          >
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3 id="order-products-title" className="font-medium">
+                  Productos
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Marca el producto y escribe su cantidad en la misma fila. Los
+                  del último pedido aparecen primero.
+                </p>
+              </div>
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <span className="font-semibold text-emerald-800">
+                  {lines.length}
+                </span>{" "}
+                de {MAX_ORDER_PRODUCTS} seleccionados
+              </div>
+            </div>
+
+            <div className="relative max-w-xl">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={productSearch}
+                onChange={(event) => {
+                  setProductSearch(event.target.value);
+                  setCatalogLimit(PRODUCT_BATCH_SIZE);
+                }}
+                placeholder="Buscar por producto o categoría"
+                aria-label="Buscar en todos los productos"
+                className="pl-9"
+              />
+            </div>
+
+            {selectionMessage ? (
+              <p className="text-sm font-medium text-amber-800" role="status">
+                {selectionMessage}
+              </p>
+            ) : null}
+
+            <div className="max-h-[32rem] overflow-auto rounded-xl border overscroll-contain [touch-action:pan-x_pan-y]">
+              <table className="w-full min-w-[980px] border-collapse text-sm">
+                <thead className="sticky top-0 z-30 bg-slate-100 shadow-[0_1px_0_0_hsl(var(--border))]">
+                  <tr>
+                    <th className="sticky left-0 z-40 w-12 bg-slate-100 px-3 py-2 text-center font-semibold">
+                      Sel.
+                    </th>
+                    <th className="sticky left-12 z-40 min-w-64 bg-slate-100 px-3 py-2 text-left font-semibold shadow-[1px_0_0_0_hsl(var(--border))]">
+                      Producto
+                    </th>
+                    <th className="w-44 px-2 py-2 text-left font-semibold">
+                      Forma
+                    </th>
+                    <th className="w-44 px-2 py-2 text-left font-semibold">
+                      Unidad
+                    </th>
+                    <th className="w-36 px-2 py-2 text-left font-semibold">
+                      Cantidad / Bs
+                    </th>
+                    <th className="min-w-64 px-2 py-2 text-left font-semibold">
+                      Observación
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogGroups.latest.length ? (
+                    <tr className="border-b bg-emerald-100/80">
+                      <th
+                        colSpan={6}
+                        className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-emerald-900"
+                      >
+                        Último pedido del cliente
+                      </th>
+                    </tr>
+                  ) : null}
+                  {catalogGroups.latest.map((product, index) =>
+                    productRow(product.id, index + 1),
+                  )}
+                  {catalogGroups.visibleAlphabetical.length ? (
+                    <tr className="border-b bg-slate-100">
+                      <th
+                        colSpan={6}
+                        className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-700"
+                      >
+                        {catalogGroups.latest.length
+                          ? "Otros productos en orden alfabético"
+                          : "Productos en orden alfabético"}
+                      </th>
+                    </tr>
+                  ) : null}
+                  {catalogGroups.visibleAlphabetical.map((product, index) =>
+                    productRow(
+                      product.id,
+                      catalogGroups.latest.length + index + 1,
+                    ),
+                  )}
+                  {!catalogGroups.latest.length &&
+                  !catalogGroups.visibleAlphabetical.length ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="px-4 py-10 text-center text-muted-foreground"
+                      >
+                        No encontramos productos con esa búsqueda.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {catalogGroups.visibleAlphabetical.length <
+            catalogGroups.alphabetical.length ? (
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                onClick={addLine}
-                disabled={lines.length >= 30}
+                onClick={() =>
+                  setCatalogLimit(
+                    (current) => current + PRODUCT_BATCH_SIZE,
+                  )
+                }
               >
                 <Plus className="size-4" />
-                Agregar producto
+                Mostrar{" "}
+                {Math.min(
+                  PRODUCT_BATCH_SIZE,
+                  catalogGroups.alphabetical.length -
+                    catalogGroups.visibleAlphabetical.length,
+                )}{" "}
+                productos más
               </Button>
-            </div>
-
-            {lines.map((line, index) => {
-              const product = products.find(
-                (item) => item.id === line.productId,
-              );
-              const allowedUnit = product?.allowedUnits.find(
-                (unit) => unit.id === line.allowedUnitId,
-              );
-              return (
-                <div
-                  key={line.key}
-                  className="grid gap-3 rounded-lg border p-3 lg:grid-cols-[1fr_150px_180px_130px_1fr_auto]"
-                >
-                  <ProductCombobox
-                    ariaLabel={`Producto ${index + 1}`}
-                    value={line.productId}
-                    onValueChange={(productId) =>
-                      selectProduct(line.key, productId)
-                    }
-                    options={products.map((item) => ({
-                      id: item.id,
-                      name: item.name,
-                      category: item.categoryName,
-                      unit: item.allowedUnits[0]?.label,
-                    }))}
-                    placeholder="Buscar producto"
-                  />
-                  <select
-                    aria-label={`Forma de pedido ${index + 1}`}
-                    value={line.inputMode}
-                    onChange={(event) =>
-                      updateLine(line.key, {
-                        inputMode: event.target.value as
-                          "quantity" | "amount_bs",
-                      })
-                    }
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                  >
-                    <option value="quantity">Por cantidad</option>
-                    {product?.amountBsAvailable ? (
-                      <option value="amount_bs">Por importe en Bs</option>
-                    ) : null}
-                  </select>
-                  {line.inputMode === "quantity" ? (
-                    <select
-                      aria-label={`Unidad ${index + 1}`}
-                      value={line.allowedUnitId}
-                      onChange={(event) =>
-                        updateLine(line.key, {
-                          allowedUnitId: event.target.value,
-                        })
-                      }
-                      required
-                      className="h-10 rounded-md border bg-background px-3 text-sm"
-                    >
-                      <option value="">Unidad</option>
-                      {(product?.allowedUnits ?? []).map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
-                      Unidad física calculada por el servidor
-                    </div>
-                  )}
-                  {line.inputMode === "quantity" ? (
-                    <Input
-                      aria-label={`Cantidad ${index + 1}`}
-                      type="number"
-                      min={allowedUnit?.minQuantity ?? 0.001}
-                      step={allowedUnit?.quantityStep ?? 0.001}
-                      value={line.quantity}
-                      onChange={(event) =>
-                        updateLine(line.key, { quantity: event.target.value })
-                      }
-                      required
-                    />
-                  ) : (
-                    <Input
-                      aria-label={`Importe en Bs ${index + 1}`}
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={line.requestedAmountBs}
-                      onChange={(event) =>
-                        updateLine(line.key, {
-                          requestedAmountBs: event.target.value,
-                        })
-                      }
-                      placeholder="Bs"
-                      required
-                    />
-                  )}
-                  <Input
-                    aria-label={`Nota ${index + 1}`}
-                    value={line.notes}
-                    onChange={(event) =>
-                      updateLine(line.key, { notes: event.target.value })
-                    }
-                    placeholder="Nota opcional"
-                    maxLength={500}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={lines.length === 1}
-                    onClick={() =>
-                      setLines((current) =>
-                        current.filter((item) => item.key !== line.key),
-                      )
-                    }
-                  >
-                    <Minus className="size-4" />
-                    <span className="sr-only">Quitar producto</span>
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
+            ) : null}
+          </section>
 
           <div className="space-y-2">
             <Label htmlFor="internal-customer-notes">Notas generales</Label>
@@ -750,7 +968,10 @@ export function InternalOrderCreator({
             </div>
           ) : null}
 
-          <Button type="submit" disabled={pending || !idempotencyKey}>
+          <Button
+            type="submit"
+            disabled={pending || !idempotencyKey || lines.length === 0}
+          >
             <Send className="size-4" />
             {pending ? "Creando..." : "Crear pedido"}
           </Button>

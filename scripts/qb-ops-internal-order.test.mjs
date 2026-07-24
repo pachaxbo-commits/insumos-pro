@@ -36,6 +36,25 @@ test("la interfaz selecciona productos, unidades y cantidades permitidas", () =>
   assert.match(creator, /step=\{allowedUnit\?\.quantityStep/);
 });
 
+test("Nuevo pedido usa una tabla continua y no el selector producto por producto", () => {
+  assert.match(creator, /data-product-order-table/);
+  assert.match(creator, /<table className="w-full min-w-\[980px\]/);
+  assert.match(creator, /overflow-auto/);
+  assert.match(creator, /type="checkbox"/);
+  assert.match(creator, /Cantidad \/ Bs/);
+  assert.doesNotMatch(creator, /ProductCombobox/);
+  assert.doesNotMatch(creator, /Agregar producto/);
+});
+
+test("la tabla prioriza el último pedido y pagina el resto alfabéticamente", () => {
+  assert.match(creator, /history\?\.lines\.map/);
+  assert.match(creator, /Último pedido del cliente/);
+  assert.match(creator, /localeCompare\(right\.name, "es"\)/);
+  assert.match(creator, /const PRODUCT_BATCH_SIZE = 40/);
+  assert.match(creator, /Mostrar\{" "\}/);
+  assert.match(creator, /setCatalogLimit/);
+});
+
 test("la acción valida autenticación, autorización e inputs en servidor", () => {
   assert.match(actions, /requireRoleAccess\("\/pedidos"\)/);
   assert.match(actions, /parseInternalOrderFormData\(formData\)/);
