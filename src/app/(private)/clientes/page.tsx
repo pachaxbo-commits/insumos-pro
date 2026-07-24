@@ -1,7 +1,12 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -12,58 +17,64 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireRoleAccess } from "@/lib/auth/session";
-import { getCustomersData } from "@/lib/sales/data";
-import { CUSTOMER_TYPES, type CustomerFilters } from "@/types/sales";
+import {
+  getQbCustomerDirectory,
+  type QbCustomerDirectoryFilters,
+} from "@/lib/customer-account/directory";
 
 type ClientesPageProps = {
   searchParams: Promise<{
     q?: string;
     status?: string;
-    type?: string;
   }>;
 };
 
-function normalizeFilters(params: Awaited<ClientesPageProps["searchParams"]>): CustomerFilters {
-  const customerTypes: readonly string[] = CUSTOMER_TYPES;
-
+function normalizeFilters(
+  params: Awaited<ClientesPageProps["searchParams"]>,
+): QbCustomerDirectoryFilters {
   return {
     q: params.q,
     status:
-      params.status === "active" || params.status === "inactive" || params.status === "all"
+      params.status === "active" ||
+      params.status === "inactive" ||
+      params.status === "all"
         ? params.status
-        : "all",
-    type:
-      params.type === "all" || customerTypes.includes(params.type ?? "")
-        ? (params.type as CustomerFilters["type"])
         : "all",
   };
 }
 
-export default async function ClientesPage({ searchParams }: ClientesPageProps) {
+export default async function ClientesPage({
+  searchParams,
+}: ClientesPageProps) {
   await requireRoleAccess("/clientes");
   const filters = normalizeFilters(await searchParams);
-  const data = await getCustomersData(filters);
+  const data = await getQbCustomerDirectory(filters);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Clientes"
         title="Directorio de clientes"
-        description="Consulta los datos de contacto y el estado de los clientes registrados."
+        description="Consulta las cuentas y ubicaciones utilizadas para crear pedidos QB."
       />
       <Card className="border-white/60 bg-card/92 shadow-sm">
         <CardHeader className="gap-4">
           <div>
             <CardTitle>Clientes registrados</CardTitle>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Busca por nombre o teléfono y filtra el directorio por estado.
+              {data.customers.length} cliente
+              {data.customers.length === 1 ? "" : "s"} en el directorio
+              operativo. Busca por negocio, responsable, teléfono o correo.
             </p>
           </div>
-          <form className="grid gap-3 md:grid-cols-[1fr_160px_auto]" action="/clientes">
+          <form
+            className="grid gap-3 md:grid-cols-[1fr_160px_auto]"
+            action="/clientes"
+          >
             <Input
               name="q"
               defaultValue={filters.q ?? ""}
-              placeholder="Buscar por nombre o teléfono"
+              placeholder="Buscar cliente, responsable o teléfono"
               className="rounded-xl"
             />
             <select
@@ -86,8 +97,9 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead>Cliente</TableHead>
-                  <TableHead>Telefono</TableHead>
-                  <TableHead>Direccion</TableHead>
+                  <TableHead>Responsable</TableHead>
+                  <TableHead>Contacto</TableHead>
+                  <TableHead>Ubicación</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -95,33 +107,40 @@ export default async function ClientesPage({ searchParams }: ClientesPageProps) 
                 {data.customers.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{customer.name}</p>
-                        {customer.business_name ? (
-                          <p className="text-xs text-muted-foreground">{customer.business_name}</p>
-                        ) : null}
-                      </div>
+                      <p className="font-medium">{customer.businessName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {customer.email}
+                      </p>
                     </TableCell>
-                    <TableCell>{customer.phone ?? "N/D"}</TableCell>
-                    <TableCell>{customer.address ?? "N/D"}</TableCell>
+                    <TableCell>{customer.responsibleName}</TableCell>
+                    <TableCell>{customer.phone ?? "Pendiente"}</TableCell>
+                    <TableCell>
+                      <p>{customer.locationLabel ?? "Sin ubicación"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {customer.address ?? "Dirección pendiente"}
+                      </p>
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant="outline"
                         className={
-                          customer.is_active
+                          customer.isActive
                             ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
                             : "rounded-full border-slate-200 bg-slate-100 text-slate-600"
                         }
                       >
-                        {customer.is_active ? "Activo" : "Inactivo"}
+                        {customer.isActive ? "Activo" : "Inactivo"}
                       </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
                 {!data.customers.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                      No hay clientes para estos filtros.
+                    <TableCell
+                      colSpan={5}
+                      className="h-24 text-center text-muted-foreground"
+                    >
+                      {data.error ?? "No hay clientes para estos filtros."}
                     </TableCell>
                   </TableRow>
                 ) : null}

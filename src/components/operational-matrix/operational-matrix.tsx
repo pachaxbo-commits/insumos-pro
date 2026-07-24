@@ -65,6 +65,50 @@ function stageHeaders() {
   return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
 }
 
+function groupStatus(group: MatrixCustomerGroup) {
+  if (
+    group.orders.every((order) => order.deliveryStatus === "confirmado")
+  ) {
+    return "Entrega confirmada";
+  }
+  if (group.orders.every((order) => order.status === "preparado")) {
+    return "Listo para entregar";
+  }
+  if (group.orders.some((order) => order.status === "en_preparacion")) {
+    return "En preparación";
+  }
+  return "Pendiente de preparación";
+}
+
+function stageGuidance(stage: MatrixStage) {
+  if (stage === "preparacion") {
+    return {
+      title: "Confirmación de Inventario",
+      detail:
+        "Revisa cada línea. Marca CHECK si preparaste la cantidad solicitada; si no está disponible, deja el check vacío y escribe una observación. Completa el peso real cuando corresponda y luego pulsa “Finalizar preparación” en la cabecera del cliente.",
+    };
+  }
+  if (stage === "entrega") {
+    return {
+      title: "Confirmación del Entregador",
+      detail:
+        "La entrega se habilita cuando Inventario finaliza la preparación. Revisa cada línea, marca CHECK, registra peso real y observaciones, y luego pulsa “Confirmar entrega” en la cabecera del cliente.",
+    };
+  }
+  if (stage === "resumen") {
+    return {
+      title: "Resumen operativo",
+      detail:
+        "Vista de solo lectura para comparar solicitado, preparado y entregado.",
+    };
+  }
+  return {
+    title: "Pedido del cliente",
+    detail:
+      "CANT. muestra automáticamente lo solicitado por el cliente. Administración puede corregir una cantidad dejando motivo en la bitácora.",
+  };
+}
+
 type MatrixProps = {
   data: OperationalMatrixData;
   initialStage?: MatrixStage;
@@ -164,6 +208,7 @@ export function OperationalMatrix({
   const [lines, setLines] = useState(data.lines);
   const [orders, setOrders] = useState(data.orders);
   const [message, setMessage] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState<string | null>(null);
   const [remotePending, setRemotePending] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
   const matrixScrollRef = useRef<HTMLDivElement>(null);
@@ -589,6 +634,18 @@ export function OperationalMatrix({
     group: MatrixCustomerGroup,
     action: "prepare" | "confirm" | "reopen",
   ) => {
+    const groupOrderIds = new Set(group.orders.map((order) => order.id));
+    const hasPendingSaves = lines.some(
+      (line) =>
+        groupOrderIds.has(line.orderId) &&
+        dirty.current.has(line.orderItemId),
+    );
+    if (hasPendingSaves) {
+      setMessage(
+        "Hay cambios de este cliente guardándose. Espera a ver “Guardado” y vuelve a confirmar.",
+      );
+      return;
+    }
     const reason =
       action === "reopen"
         ? (window.prompt("Motivo de reapertura") ?? "")
@@ -603,6 +660,21 @@ export function OperationalMatrix({
             : order.deliveryStatus === "confirmado";
       return applies ? [order] : [];
     });
+    if (!applicableOrders.length) {
+      setMessage("Este cliente todavía no está listo para esa confirmación.");
+      return;
+    }
+    if (
+      action !== "reopen" &&
+      !window.confirm(
+        action === "prepare"
+          ? `¿Finalizar la preparación de ${group.customerName}? Después podrá trabajar el entregador.`
+          : `¿Confirmar la entrega de ${group.customerName}? Esta acción registrará al usuario responsable.`,
+      )
+    ) {
+      return;
+    }
+    setActionPending(`${group.id}:${action}`);
     const results = await Promise.all(
       applicableOrders.map(async (order) => {
         const common = {
@@ -622,6 +694,7 @@ export function OperationalMatrix({
       failed?.message ??
         `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
     );
+    setActionPending(null);
     router.refresh();
   };
 
@@ -630,6 +703,7 @@ export function OperationalMatrix({
     ? ["pedido", "preparacion", "entrega", "resumen"]
     : [defaultStage(data.role)];
   const headers = stageHeaders();
+  const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
   return (
     <div className="space-y-4">
@@ -679,6 +753,11 @@ export function OperationalMatrix({
         </div>
       </div>
 
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <p className="font-semibold">{guidance.title}</p>
+        <p className="mt-1 leading-5 text-sky-900">{guidance.detail}</p>
+      </div>
+
       {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
@@ -719,7 +798,7 @@ export function OperationalMatrix({
                       key={group.id}
                       data-customer-group={groupDomId(group.id)}
                       colSpan={headers.length}
-                      className={`sticky top-0 z-40 h-[74px] border-b border-l-2 border-r px-2 py-1.5 text-left ${
+                      className={`sticky top-0 z-40 h-[86px] border-b border-l-2 border-r px-2 py-1.5 text-left ${
                         focused
                           ? "border-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
                           : "bg-slate-100"
@@ -735,6 +814,9 @@ export function OperationalMatrix({
                               ? `${group.orders.length} pedidos: ${group.references}`
                               : group.references}{" "}
                             · {group.locationLabel}
+                          </span>
+                          <span className="mt-1 inline-flex rounded-full border border-slate-300 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold text-slate-700">
+                            {groupStatus(group)}
                           </span>
                         </span>
                         <span className="flex shrink-0 gap-0.5">
@@ -766,11 +848,14 @@ export function OperationalMatrix({
                           ) ? (
                             <Button
                               size="xs"
+                              disabled={
+                                actionPending === `${group.id}:prepare`
+                              }
                               onClick={() =>
                                 void actionForCustomer(group, "prepare")
                               }
                             >
-                              Finalizar
+                              Finalizar preparación
                             </Button>
                           ) : null}
                           {stage === "entrega" &&
@@ -779,11 +864,14 @@ export function OperationalMatrix({
                           ) ? (
                             <Button
                               size="xs"
+                              disabled={
+                                actionPending === `${group.id}:confirm`
+                              }
                               onClick={() =>
                                 void actionForCustomer(group, "confirm")
                               }
                             >
-                              Confirmar
+                              Confirmar entrega
                             </Button>
                           ) : null}
                           {group.orders.some(
@@ -793,6 +881,9 @@ export function OperationalMatrix({
                             <Button
                               size="xs"
                               variant="outline"
+                              disabled={
+                                actionPending === `${group.id}:reopen`
+                              }
                               onClick={() =>
                                 void actionForCustomer(group, "reopen")
                               }
@@ -817,7 +908,7 @@ export function OperationalMatrix({
                   headers.map((header, index) => (
                     <th
                       key={`${group.id}:${header}`}
-                      className={`sticky top-[74px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
+                      className={`sticky top-[86px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
                         index === 0 ? "border-l-2" : ""
                       } ${
                         group.id === focusedCustomerId
@@ -886,6 +977,21 @@ export function OperationalMatrix({
                           ? aggregateLines(groupedLines)
                           : null;
                         const focused = group.id === focusedCustomerId;
+                        const editable =
+                          stage === "preparacion"
+                            ? group.orders.every((order) =>
+                                [
+                                  "pendiente_preparacion",
+                                  "en_preparacion",
+                                ].includes(order.status),
+                              )
+                            : stage === "entrega"
+                              ? group.orders.every(
+                                  (order) =>
+                                    order.status === "preparado" &&
+                                    order.deliveryStatus !== "confirmado",
+                                )
+                              : true;
                         return line ? (
                           <DesktopOrderCells
                             key={group.id}
@@ -893,6 +999,7 @@ export function OperationalMatrix({
                             stage={stage}
                             canAdmin={canAdmin}
                             focused={focused}
+                            editable={editable}
                             onChange={(patch) =>
                               updateGroupedLines(groupedLines, patch)
                             }
@@ -1001,6 +1108,7 @@ type CellProps = {
   stage: MatrixStage;
   canAdmin: boolean;
   focused: boolean;
+  editable: boolean;
   onChange: (patch: Partial<MatrixLine>) => void;
   onSavePreparation: () => void;
   onSaveDelivery: () => void;
@@ -1012,11 +1120,13 @@ function CheckEditor({
   checked,
   onChange,
   onBlur,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   onBlur: () => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="flex justify-center">
@@ -1025,6 +1135,7 @@ function CheckEditor({
         className="size-4 accent-emerald-700"
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         onBlur={onBlur}
       />
@@ -1037,11 +1148,13 @@ function NoteEditor({
   value,
   onChange,
   onBlur,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Input
@@ -1049,6 +1162,7 @@ function NoteEditor({
       className="h-7 min-w-36 px-2 text-xs"
       value={value}
       placeholder="Nota"
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
     />
@@ -1060,11 +1174,13 @@ function WeightEditor({
   value,
   onChange,
   onBlur,
+  disabled = false,
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   onBlur: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="relative min-w-24">
@@ -1076,6 +1192,7 @@ function WeightEditor({
         step="0.5"
         value={value ?? ""}
         placeholder="0"
+        disabled={disabled}
         onChange={(event) =>
           onChange(
             event.target.value === "" ? null : Number(event.target.value),
@@ -1096,6 +1213,7 @@ function DesktopOrderCells(props: CellProps) {
     stage,
     canAdmin,
     focused,
+    editable,
     onChange,
     onSavePreparation,
     onSaveDelivery,
@@ -1149,6 +1267,7 @@ function DesktopOrderCells(props: CellProps) {
           <CheckEditor
             label={`Check bodega ${line.productName}`}
             checked={line.preparationCheck}
+            disabled={!editable}
             onChange={(checked) =>
               onChange({
                 preparationCheck: checked,
@@ -1163,6 +1282,7 @@ function DesktopOrderCells(props: CellProps) {
             <WeightEditor
               label={`Peso real bodega ${line.productName}`}
               value={line.preparationActualWeightKg}
+              disabled={!editable}
               onChange={(value) =>
                 onChange({ preparationActualWeightKg: value })
               }
@@ -1181,6 +1301,7 @@ function DesktopOrderCells(props: CellProps) {
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
+            disabled={!editable}
             onChange={(value) => onChange({ preparationNote: value })}
             onBlur={onSavePreparation}
           />
@@ -1200,6 +1321,7 @@ function DesktopOrderCells(props: CellProps) {
           <CheckEditor
             label={`Check entrega ${line.productName}`}
             checked={line.deliveryCheck}
+            disabled={!editable}
             onChange={(checked) =>
               onChange({
                 deliveryCheck: checked,
@@ -1214,6 +1336,7 @@ function DesktopOrderCells(props: CellProps) {
             <WeightEditor
               label={`Peso real entrega ${line.productName}`}
               value={line.deliveryActualWeightKg}
+              disabled={!editable}
               onChange={(value) => onChange({ deliveryActualWeightKg: value })}
               onBlur={onSaveDelivery}
             />
@@ -1230,6 +1353,7 @@ function DesktopOrderCells(props: CellProps) {
           <NoteEditor
             label={`Observación entrega ${line.productName}`}
             value={line.deliveryNote}
+            disabled={!editable}
             onChange={(value) => onChange({ deliveryNote: value })}
             onBlur={onSaveDelivery}
           />

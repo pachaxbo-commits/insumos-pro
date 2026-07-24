@@ -13,6 +13,8 @@ const [
   roles,
   transitionPolicy,
   home,
+  customersPage,
+  customersDirectory,
 ] = await Promise.all([
   read("src/components/qb-orders/internal-order-creator.tsx"),
   read("src/lib/qb-orders/creation-actions.ts"),
@@ -22,6 +24,8 @@ const [
   read("src/lib/auth/roles.ts"),
   read("src/lib/qb-insumos/transition-policy.ts"),
   read("src/app/(private)/page.tsx"),
+  read("src/app/(private)/clientes/page.tsx"),
+  read("src/lib/customer-account/directory.ts"),
 ]);
 
 // Repetir pedido: selección focalizada, fallback explícito y estado sin histórico.
@@ -80,6 +84,12 @@ assert.match(matrixPage, /requireRoleAccess\("\/matriz-operativa"\)/);
 assert.match(matrixPage, /params\.date \?\? params\.fecha/);
 assert.match(matrixPage, /initialOrderId=\{params\.order\}/);
 
+// El directorio operativo usa las mismas cuentas y ubicaciones de los pedidos QB.
+assert.match(customersDirectory, /\.from\("customer_accounts"\)/);
+assert.match(customersDirectory, /qb_customer_locations/);
+assert.match(customersPage, /getQbCustomerDirectory/);
+assert.doesNotMatch(customersPage, /getCustomersData/);
+
 // Una sola matriz continua en escritorio y móvil, sin selector ni filtrado.
 assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
 assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
@@ -107,12 +117,17 @@ assert.match(matrix, /sticky left-\[196px\] top-0[\s\S]*UD/);
 assert.match(matrix, /sticky left-0 z-30/);
 assert.match(matrix, /sticky left-9 z-30/);
 assert.match(matrix, /sticky left-\[196px\] z-30/);
-assert.match(matrix, /sticky top-\[74px\]/);
+assert.match(matrix, /sticky top-\[86px\]/);
 assert.match(matrix, /data-category-row=/);
 assert.match(matrix, /TOTALES/);
 assert.match(matrix, /TOTALES POR CLIENTE/);
 assert.match(matrix, /Check bodega/);
 assert.match(matrix, /Check entrega/);
+assert.match(matrix, /Finalizar preparación/);
+assert.match(matrix, /Confirmar entrega/);
+assert.match(matrix, /Confirmación de Inventario/);
+assert.match(matrix, /Confirmación del Entregador/);
+assert.match(matrix, /disabled=\{!editable\}/);
 assert.match(matrix, /preparationCheck/);
 assert.match(matrix, /deliveryCheck/);
 assert.doesNotMatch(matrix, /<Card/);
