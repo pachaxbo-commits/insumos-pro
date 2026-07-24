@@ -31,7 +31,7 @@ export async function getOperationalMatrixData(
 
   const { data: orderData, error: orderError } = await supabase
     .from("qb_orders")
-    .select("id, public_reference, status, updated_at, customer_snapshot, location_snapshot")
+    .select("id, customer_account_id, public_reference, status, updated_at, customer_snapshot, location_snapshot")
     .eq("operational_date", operationalDate)
     .order("submitted_at", { ascending: true });
   if (orderError) throw new Error(`No se pudo cargar la matriz: ${orderError.message}`);
@@ -114,13 +114,21 @@ export async function getOperationalMatrixData(
       const id = String(order.id);
       const day = days.get(id);
       const preparation = preparations.get(id);
+      const customerName =
+        snapshotText(order.customer_snapshot, "business_name") ??
+        snapshotText(order.customer_snapshot, "responsible_name") ??
+        "Cliente";
+      const guestContact =
+        snapshotText(order.customer_snapshot, "phone") ??
+        snapshotText(order.customer_snapshot, "email") ??
+        id;
       return {
         id,
+        customerKey: order.customer_account_id
+          ? `customer:${String(order.customer_account_id)}`
+          : `guest:${customerName.toLocaleLowerCase("es")}:${guestContact.toLocaleLowerCase("es")}`,
         reference: String(order.public_reference),
-        customerName:
-          snapshotText(order.customer_snapshot, "business_name") ??
-          snapshotText(order.customer_snapshot, "responsible_name") ??
-          "Cliente",
+        customerName,
         locationLabel:
           snapshotText(order.location_snapshot, "label") ??
           snapshotText(order.location_snapshot, "address"),

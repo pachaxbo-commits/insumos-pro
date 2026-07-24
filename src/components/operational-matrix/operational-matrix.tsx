@@ -57,6 +57,10 @@ function rowKey(line: MatrixLine) {
   return `${line.productId}:${line.sourceLabel}`;
 }
 
+function groupDomId(value: string) {
+  return encodeURIComponent(value);
+}
+
 function stageHeaders() {
   return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
 }
@@ -66,6 +70,87 @@ type MatrixProps = {
   initialStage?: MatrixStage;
   initialOrderId?: string;
 };
+
+type MatrixCustomerGroup = {
+  id: string;
+  customerName: string;
+  locationLabel: string;
+  references: string;
+  orders: MatrixOrder[];
+};
+
+function uniqueText(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function sumLines(
+  lines: MatrixLine[],
+  field:
+    | "requestedQuantity"
+    | "preparedQuantity"
+    | "preparedBaseQuantity"
+    | "externalQuantity"
+    | "deliveredQuantity"
+    | "deliveredBaseQuantity",
+) {
+  return lines.reduce((total, line) => total + line[field], 0);
+}
+
+function sumNullable(
+  lines: MatrixLine[],
+  field: "preparationActualWeightKg" | "deliveryActualWeightKg",
+) {
+  const values = lines
+    .map((line) => line[field])
+    .filter((value): value is number => value !== null);
+  return values.length
+    ? values.reduce((total, value) => total + value, 0)
+    : null;
+}
+
+function aggregateLines(lines: MatrixLine[]): MatrixLine {
+  const first = lines[0];
+  return {
+    ...first,
+    requestedQuantity: sumLines(lines, "requestedQuantity"),
+    preparedQuantity: sumLines(lines, "preparedQuantity"),
+    preparedBaseQuantity: sumLines(lines, "preparedBaseQuantity"),
+    preparationCheck: lines.every((line) => line.preparationCheck),
+    preparationActualWeightKg: sumNullable(
+      lines,
+      "preparationActualWeightKg",
+    ),
+    preparationNote: uniqueText(
+      lines.map((line) => line.preparationNote),
+    ).join(" | "),
+    externalQuantity: sumLines(lines, "externalQuantity"),
+    deliveredQuantity: sumLines(lines, "deliveredQuantity"),
+    deliveredBaseQuantity: sumLines(lines, "deliveredBaseQuantity"),
+    deliveryCheck: lines.every((line) => line.deliveryCheck),
+    deliveryActualWeightKg: sumNullable(lines, "deliveryActualWeightKg"),
+    deliveryNote: uniqueText(lines.map((line) => line.deliveryNote)).join(
+      " | ",
+    ),
+  };
+}
+
+function distributeValue(lines: MatrixLine[], total: number) {
+  const requestedTotal = sumLines(lines, "requestedQuantity");
+  let assigned = 0;
+  return lines.map((line, index) => {
+    if (index === lines.length - 1) {
+      return Math.max(Number((total - assigned).toFixed(6)), 0);
+    }
+    const value =
+      requestedTotal > 0
+        ? Number(
+            ((total * line.requestedQuantity) / requestedTotal).toFixed(6),
+          )
+        : Number((total / lines.length).toFixed(6));
+    assigned += value;
+    return value;
+  });
+}
 
 export function OperationalMatrix({
   data,
@@ -82,24 +167,61 @@ export function OperationalMatrix({
   const [remotePending, setRemotePending] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
   const matrixScrollRef = useRef<HTMLDivElement>(null);
-  const focusedOrderId = data.orders.some(
-    (order) => order.id === initialOrderId,
-  )
-    ? initialOrderId
-    : undefined;
   const dirty = useRef(new Set<string>());
+  const customerGroups = useMemo(() => {
+    const groups = new Map<string, MatrixCustomerGroup>();
+    for (const order of orders) {
+      const current = groups.get(order.customerKey);
+      if (current) {
+        current.orders.push(order);
+        current.references = uniqueText(
+          current.orders.map((item) => item.reference),
+        ).join(", ");
+        current.locationLabel = uniqueText(
+          current.orders
+            .map((item) => item.locationLabel ?? "")
+            .filter(Boolean),
+        ).join(", ");
+        continue;
+      }
+      groups.set(order.customerKey, {
+        id: order.customerKey,
+        customerName: order.customerName,
+        locationLabel: order.locationLabel ?? "",
+        references: order.reference,
+        orders: [order],
+      });
+    }
+    return [...groups.values()].sort(
+      (left, right) =>
+        Math.min(...left.orders.map((order) => order.position)) -
+        Math.min(...right.orders.map((order) => order.position)),
+    );
+  }, [orders]);
+  const groupByOrderId = useMemo(
+    () =>
+      new Map(
+        customerGroups.flatMap((group) =>
+          group.orders.map((order) => [order.id, group] as const),
+        ),
+      ),
+    [customerGroups],
+  );
+  const focusedCustomerId = initialOrderId
+    ? groupByOrderId.get(initialOrderId)?.id
+    : undefined;
 
   useEffect(() => {
-    if (!focusedOrderId) return;
+    if (!focusedCustomerId) return;
     const target = matrixScrollRef.current?.querySelector<HTMLElement>(
-      `[data-order-group="${focusedOrderId}"]`,
+      `[data-customer-group="${groupDomId(focusedCustomerId)}"]`,
     );
     target?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "center",
     });
-  }, [focusedOrderId]);
+  }, [focusedCustomerId]);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -193,20 +315,69 @@ export function OperationalMatrix({
           a.sourceLabel.localeCompare(b.sourceLabel, "es"),
       );
   }, [lines]);
-  const lineMap = useMemo(
-    () =>
-      new Map(
-        lines.map((line) => [`${rowKey(line)}:${line.orderId}`, line]),
-      ),
-    [lines],
-  );
+  const groupLineMap = useMemo(() => {
+    const grouped = new Map<string, MatrixLine[]>();
+    for (const line of lines) {
+      const group = groupByOrderId.get(line.orderId);
+      if (!group) continue;
+      const key = `${rowKey(line)}:${group.id}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), line]);
+    }
+    return grouped;
+  }, [groupByOrderId, lines]);
 
-  const updateLine = (id: string, patch: Partial<MatrixLine>) => {
-    dirty.current.add(id);
+  const updateGroupedLines = (
+    groupedLines: MatrixLine[],
+    patch: Partial<MatrixLine>,
+  ) => {
+    const ids = new Set(groupedLines.map((line) => line.orderItemId));
+    groupedLines.forEach((line) => dirty.current.add(line.orderItemId));
+    const preparationWeights =
+      Object.hasOwn(patch, "preparationActualWeightKg") &&
+      patch.preparationActualWeightKg !== null
+        ? distributeValue(
+            groupedLines,
+            patch.preparationActualWeightKg ?? 0,
+          )
+        : [];
+    const deliveryWeights =
+      Object.hasOwn(patch, "deliveryActualWeightKg") &&
+      patch.deliveryActualWeightKg !== null
+        ? distributeValue(groupedLines, patch.deliveryActualWeightKg ?? 0)
+        : [];
+    const indexById = new Map(
+      groupedLines.map((line, index) => [line.orderItemId, index]),
+    );
+
     setLines((current) =>
-      current.map((line) =>
-        line.orderItemId === id ? { ...line, ...patch } : line,
-      ),
+      current.map((line) => {
+        if (!ids.has(line.orderItemId)) return line;
+        const index = indexById.get(line.orderItemId) ?? 0;
+        const next = { ...line, ...patch };
+        if (typeof patch.preparationCheck === "boolean") {
+          next.preparedQuantity = patch.preparationCheck
+            ? line.requestedQuantity
+            : 0;
+        }
+        if (Object.hasOwn(patch, "preparationActualWeightKg")) {
+          next.preparationActualWeightKg =
+            patch.preparationActualWeightKg === null
+              ? null
+              : preparationWeights[index];
+        }
+        if (typeof patch.deliveryCheck === "boolean") {
+          next.deliveredQuantity = patch.deliveryCheck
+            ? line.requestedQuantity
+            : 0;
+        }
+        if (Object.hasOwn(patch, "deliveryActualWeightKg")) {
+          next.deliveryActualWeightKg =
+            patch.deliveryActualWeightKg === null
+              ? null
+              : deliveryWeights[index];
+        }
+        return next;
+      }),
     );
   };
 
@@ -268,116 +439,189 @@ export function OperationalMatrix({
     }
   };
 
-  const savePreparation = async (id: string) => {
-    const line = latestLine(id);
-    if (!line) return;
-    const result = await saveMatrixPreparationAction({
-      orderItemId: line.orderItemId,
-      expectedVersion: line.preparationVersion,
-      preparedQuantity: line.preparedQuantity,
-      preparationCheck: line.preparationCheck,
-      actualWeightKg: line.controlsActualWeight
-        ? line.preparationActualWeightKg
-        : null,
-      note: line.preparationNote,
-      idempotencyKey: idempotencyKey("prep"),
-    });
-    finishSave(line.orderItemId, result, "preparationVersion");
-  };
-
-  const saveDelivery = async (id: string) => {
-    const line = latestLine(id);
-    if (!line) return;
-    const externalQuantity = Math.max(
-      line.deliveredQuantity - line.preparedQuantity,
-      0,
+  const saveGroupedPreparation = async (ids: string[]) => {
+    const currentLines = ids
+      .map((id) => latestLine(id))
+      .filter((line): line is MatrixLine => Boolean(line));
+    const results = await Promise.all(
+      currentLines.map(async (line) => ({
+        line,
+        result: await saveMatrixPreparationAction({
+          orderItemId: line.orderItemId,
+          expectedVersion: line.preparationVersion,
+          preparedQuantity: line.preparedQuantity,
+          preparationCheck: line.preparationCheck,
+          actualWeightKg: line.controlsActualWeight
+            ? line.preparationActualWeightKg
+            : null,
+          note: line.preparationNote,
+          idempotencyKey: idempotencyKey("prep"),
+        }),
+      })),
     );
-    if (externalQuantity !== line.externalQuantity) {
-      setLines((current) =>
-        current.map((currentLine) =>
-          currentLine.orderItemId === id
-            ? { ...currentLine, externalQuantity }
-            : currentLine,
-        ),
+    results.forEach(({ line, result }) =>
+      finishSave(line.orderItemId, result, "preparationVersion"),
+    );
+    if (results.every(({ result }) => result.success)) {
+      setRemotePending(false);
+      setMessage(
+        currentLines.length > 1
+          ? `${currentLines.length} pedidos del cliente guardados.`
+          : "Guardado.",
       );
     }
-    const result = await saveMatrixDeliveryAction({
-      orderItemId: line.orderItemId,
-      expectedVersion: line.deliveryVersion,
-      externalQuantity,
-      deliveredQuantity: line.deliveredQuantity,
-      deliveryCheck: line.deliveryCheck,
-      actualWeightKg: line.controlsActualWeight
-        ? line.deliveryActualWeightKg
-        : null,
-      note: line.deliveryNote,
-      idempotencyKey: idempotencyKey("delivery"),
-    });
-    finishSave(line.orderItemId, result, "deliveryVersion");
   };
 
-  const correctRequest = async (line: MatrixLine) => {
+  const saveGroupedDelivery = async (ids: string[]) => {
+    const currentLines = ids
+      .map((id) => latestLine(id))
+      .filter((line): line is MatrixLine => Boolean(line));
+    const results = await Promise.all(
+      currentLines.map(async (line) => {
+        const externalQuantity = Math.max(
+          line.deliveredQuantity - line.preparedQuantity,
+          0,
+        );
+        return {
+          line,
+          externalQuantity,
+          result: await saveMatrixDeliveryAction({
+            orderItemId: line.orderItemId,
+            expectedVersion: line.deliveryVersion,
+            externalQuantity,
+            deliveredQuantity: line.deliveredQuantity,
+            deliveryCheck: line.deliveryCheck,
+            actualWeightKg: line.controlsActualWeight
+              ? line.deliveryActualWeightKg
+              : null,
+            note: line.deliveryNote,
+            idempotencyKey: idempotencyKey("delivery"),
+          }),
+        };
+      }),
+    );
+    setLines((current) =>
+      current.map((line) => {
+        const saved = results.find(
+          ({ line: resultLine }) =>
+            resultLine.orderItemId === line.orderItemId,
+        );
+        return saved
+          ? { ...line, externalQuantity: saved.externalQuantity }
+          : line;
+      }),
+    );
+    results.forEach(({ line, result }) =>
+      finishSave(line.orderItemId, result, "deliveryVersion"),
+    );
+    if (results.every(({ result }) => result.success)) {
+      setRemotePending(false);
+      setMessage(
+        currentLines.length > 1
+          ? `${currentLines.length} pedidos del cliente guardados.`
+          : "Guardado.",
+      );
+    }
+  };
+
+  const correctGroupedRequest = async (groupedLines: MatrixLine[]) => {
+    const currentTotal = sumLines(groupedLines, "requestedQuantity");
     const value = Number(
       window.prompt(
         "Nueva cantidad solicitada",
-        String(line.requestedQuantity),
+        String(currentTotal),
       ),
     );
     if (!Number.isFinite(value) || value <= 0) return;
     const reason = window.prompt("Motivo de corrección") ?? "";
-    const result = await correctMatrixRequestAction({
-      orderItemId: line.orderItemId,
-      expectedVersion: line.requestedVersion,
-      requestedQuantity: value,
-      reason,
-      idempotencyKey: idempotencyKey("request"),
-    });
-    const warning =
-      result.data && typeof result.data === "object"
-        ? (result.data as { warning?: unknown }).warning
-        : null;
-    setMessage(typeof warning === "string" ? warning : result.message);
+    if (reason.trim().length < 3) return;
+    const distributed = distributeValue(groupedLines, value);
+    const results = await Promise.all(
+      groupedLines.map(async (line, index) => ({
+        result: await correctMatrixRequestAction({
+          orderItemId: line.orderItemId,
+          expectedVersion: line.requestedVersion,
+          requestedQuantity: distributed[index],
+          reason,
+          idempotencyKey: idempotencyKey("request"),
+        }),
+      })),
+    );
+    const failed = results.find(({ result }) => !result.success);
+    setMessage(
+      failed?.result.message ??
+        `Cantidad actualizada en ${groupedLines.length} pedido${groupedLines.length === 1 ? "" : "s"}.`,
+    );
     router.refresh();
   };
 
-  const moveOrder = async (index: number, delta: number) => {
-    const next = [...orders];
+  const moveCustomer = async (index: number, delta: number) => {
+    const next = [...customerGroups];
     const target = index + delta;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    setOrders(next);
+    const flattenedOrders = next.flatMap((group) => group.orders);
+    setOrders(flattenedOrders);
     const result = await reorderMatrixOrdersAction({
       operationalDate: data.operationalDate,
-      orderIds: next.map((order) => order.id),
+      orderIds: flattenedOrders.map((order) => order.id),
       expectedVersions: Object.fromEntries(
         orders.map((order) => [order.id, order.positionVersion]),
       ),
       idempotencyKey: idempotencyKey("reorder"),
     });
     setMessage(result.message);
-    if (!result.success) setOrders(orders);
+    if (result.success) {
+      setOrders(
+        flattenedOrders.map((order, position) => ({
+          ...order,
+          position: position + 1,
+          positionVersion: order.positionVersion + 1,
+        })),
+      );
+    } else {
+      setOrders(orders);
+    }
     router.refresh();
   };
 
-  const actionForOrder = async (
-    order: MatrixOrder,
+  const actionForCustomer = async (
+    group: MatrixCustomerGroup,
     action: "prepare" | "confirm" | "reopen",
   ) => {
-    const common = {
-      orderId: order.id,
-      expectedUpdatedAt: order.updatedAt,
-      idempotencyKey: idempotencyKey(action),
-    };
-    const result =
-      action === "prepare"
-        ? await finalizeMatrixPreparationAction(common)
-        : action === "confirm"
-          ? await confirmMatrixDeliveryAction(common)
-          : await reopenMatrixDeliveryAction({
-              ...common,
-              reason: window.prompt("Motivo de reapertura") ?? "",
-            });
-    setMessage(result.message);
+    const reason =
+      action === "reopen"
+        ? (window.prompt("Motivo de reapertura") ?? "")
+        : "";
+    if (action === "reopen" && reason.trim().length < 3) return;
+    const applicableOrders = group.orders.flatMap((order) => {
+      const applies =
+        action === "prepare"
+          ? ["en_preparacion", "pendiente_preparacion"].includes(order.status)
+          : action === "confirm"
+            ? order.status === "preparado"
+            : order.deliveryStatus === "confirmado";
+      return applies ? [order] : [];
+    });
+    const results = await Promise.all(
+      applicableOrders.map(async (order) => {
+        const common = {
+          orderId: order.id,
+          expectedUpdatedAt: order.updatedAt,
+          idempotencyKey: idempotencyKey(action),
+        };
+        return action === "prepare"
+          ? finalizeMatrixPreparationAction(common)
+          : action === "confirm"
+            ? confirmMatrixDeliveryAction(common)
+            : reopenMatrixDeliveryAction({ ...common, reason });
+      }),
+    );
+    const failed = results.find((result) => !result.success);
+    setMessage(
+      failed?.message ??
+        `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
+    );
     router.refresh();
   };
 
@@ -386,7 +630,7 @@ export function OperationalMatrix({
     ? ["pedido", "preparacion", "entrega", "resumen"]
     : [defaultStage(data.role)];
   const headers = stageHeaders();
-  const matrixColumnCount = 3 + orders.length * headers.length + 1;
+  const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -435,7 +679,7 @@ export function OperationalMatrix({
         </div>
       </div>
 
-      {!orders.length ? (
+      {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
           automáticamente y conservan su orden.
@@ -468,12 +712,12 @@ export function OperationalMatrix({
                 >
                   UD
                 </th>
-                {orders.map((order, orderIndex) => {
-                  const focused = order.id === focusedOrderId;
+                {customerGroups.map((group, groupIndex) => {
+                  const focused = group.id === focusedCustomerId;
                   return (
                     <th
-                      key={order.id}
-                      data-order-group={order.id}
+                      key={group.id}
+                      data-customer-group={groupDomId(group.id)}
                       colSpan={headers.length}
                       className={`sticky top-0 z-40 h-[74px] border-b border-l-2 border-r px-2 py-1.5 text-left ${
                         focused
@@ -484,10 +728,13 @@ export function OperationalMatrix({
                       <div className="flex items-start justify-between gap-2">
                         <span className="min-w-0">
                           <span className="block max-w-64 truncate text-xs font-semibold sm:text-sm">
-                            {order.customerName}
+                            {group.customerName}
                           </span>
                           <span className="block max-w-64 truncate font-normal text-muted-foreground">
-                            {order.reference} · {order.locationLabel}
+                            {group.orders.length > 1
+                              ? `${group.orders.length} pedidos: ${group.references}`
+                              : group.references}{" "}
+                            · {group.locationLabel}
                           </span>
                         </span>
                         <span className="flex shrink-0 gap-0.5">
@@ -497,7 +744,7 @@ export function OperationalMatrix({
                                 size="icon-sm"
                                 variant="ghost"
                                 aria-label="Mover cliente antes"
-                                onClick={() => void moveOrder(orderIndex, -1)}
+                                onClick={() => void moveCustomer(groupIndex, -1)}
                               >
                                 <ChevronLeft />
                               </Button>
@@ -505,42 +752,49 @@ export function OperationalMatrix({
                                 size="icon-sm"
                                 variant="ghost"
                                 aria-label="Mover cliente después"
-                                onClick={() => void moveOrder(orderIndex, 1)}
+                                onClick={() => void moveCustomer(groupIndex, 1)}
                               >
                                 <ChevronRight />
                               </Button>
                             </>
                           ) : null}
                           {stage === "preparacion" &&
-                          ["en_preparacion", "pendiente_preparacion"].includes(
-                            order.status,
+                          group.orders.some((order) =>
+                            ["en_preparacion", "pendiente_preparacion"].includes(
+                              order.status,
+                            ),
                           ) ? (
                             <Button
                               size="xs"
                               onClick={() =>
-                                void actionForOrder(order, "prepare")
+                                void actionForCustomer(group, "prepare")
                               }
                             >
                               Finalizar
                             </Button>
                           ) : null}
                           {stage === "entrega" &&
-                          order.status === "preparado" ? (
+                          group.orders.some(
+                            (order) => order.status === "preparado",
+                          ) ? (
                             <Button
                               size="xs"
                               onClick={() =>
-                                void actionForOrder(order, "confirm")
+                                void actionForCustomer(group, "confirm")
                               }
                             >
                               Confirmar
                             </Button>
                           ) : null}
-                          {order.deliveryStatus === "confirmado" ? (
+                          {group.orders.some(
+                            (order) =>
+                              order.deliveryStatus === "confirmado",
+                          ) ? (
                             <Button
                               size="xs"
                               variant="outline"
                               onClick={() =>
-                                void actionForOrder(order, "reopen")
+                                void actionForCustomer(group, "reopen")
                               }
                             >
                               Reabrir
@@ -559,14 +813,14 @@ export function OperationalMatrix({
                 </th>
               </tr>
               <tr>
-                {orders.flatMap((order) =>
+                {customerGroups.flatMap((group) =>
                   headers.map((header, index) => (
                     <th
-                      key={`${order.id}:${header}`}
+                      key={`${group.id}:${header}`}
                       className={`sticky top-[74px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
                         index === 0 ? "border-l-2" : ""
                       } ${
-                        order.id === focusedOrderId
+                        group.id === focusedCustomerId
                           ? "border-sky-400 bg-sky-50"
                           : "bg-slate-50"
                       } ${
@@ -625,32 +879,44 @@ export function OperationalMatrix({
                           {row.baseUnitSymbol}
                         </span>
                       </td>
-                      {orders.map((order) => {
-                        const line = lineMap.get(
-                          `${rowKey(row)}:${order.id}`,
-                        );
-                        const focused = order.id === focusedOrderId;
+                      {customerGroups.map((group) => {
+                        const groupedLines =
+                          groupLineMap.get(`${rowKey(row)}:${group.id}`) ?? [];
+                        const line = groupedLines.length
+                          ? aggregateLines(groupedLines)
+                          : null;
+                        const focused = group.id === focusedCustomerId;
                         return line ? (
                           <DesktopOrderCells
-                            key={order.id}
+                            key={group.id}
                             line={line}
                             stage={stage}
                             canAdmin={canAdmin}
                             focused={focused}
                             onChange={(patch) =>
-                              updateLine(line.orderItemId, patch)
+                              updateGroupedLines(groupedLines, patch)
                             }
                             onSavePreparation={() =>
-                              void savePreparation(line.orderItemId)
+                              void saveGroupedPreparation(
+                                groupedLines.map(
+                                  (item) => item.orderItemId,
+                                ),
+                              )
                             }
                             onSaveDelivery={() =>
-                              void saveDelivery(line.orderItemId)
+                              void saveGroupedDelivery(
+                                groupedLines.map(
+                                  (item) => item.orderItemId,
+                                ),
+                              )
                             }
-                            onCorrect={() => void correctRequest(line)}
+                            onCorrect={() =>
+                              void correctGroupedRequest(groupedLines)
+                            }
                           />
                         ) : (
                           <td
-                            key={order.id}
+                            key={group.id}
                             colSpan={headers.length}
                             style={{
                               backgroundColor: row.productColor ?? "#FFFFFF",
@@ -681,31 +947,45 @@ export function OperationalMatrix({
                 >
                   TOTALES POR CLIENTE
                 </th>
-                {orders.map((order) => {
-                  const orderLines = lines.filter(
-                    (line) => line.orderId === order.id,
+                {customerGroups.map((group) => {
+                  const orderIds = new Set(
+                    group.orders.map((order) => order.id),
                   );
-                  const completed =
-                    stage === "entrega"
-                      ? orderLines.filter((line) => line.deliveryCheck).length
-                      : orderLines.filter((line) => line.preparationCheck)
-                          .length;
+                  const customerLines = lines.filter((line) =>
+                    orderIds.has(line.orderId),
+                  );
+                  const customerRows = new Map<string, MatrixLine[]>();
+                  customerLines.forEach((line) => {
+                    const key = rowKey(line);
+                    customerRows.set(key, [
+                      ...(customerRows.get(key) ?? []),
+                      line,
+                    ]);
+                  });
+                  const completed = [...customerRows.values()].filter(
+                    (groupedLines) =>
+                      stage === "entrega"
+                        ? groupedLines.every((line) => line.deliveryCheck)
+                        : groupedLines.every(
+                            (line) => line.preparationCheck,
+                          ),
+                  ).length;
                   return (
                     <th
-                      key={order.id}
+                      key={group.id}
                       colSpan={headers.length}
                       className={`sticky bottom-0 z-30 border-l-2 border-t border-r px-3 py-2 text-left ${
-                        order.id === focusedOrderId
+                        group.id === focusedCustomerId
                           ? "bg-sky-100"
                           : "bg-slate-100"
                       }`}
                     >
-                      {orderLines.length} líneas · {completed} checks
+                      {customerRows.size} líneas · {completed} checks
                     </th>
                   );
                 })}
                 <th className="sticky bottom-0 z-30 border-l-2 border-t bg-emerald-100 px-3 py-2">
-                  {lines.length} líneas
+                  {rows.length} líneas
                 </th>
               </tr>
             </tfoot>

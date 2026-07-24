@@ -25,14 +25,17 @@ reapertura no revierte stock automáticamente y se rechaza si existe un recibo
 emitido. Administrador, Inventario y Entregador pueden reabrir sin límite
 temporal; siempre deben indicar el motivo y queda auditado.
 
-El orden se guarda atómicamente por fecha. Pedidos repetidos del mismo cliente
-se distinguen por referencia y ubicación.
+El orden se guarda atómicamente por fecha y lo asigna el Administrador a cada
+grupo de cliente. Los pedidos repetidos del mismo cliente conservan sus
+referencias y ubicaciones para auditoría, pero ocupan una sola columna.
 
 ## Inventario
 
 Cada cliente muestra **CANT, CHECK, PESO REAL y OBSERVACIÓN**. CANT se llena
 automáticamente con la cantidad solicitada por el cliente y no se edita en la
-matriz. CHECK confirma esa cantidad para bodega; al marcarlo, el sistema
+matriz. Si el mismo cliente repite un producto durante la fecha operativa, CANT
+suma las cantidades de todos sus pedidos sin crear otra columna. CHECK confirma
+esa cantidad para bodega; al marcarlo, el sistema
 registra internamente preparado igual a solicitado. PESO REAL guarda una
 medición manual en kg, independiente de las conversiones calculadas, y
 OBSERVACIÓN conserva la nota. Finalizar preparación exige revisar todas las
@@ -42,7 +45,8 @@ aunque manipule el payload.
 ## Entregador
 
 También trabaja con **CANT, CHECK, PESO REAL y OBSERVACIÓN**. CANT conserva la
-cantidad solicitada y CHECK la confirma como entregada; si bodega no cubrió
+cantidad solicitada acumulada del cliente y CHECK la confirma como entregada
+en todas las líneas originales agrupadas; si bodega no cubrió
 toda la solicitud, el sistema conserva internamente como externo el faltante.
 PESO REAL registra la medición final en kg sin reemplazar CANT. CHECK, peso y
 observación quedan atribuidos al Entregador. No puede editar preparación,

@@ -88,10 +88,17 @@ assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
 assert.doesNotMatch(matrix, /<select/);
 assert.doesNotMatch(matrix, /orders\.filter/);
 assert.match(matrix, /touch-pan-x[\s\S]*overflow-auto/);
-assert.match(matrix, /orders\.map\(\(order/);
-assert.match(matrix, /data-order-group=\{order\.id\}/);
+assert.match(matrix, /customerGroups\.map\(\(group/);
+assert.match(matrix, /data-customer-group=\{groupDomId\(group\.id\)\}/);
 assert.match(matrix, /scrollIntoView/);
-assert.match(matrix, /focusedOrderId/);
+assert.match(matrix, /focusedCustomerId/);
+assert.match(matrix, /function aggregateLines/);
+assert.match(
+  matrix,
+  /requestedQuantity: sumLines\(lines, "requestedQuantity"\)/,
+);
+assert.match(matrix, /const moveCustomer/);
+assert.match(matrix, /next\.flatMap\(\(group\) => group\.orders\)/);
 
 // N°, DESCRIPCIÓN y UD permanecen sticky también a 390 px.
 assert.match(matrix, /sticky left-0 top-0[\s\S]*N°/);

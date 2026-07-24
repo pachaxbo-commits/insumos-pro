@@ -44,6 +44,7 @@ const [
   ]);
 
 const newSources = [foundation, workflows, factors, matrix, actions, docs].join("\n");
+const matrixData = await read("src/lib/operational-matrix/data.ts");
 assert.doesNotMatch(newSources, /epxmrfwtssbcqsytuwhf|wfhvuzigmkgojdoofjib/);
 assert.doesNotMatch(newSources, /SUPABASE_SCHEMA\.sql/i);
 assert.match(foundation, /'entregador'/);
@@ -80,8 +81,16 @@ assert.match(matrix, /TOTALES POR CLIENTE/);
 assert.match(matrix, /dirty\.current\.size/);
 assert.match(matrix, /postgres_changes/);
 assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|MobileRow|<select/);
-assert.match(matrix, /orders\.map\(\(order/);
+assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /scrollIntoView/);
+assert.match(matrixData, /customer_account_id/);
+assert.match(matrixData, /customerKey:/);
+assert.match(matrix, /function aggregateLines/);
+assert.match(matrix, /groupLineMap/);
+assert.match(matrix, /saveGroupedPreparation/);
+assert.match(matrix, /saveGroupedDelivery/);
+assert.match(matrix, /actionForCustomer/);
+assert.match(matrix, /moveCustomer/);
 assert.match(
   matrix,
   /return \["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"\]/,

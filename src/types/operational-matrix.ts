@@ -4,6 +4,7 @@ export type MatrixStage = "pedido" | "preparacion" | "entrega" | "resumen";
 
 export type MatrixOrder = {
   id: string;
+  customerKey: string;
   reference: string;
   customerName: string;
   locationLabel: string | null;
