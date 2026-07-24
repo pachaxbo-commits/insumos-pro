@@ -74,18 +74,6 @@ function stageHeaders(stage: MatrixStage) {
   return ["CANT", "PREP.", "EXT.", "ENTR.", "ESTADO"];
 }
 
-function statusTone(line: MatrixLine, stage: MatrixStage) {
-  if (stage === "preparacion" && line.preparationCheck)
-    return "bg-emerald-50/70";
-  if (stage === "entrega" && line.deliveryCheck) return "bg-blue-50/70";
-  if (
-    stage === "entrega" &&
-    Math.abs(line.deliveredQuantity - line.requestedQuantity) > 0.000001
-  )
-    return "bg-amber-50/70";
-  return "bg-background";
-}
-
 type MatrixProps = {
   data: OperationalMatrixData;
   initialStage?: MatrixStage;
@@ -605,15 +593,24 @@ export function OperationalMatrix({
                         </td>
                       </tr>
                     ) : null}
-                    <tr className="hover:bg-muted/20">
-                      <td className="sticky left-0 z-30 border-b border-r bg-background px-1 py-1.5 text-center text-muted-foreground">
+                    <tr data-product-color={row.productColor ?? "#FFFFFF"}>
+                      <td
+                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        className="sticky left-0 z-30 border-b border-r px-1 py-1.5 text-center text-muted-foreground"
+                      >
                         {index + 1}
                       </td>
-                      <td className="sticky left-9 z-30 max-w-40 border-b border-r bg-background px-2 py-1.5 font-medium md:max-w-56">
+                      <td
+                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        className="sticky left-9 z-30 max-w-40 border-b border-r px-2 py-1.5 font-medium md:max-w-56"
+                      >
                         {row.productName}
                       </td>
-                      <td className="sticky left-[196px] z-30 border-b border-r bg-background px-1.5 py-1.5 md:left-[260px]">
-                        <span className="block">{row.sourceLabel}</span>
+                      <td
+                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        className="sticky left-[196px] z-30 border-b border-r px-1.5 py-1.5 md:left-[260px]"
+                      >
+                        <span className="block uppercase">{row.sourceLabel}</span>
                         <span className="text-[9px] text-muted-foreground">
                           {row.baseUnitSymbol}
                         </span>
@@ -645,15 +642,22 @@ export function OperationalMatrix({
                           <td
                             key={order.id}
                             colSpan={headers.length}
+                            style={{
+                              backgroundColor: row.productColor ?? "#FFFFFF",
+                            }}
                             className={`border-b border-l-2 border-r px-2 py-1.5 text-center text-muted-foreground ${
-                              focused ? "bg-sky-50/60" : ""
+                              focused ? "ring-1 ring-inset ring-sky-400" : ""
                             }`}
                           >
                             —
                           </td>
                         );
                       })}
-                      <RowTotals lines={rowLines} stage={stage} />
+                      <RowTotals
+                        lines={rowLines}
+                        stage={stage}
+                        productColor={row.productColor}
+                      />
                     </tr>
                   </Fragment>
                 );
@@ -797,18 +801,20 @@ function DesktopOrderCells(props: CellProps) {
     onSaveDelivery,
     onCorrect,
   } = props;
-  const tone = statusTone(line, stage);
+  const cellStyle = {
+    backgroundColor: line.productColor ?? "#FFFFFF",
+  };
   const cellClass = `border-b border-r px-2 py-1.5 text-center ${
-    focused ? "bg-sky-50/60" : tone
+    focused ? "ring-1 ring-inset ring-sky-400" : ""
   }`;
 
   if (stage === "pedido") {
     return (
       <>
-        <td className={`${cellClass} border-l-2 font-semibold`}>
+        <td style={cellStyle} className={`${cellClass} border-l-2 font-semibold`}>
           {formatQuantity(line.requestedQuantity)}
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           {canAdmin ? (
             <Button
               size="xs"
@@ -828,10 +834,10 @@ function DesktopOrderCells(props: CellProps) {
   if (stage === "preparacion") {
     return (
       <>
-        <td className={`${cellClass} border-l-2`}>
+        <td style={cellStyle} className={`${cellClass} border-l-2`}>
           {formatQuantity(line.requestedQuantity)}
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <NumberEditor
             label={`Preparado ${line.productName}`}
             value={line.preparedQuantity}
@@ -839,7 +845,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSavePreparation}
           />
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <CheckEditor
             label={`Check bodega ${line.productName}`}
             checked={line.preparationCheck}
@@ -847,7 +853,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSavePreparation}
           />
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <span className="whitespace-nowrap font-medium">
             {formatQuantity(line.preparedBaseQuantity)}
           </span>
@@ -855,7 +861,7 @@ function DesktopOrderCells(props: CellProps) {
             {line.baseUnitSymbol}
           </span>
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
@@ -869,13 +875,13 @@ function DesktopOrderCells(props: CellProps) {
   if (stage === "entrega") {
     return (
       <>
-        <td className={`${cellClass} border-l-2`}>
+        <td style={cellStyle} className={`${cellClass} border-l-2`}>
           {formatQuantity(line.requestedQuantity)}
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           {formatQuantity(line.preparedQuantity)}
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <NumberEditor
             label={`Externo ${line.productName}`}
             value={line.externalQuantity}
@@ -883,7 +889,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSaveDelivery}
           />
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <NumberEditor
             label={`Entregado ${line.productName}`}
             value={line.deliveredQuantity}
@@ -891,7 +897,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSaveDelivery}
           />
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <CheckEditor
             label={`Check entrega ${line.productName}`}
             checked={line.deliveryCheck}
@@ -899,7 +905,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSaveDelivery}
           />
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <span className="whitespace-nowrap font-medium">
             {formatQuantity(line.deliveredBaseQuantity)}
           </span>
@@ -907,7 +913,7 @@ function DesktopOrderCells(props: CellProps) {
             {line.baseUnitSymbol}
           </span>
         </td>
-        <td className={cellClass}>
+        <td style={cellStyle} className={cellClass}>
           <NoteEditor
             label={`Observación entrega ${line.productName}`}
             value={line.deliveryNote}
@@ -922,13 +928,14 @@ function DesktopOrderCells(props: CellProps) {
     Math.abs(line.requestedQuantity - line.deliveredQuantity) > 0.000001;
   return (
     <>
-      <td className={`${cellClass} border-l-2`}>
+      <td style={cellStyle} className={`${cellClass} border-l-2`}>
         {formatQuantity(line.requestedQuantity)}
       </td>
-      <td className={cellClass}>{formatQuantity(line.preparedQuantity)}</td>
-      <td className={cellClass}>{formatQuantity(line.externalQuantity)}</td>
-      <td className={cellClass}>{formatQuantity(line.deliveredQuantity)}</td>
+      <td style={cellStyle} className={cellClass}>{formatQuantity(line.preparedQuantity)}</td>
+      <td style={cellStyle} className={cellClass}>{formatQuantity(line.externalQuantity)}</td>
+      <td style={cellStyle} className={cellClass}>{formatQuantity(line.deliveredQuantity)}</td>
       <td
+        style={cellStyle}
         className={`${cellClass} ${differs ? "text-amber-700" : "text-emerald-700"}`}
       >
         <span className="inline-flex items-center gap-1">
@@ -947,9 +954,11 @@ function DesktopOrderCells(props: CellProps) {
 function RowTotals({
   lines,
   stage,
+  productColor,
 }: {
   lines: MatrixLine[];
   stage: MatrixStage;
+  productColor: string | null;
 }) {
   const total = (
     field:
@@ -959,7 +968,10 @@ function RowTotals({
       | "deliveredQuantity",
   ) => lines.reduce((sum, line) => sum + line[field], 0);
   return (
-    <td className="border-b border-l-2 bg-emerald-50 px-3 py-1.5 align-top text-[11px]">
+    <td
+      style={{ backgroundColor: productColor ?? "#FFFFFF" }}
+      className="border-b border-l-2 px-3 py-1.5 align-top text-[11px]"
+    >
       <p>Solicitado: {formatQuantity(total("requestedQuantity"))}</p>
       {stage !== "pedido" ? (
         <p>Preparado: {formatQuantity(total("preparedQuantity"))}</p>

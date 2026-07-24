@@ -302,6 +302,17 @@ function ProductForm({
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor={`${mode}-matrix-color`}>Color en la matriz</Label>
+          <Input
+            id={`${mode}-matrix-color`}
+            name="matrix_color"
+            type="color"
+            defaultValue={product?.matrix_color ?? "#FFFFFF"}
+            className="h-10 cursor-pointer rounded-xl p-1"
+          />
+        </div>
+
+        <div className="space-y-2">
           <Label>Estado</Label>
           <NativeSelect
             name="is_active"

@@ -31,6 +31,7 @@ export type Product = {
   sale_price: number;
   supplier_name: string | null;
   image_url: string | null;
+  matrix_color?: string | null;
   requires_classification?: boolean;
   is_sellable?: boolean;
   is_catalog_visible?: boolean;

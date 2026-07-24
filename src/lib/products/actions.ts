@@ -48,6 +48,10 @@ const qbCodeSchema = z
 const productSchema = z.object({
   name: z.string().trim().min(2, "El nombre debe tener al menos 2 caracteres."),
   sku: optionalText,
+  matrix_color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Selecciona un color válido."),
   category_id: z.uuid("Selecciona una categoria."),
   base_unit_id: z.uuid("Selecciona la unidad base."),
   inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
@@ -491,6 +495,7 @@ export async function createProductAction(
     p_catalog_min_quantity: parsed.data.catalog_min_quantity,
     p_catalog_quantity_step: parsed.data.catalog_quantity_step,
     p_is_active: parsed.data.is_active,
+    p_matrix_color: parsed.data.matrix_color.toUpperCase(),
   });
 
   if (error) {
@@ -581,6 +586,7 @@ export async function updateProductAction(
     p_catalog_min_quantity: parsed.data.catalog_min_quantity,
     p_catalog_quantity_step: parsed.data.catalog_quantity_step,
     p_is_active: parsed.data.is_active,
+    p_matrix_color: parsed.data.matrix_color.toUpperCase(),
   });
 
   if (error) {

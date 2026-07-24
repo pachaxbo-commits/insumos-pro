@@ -100,6 +100,17 @@ export function NewProductDialog({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="create-matrix-color">Color en la matriz</Label>
+              <Input
+                id="create-matrix-color"
+                name="matrix_color"
+                type="color"
+                defaultValue="#FFFFFF"
+                className="h-10 cursor-pointer rounded-xl p-1"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label>Categoría</Label>
               <select
                 name="category_id"

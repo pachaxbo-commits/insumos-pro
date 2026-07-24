@@ -20,6 +20,7 @@ export type MatrixLine = {
   orderId: string;
   productId: string;
   productName: string;
+  productColor: string | null;
   categoryName: string;
   sourceLabel: string;
   baseUnitSymbol: string;
