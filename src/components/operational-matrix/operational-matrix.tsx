@@ -66,6 +66,9 @@ function stageHeaders() {
 }
 
 function groupStatus(group: MatrixCustomerGroup) {
+  if (group.orders.every((order) => order.status === "cancelado")) {
+    return "Cancelado";
+  }
   if (
     group.orders.every((order) => order.deliveryStatus === "confirmado")
   ) {

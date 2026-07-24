@@ -33,6 +33,7 @@ export async function getOperationalMatrixData(
     .from("qb_orders")
     .select("id, customer_account_id, public_reference, status, updated_at, customer_snapshot, location_snapshot")
     .eq("operational_date", operationalDate)
+    .neq("status", "cancelado")
     .order("submitted_at", { ascending: true });
   if (orderError) throw new Error(`No se pudo cargar la matriz: ${orderError.message}`);
 

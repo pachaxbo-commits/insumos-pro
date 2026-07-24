@@ -15,6 +15,7 @@ const [
   home,
   customersPage,
   customersDirectory,
+  matrixData,
 ] = await Promise.all([
   read("src/components/qb-orders/internal-order-creator.tsx"),
   read("src/lib/qb-orders/creation-actions.ts"),
@@ -26,6 +27,7 @@ const [
   read("src/app/(private)/page.tsx"),
   read("src/app/(private)/clientes/page.tsx"),
   read("src/lib/customer-account/directory.ts"),
+  read("src/lib/operational-matrix/data.ts"),
 ]);
 
 // Repetir pedido: selección focalizada, fallback explícito y estado sin histórico.
@@ -83,6 +85,7 @@ assert.match(ordersManagement, /Ver detalle/);
 assert.match(matrixPage, /requireRoleAccess\("\/matriz-operativa"\)/);
 assert.match(matrixPage, /params\.date \?\? params\.fecha/);
 assert.match(matrixPage, /initialOrderId=\{params\.order\}/);
+assert.match(matrixData, /\.neq\("status", "cancelado"\)/);
 
 // El directorio operativo usa las mismas cuentas y ubicaciones de los pedidos QB.
 assert.match(customersDirectory, /\.from\("customer_accounts"\)/);
