@@ -111,11 +111,35 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
     orderId: id, expectedUpdatedAt: z.string().datetime(), idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Pedido invalido." };
-  return rpc("confirm_qb_matrix_delivery", {
+  const payload = {
     p_order_id: parsed.data.orderId,
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["entregador"]);
+  };
+  const firstAttempt = await rpc(
+    "confirm_qb_matrix_delivery",
+    payload,
+    ["entregador"],
+  );
+  if (!firstAttempt.conflict) return firstAttempt;
+
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return firstAttempt;
+  const { data: currentOrder, error } = await supabase
+    .from("qb_orders")
+    .select("updated_at")
+    .eq("id", parsed.data.orderId)
+    .single();
+  if (error || !currentOrder?.updated_at) return firstAttempt;
+
+  return rpc(
+    "confirm_qb_matrix_delivery",
+    {
+      ...payload,
+      p_expected_updated_at: String(currentOrder.updated_at),
+    },
+    ["entregador"],
+  );
 }
 
 export async function reopenMatrixDeliveryAction(input: unknown) {

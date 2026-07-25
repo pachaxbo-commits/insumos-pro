@@ -215,6 +215,14 @@ assert.doesNotMatch(matrix, /Finalizar preparación/);
 assert.match(matrix, /Confirmar entrega/);
 assert.match(matrix, /Deshacer entrega/);
 assert.match(matrix, /data\.role === "entregador"/);
+assert.match(
+  matrix,
+  /Guardando cantidades reales y confirmando la entrega/,
+);
+assert.doesNotMatch(
+  matrix,
+  /Hay cambios de este cliente guardándose/,
+);
 assert.match(matrix, /Confirmación de Inventario/);
 assert.match(matrix, /Confirmación del Entregador/);
 assert.match(matrix, /disabled=\{!editable\}/);
@@ -246,6 +254,13 @@ assert.match(
 assert.doesNotMatch(
   deliveryConfirmationMigration,
   /v_current_updated_at is distinct from p_expected_updated_at/,
+);
+const matrixActions = await read("src/lib/operational-matrix/actions.ts");
+assert.match(matrixActions, /if \(!firstAttempt\.conflict\) return firstAttempt/);
+assert.match(matrixActions, /\.select\("updated_at"\)/);
+assert.match(
+  matrixActions,
+  /p_expected_updated_at: String\(currentOrder\.updated_at\)/,
 );
 
 console.log("QB main-flow acceptance contracts: OK");

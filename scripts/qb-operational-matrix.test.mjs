@@ -144,6 +144,14 @@ assert.match(matrix, /saveGroupedPreparation/);
 assert.match(matrix, /saveGroupedDelivery/);
 assert.match(matrix, /actionForCustomer/);
 assert.match(matrix, /Deshacer entrega/);
+assert.match(
+  matrix,
+  /Guardando cantidades reales y confirmando la entrega/,
+);
+assert.doesNotMatch(
+  matrix,
+  /Hay cambios de este cliente guardándose/,
+);
 assert.match(matrix, /moveCustomer/);
 assert.match(matrix, /"CHECK INV\.", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);

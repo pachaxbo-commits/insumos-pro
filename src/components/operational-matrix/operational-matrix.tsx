@@ -792,16 +792,6 @@ export function OperationalMatrix({
     action: "confirm" | "reopen",
   ) => {
     const groupOrderIds = new Set(group.orders.map((order) => order.id));
-    const hasPendingSaves = linesRef.current.some(
-      (line) =>
-        groupOrderIds.has(line.orderId) && dirty.current.has(line.orderItemId),
-    );
-    if (hasPendingSaves) {
-      setMessage(
-        "Hay cambios de este cliente guardándose. Espera a ver “Guardado” y vuelve a confirmar.",
-      );
-      return;
-    }
     const groupLines = linesRef.current.filter((line) =>
       groupOrderIds.has(line.orderId),
     );
@@ -851,6 +841,7 @@ export function OperationalMatrix({
     }
     setActionPending(`${group.id}:${action}`);
     if (action === "confirm") {
+      setMessage("Guardando cantidades reales y confirmando la entrega...");
       const saved = await saveGroupedDelivery(
         groupLines.map((line) => line.orderItemId),
       );
@@ -891,8 +882,9 @@ export function OperationalMatrix({
     );
     const failed = results.find((result) => !result.success);
     setMessage(
-      failed?.message ??
-        `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
+      failed
+        ? `No se pudo ${action === "confirm" ? "confirmar" : "deshacer"} la entrega: ${failed.message}`
+        : `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
     );
     setActionPending(null);
     router.refresh();
