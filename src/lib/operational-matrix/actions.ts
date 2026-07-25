@@ -17,6 +17,10 @@ export type MatrixActionResult = {
 const id = z.string().uuid();
 const key = z.string().min(8).max(200);
 const quantity = z.number().finite().min(0).max(999999999);
+const timestamp = z.string().refine(
+  (value) => Number.isFinite(Date.parse(value)),
+  "Fecha invalida.",
+);
 
 async function rpc(
   name: string,
@@ -96,7 +100,7 @@ export async function saveMatrixDeliveryAction(input: unknown) {
 
 export async function finalizeMatrixPreparationAction(input: unknown) {
   const parsed = z.object({
-    orderId: id, expectedUpdatedAt: z.string().datetime(), idempotencyKey: key,
+    orderId: id, expectedUpdatedAt: timestamp, idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Pedido invalido." };
   return rpc("finalize_qb_matrix_preparation", {
@@ -108,7 +112,7 @@ export async function finalizeMatrixPreparationAction(input: unknown) {
 
 export async function confirmMatrixDeliveryAction(input: unknown) {
   const parsed = z.object({
-    orderId: id, expectedUpdatedAt: z.string().datetime(), idempotencyKey: key,
+    orderId: id, expectedUpdatedAt: timestamp, idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Pedido invalido." };
   const payload = {
@@ -145,7 +149,7 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
 export async function reopenMatrixDeliveryAction(input: unknown) {
   const parsed = z.object({
     orderId: id,
-    expectedUpdatedAt: z.string().datetime(),
+    expectedUpdatedAt: timestamp,
     reason: z.string().min(3).max(500),
     idempotencyKey: key,
   }).safeParse(input);

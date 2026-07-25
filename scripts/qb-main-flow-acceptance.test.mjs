@@ -256,6 +256,8 @@ assert.doesNotMatch(
   /v_current_updated_at is distinct from p_expected_updated_at/,
 );
 const matrixActions = await read("src/lib/operational-matrix/actions.ts");
+assert.match(matrixActions, /Number\.isFinite\(Date\.parse\(value\)\)/);
+assert.doesNotMatch(matrixActions, /expectedUpdatedAt: z\.string\(\)\.datetime\(\)/);
 assert.match(matrixActions, /if \(!firstAttempt\.conflict\) return firstAttempt/);
 assert.match(matrixActions, /\.select\("updated_at"\)/);
 assert.match(

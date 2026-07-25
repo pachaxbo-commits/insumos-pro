@@ -114,6 +114,8 @@ assert.match(
 );
 assert.match(actions, /save_qb_matrix_preparation_item/);
 assert.match(actions, /save_qb_matrix_delivery_item/);
+assert.match(actions, /Number\.isFinite\(Date\.parse\(value\)\)/);
+assert.doesNotMatch(actions, /expectedUpdatedAt: z\.string\(\)\.datetime\(\)/);
 assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
 assert.match(matrix, /<table className=/);
 assert.match(matrix, /sticky left-0/);
