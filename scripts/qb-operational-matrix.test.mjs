@@ -252,6 +252,10 @@ assert.match(
   receiptDocument,
   /isCustomerExport \? "Fecha de entrega" : "Periodo"/,
 );
+assert.match(
+  receiptDocument,
+  /isCustomerExport \? "justify-self-end text-right" : undefined/,
+);
 assert.match(receiptDocument, /!isCustomerExport && receipt\.visibleNote/);
 
 const scenarios = [

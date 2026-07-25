@@ -476,8 +476,8 @@ function DraftEditor({
                       <Input
                         aria-label={`Precio aplicado para ${line.productName}`}
                         type="number"
-                        min="0.0001"
-                        step="0.0001"
+                        min="0.5"
+                        step="0.5"
                         placeholder="Ingresa el precio"
                         value={draft.basePriceUsed}
                         onChange={(event) => {

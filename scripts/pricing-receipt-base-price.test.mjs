@@ -86,3 +86,9 @@ test("14. advanced templates remain available and explain their intended use", (
   assert.match(activationUi, /Para configurar pocos productos, utiliza Productos o guarda el precio desde un recibo/);
   assert.match(activationUi, /Usa esta plantilla únicamente para cargas masivas/);
 });
+
+test("15. receipt base price advances in half-unit steps", () => {
+  assert.match(receiptUi, /min="0\.5"/);
+  assert.match(receiptUi, /step="0\.5"/);
+  assert.doesNotMatch(receiptUi, /step="0\.0001"/);
+});

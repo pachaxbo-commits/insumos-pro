@@ -77,7 +77,11 @@ export function ReceiptDocument({
             </>
           ) : null}
         </div>
-        <div>
+        <div
+          className={
+            isCustomerExport ? "justify-self-end text-right" : undefined
+          }
+        >
           <p className="text-xs font-medium uppercase text-muted-foreground">
             {isCustomerExport ? "Fecha de entrega" : "Periodo"}
           </p>
