@@ -24,6 +24,7 @@ const [
   productForm,
   newProduct,
   deliveryUnlock,
+  receiptDeliveryTruth,
 ] = await Promise.all([
   read(
     "supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql",
@@ -55,6 +56,9 @@ const [
   read("src/components/products/new-product-dialog.tsx"),
   read(
     "supabase/migrations/20260725010500_qb_delivery_can_complete_unreviewed_lines.sql",
+  ),
+  read(
+    "supabase/migrations/20260725011100_qb_receipt_delivery_truth_and_undo.sql",
   ),
 ]);
 
@@ -139,6 +143,7 @@ assert.match(matrix, /groupLineMap/);
 assert.match(matrix, /saveGroupedPreparation/);
 assert.match(matrix, /saveGroupedDelivery/);
 assert.match(matrix, /actionForCustomer/);
+assert.match(matrix, /Deshacer entrega/);
 assert.match(matrix, /moveCustomer/);
 assert.match(matrix, /"CHECK INV\.", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
@@ -192,6 +197,18 @@ assert.match(deliveryUnlock, /'admin', 'administrador', 'entregador'/);
 assert.match(
   deliveryUnlock,
   /return public\.save_qb_matrix_delivery_item_with_weight_v2/,
+);
+assert.match(
+  receiptDeliveryTruth,
+  /v_needle text := 'and item\.status in \(''completo'', ''parcial''\)'/,
+);
+assert.match(receiptDeliveryTruth, /execute replace\(v_definition, v_needle, 'and true'\)/);
+assert.match(receiptDeliveryTruth, /receipt\.status = 'borrador'/);
+assert.match(receiptDeliveryTruth, /delete from public\.qb_receipt_orders/);
+assert.match(receiptDeliveryTruth, /receipt\.status = 'emitido'/);
+assert.match(
+  receiptDeliveryTruth,
+  /Anula primero el recibo desde Recibos/,
 );
 assert.match(
   liveFlow,

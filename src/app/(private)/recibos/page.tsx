@@ -10,9 +10,9 @@ export default async function RecibosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Seguimiento"
-        title="Recibos"
-        description="Agrupa pedidos entregados por cliente y gestiona sus recibos acumulativos no fiscales."
+        eyebrow="Cierre de entregas"
+        title="Recibos acumulativos"
+        description="Agrupa las entregas confirmadas de cada cliente usando exactamente la cantidad real registrada por el entregador."
       />
       <QbReceiptsManagement {...data} />
     </div>

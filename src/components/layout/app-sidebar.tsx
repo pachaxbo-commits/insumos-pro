@@ -24,10 +24,11 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const workspace = getFocusedWorkspace(user.role);
+  const adminAvailablePaths = new Set(["/clientes", "/recibos"]);
   const availableItems = mainNavigation.filter(
     (item) =>
       item.href === workspace.href ||
-      (user.role === "administrador" && item.href === "/clientes"),
+      (user.role === "administrador" && adminAvailablePaths.has(item.href)),
   );
   const lockedItems = mainNavigation.filter(
     (item) =>
@@ -93,7 +94,7 @@ export function AppSidebar({
                           : "text-sidebar-foreground/65",
                       )}
                     >
-                      {focused ? workspace.step : "Registrar y editar"}
+                      {focused ? workspace.step : item.description}
                     </span>
                   </span>
                 </Link>

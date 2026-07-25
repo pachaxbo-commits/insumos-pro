@@ -110,6 +110,7 @@ type PendingOrderRow = {
 
 type DeliveredMovementRow = {
   order_id: string;
+  delivered_base_quantity: number | string;
 };
 
 function single<T>(value: T | T[] | null | undefined) {
@@ -348,10 +349,11 @@ async function getPendingReceiptGroups(
   if (orderIds.length) {
     const { data: movementsData } = await supabase
       .from("qb_order_delivery_movements")
-      .select("order_id")
+      .select("order_id, delivered_base_quantity")
       .in("order_id", orderIds);
 
     for (const movement of (movementsData ?? []) as DeliveredMovementRow[]) {
+      if (numberValue(movement.delivered_base_quantity) <= 0) continue;
       movementCounts.set(
         movement.order_id,
         (movementCounts.get(movement.order_id) ?? 0) + 1,

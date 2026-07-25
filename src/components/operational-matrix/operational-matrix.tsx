@@ -837,7 +837,9 @@ export function OperationalMatrix({
       }
     }
     const reason =
-      action === "reopen" ? (window.prompt("Motivo de reapertura") ?? "") : "";
+      action === "reopen"
+        ? (window.prompt("Motivo para deshacer la entrega") ?? "")
+        : "";
     if (action === "reopen" && reason.trim().length < 3) return;
     if (
       action === "confirm" &&
@@ -1062,7 +1064,8 @@ export function OperationalMatrix({
                               Confirmar entrega
                             </Button>
                           ) : null}
-                          {canAdmin &&
+                          {stage === "entrega" &&
+                          data.role === "entregador" &&
                           group.orders.some(
                             (order) => order.deliveryStatus === "confirmado",
                           ) ? (
@@ -1074,7 +1077,7 @@ export function OperationalMatrix({
                                 void actionForCustomer(group, "reopen")
                               }
                             >
-                              Reabrir
+                              Deshacer entrega
                             </Button>
                           ) : null}
                         </span>

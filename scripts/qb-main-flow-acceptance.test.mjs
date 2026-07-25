@@ -134,7 +134,10 @@ assert.match(
   transitionPolicy,
   /id: "matriz-operativa"[\s\S]*visibleInNavigation: true/,
 );
-assert.match(roles, /administrador: \["\/", "\/pedidos", "\/clientes"\]/);
+assert.match(
+  roles,
+  /administrador: \["\/", "\/pedidos", "\/clientes", "\/recibos"\]/,
+);
 assert.match(roles, /inventario: \["\/", "\/matriz-operativa"\]/);
 assert.match(roles, /entregador: \["\/", "\/matriz-operativa"\]/);
 assert.doesNotMatch(roles, /inventario: \[[^\]]*"\/pedidos"/);
@@ -210,6 +213,8 @@ assert.match(matrix, /Check bodega/);
 assert.match(matrix, /Check de Inventario/);
 assert.doesNotMatch(matrix, /Finalizar preparación/);
 assert.match(matrix, /Confirmar entrega/);
+assert.match(matrix, /Deshacer entrega/);
+assert.match(matrix, /data\.role === "entregador"/);
 assert.match(matrix, /Confirmación de Inventario/);
 assert.match(matrix, /Confirmación del Entregador/);
 assert.match(matrix, /disabled=\{!editable\}/);

@@ -150,7 +150,7 @@ function CreateReceiptPanel({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <ReceiptText className="size-4 text-emerald-700" />
-          Nuevo recibo
+          Nuevo recibo acumulativo
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -160,6 +160,10 @@ function CreateReceiptPanel({
           </p>
         ) : (
           <form action={action} className="space-y-4">
+            <p className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+              El recibo incluirá únicamente las cantidades reales confirmadas
+              por el entregador.
+            </p>
             <input type="hidden" name="customer_id" value={customerId} />
             <input
               type="hidden"
@@ -190,7 +194,27 @@ function CreateReceiptPanel({
             </div>
 
             <div className="space-y-2">
-              <Label>Pedidos entregados</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Pedidos entregados</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const orderIds = (selectedGroup?.orders ?? []).map(
+                      (order) => order.id,
+                    );
+                    setSelectedOrders(
+                      selectedOrders.length === orderIds.length ? [] : orderIds,
+                    );
+                  }}
+                >
+                  {selectedOrders.length ===
+                  (selectedGroup?.orders.length ?? 0)
+                    ? "Quitar selección"
+                    : "Seleccionar todos"}
+                </Button>
+              </div>
               <div className="space-y-2">
                 {(selectedGroup?.orders ?? []).map((order) => (
                   <label
@@ -227,7 +251,7 @@ function CreateReceiptPanel({
               disabled={pending || selectedOrders.length === 0}
             >
               <FileText className="size-4" />
-              {pending ? "Creando..." : "Crear borrador"}
+              {pending ? "Generando..." : "Generar recibo acumulativo"}
             </Button>
           </form>
         )}
