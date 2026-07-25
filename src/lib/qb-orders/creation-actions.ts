@@ -57,7 +57,10 @@ export async function getLastRepeatableOrderAction(
 
   const selection = repeatSelectionSchema.safeParse({ customerId, locationId });
   if (!selection.success) {
-    return { success: false, message: "Selecciona un cliente y una ubicación." };
+    return {
+      success: false,
+      message: "Selecciona un cliente y una ubicación.",
+    };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -106,7 +109,56 @@ export async function getLastRepeatableOrderAction(
   }
 
   const order = sameLocation.data ?? fallback?.data;
-  if (!order) return { success: true, order: null };
+  if (!order) {
+    const template = await supabase
+      .from("qb_legacy_order_templates")
+      .select("id, source_order_date")
+      .eq("customer_account_id", selection.data.customerId)
+      .order("source_order_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (template.error) {
+      return {
+        success: false,
+        message: "No pudimos consultar el último pedido.",
+      };
+    }
+    if (!template.data) return { success: true, order: null };
+
+    const templateLines = await supabase
+      .from("qb_legacy_order_template_lines")
+      .select("product_id, allowed_unit_id, quantity, notes")
+      .eq("template_id", template.data.id)
+      .order("sort_order", { ascending: true });
+
+    if (templateLines.error) {
+      return {
+        success: false,
+        message: "No pudimos cargar la plantilla del sistema anterior.",
+      };
+    }
+
+    return {
+      success: true,
+      order: {
+        id: `legacy-${template.data.id}`,
+        source: "legacy",
+        submittedAt: `${template.data.source_order_date}T12:00:00-04:00`,
+        locationId: null,
+        locationLabel: "Sistema anterior",
+        sameLocation: true,
+        lines: (templateLines.data ?? []).map((item) => ({
+          productId: String(item.product_id),
+          allowedUnitId: String(item.allowed_unit_id),
+          inputMode: "quantity",
+          quantity: Number(item.quantity),
+          requestedAmountBs: null,
+          notes: String(item.notes ?? ""),
+        })),
+      },
+    };
+  }
 
   const items = await supabase
     .from("qb_order_items")
@@ -128,13 +180,17 @@ export async function getLastRepeatableOrderAction(
       ? (order.location_snapshot as Record<string, unknown>)
       : {};
   const locationLabel = [snapshot.label, snapshot.address]
-    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && Boolean(value.trim()),
+    )
     .join(" — ");
 
   return {
     success: true,
     order: {
       id: String(order.id),
+      source: "current",
       submittedAt: String(order.submitted_at),
       locationId: order.customer_location_id
         ? String(order.customer_location_id)

@@ -8,7 +8,6 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
-import Link from "next/link";
 import { Check, Clock3, Plus, RotateCcw, Search, Send, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,36 +25,14 @@ import type {
 
 const initialState: QbOrderActionState = { success: false };
 const PRODUCT_BATCH_SIZE = 40;
-const MAX_ORDER_PRODUCTS = 30;
+const MAX_ORDER_PRODUCTS = 100;
 
 type DraftLine = {
   key: number;
   productId: string;
   allowedUnitId: string;
   quantity: string;
-  inputMode: "quantity" | "amount_bs";
-  requestedAmountBs: string;
   notes: string;
-};
-
-type GuestDraft = {
-  businessName: string;
-  responsibleName: string;
-  phone: string;
-  email: string;
-  address: string;
-  locationLabel: string;
-  locationReference: string;
-};
-
-const blankGuestDraft: GuestDraft = {
-  businessName: "",
-  responsibleName: "",
-  phone: "",
-  email: "",
-  address: "",
-  locationLabel: "",
-  locationReference: "",
 };
 
 function numberOrNull(value: string) {
@@ -85,10 +62,8 @@ export function InternalOrderCreator({
   initiallyOpen = false,
 }: QbInternalOrderCreationData & { initiallyOpen?: boolean }) {
   const [open, setOpen] = useState(initiallyOpen);
-  const [mode, setMode] = useState<"registered" | "guest">("registered");
   const [customerId, setCustomerId] = useState("");
   const [locationId, setLocationId] = useState("");
-  const [guest, setGuest] = useState<GuestDraft>(blankGuestDraft);
   const [customerNotes, setCustomerNotes] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() =>
     initiallyOpen ? crypto.randomUUID() : "",
@@ -140,8 +115,7 @@ export function InternalOrderCreator({
       .map((productId) => productIndex.get(productId)!);
     const alphabetical = products
       .filter(
-        (product) =>
-          !lastOrderSet.has(product.id) && matchesSearch(product.id),
+        (product) => !lastOrderSet.has(product.id) && matchesSearch(product.id),
       )
       .sort((left, right) => left.name.localeCompare(right.name, "es"));
 
@@ -154,7 +128,7 @@ export function InternalOrderCreator({
 
   useEffect(() => {
     const request = ++historyRequestRef.current;
-    if (mode !== "registered" || !customerId || !locationId) return;
+    if (!customerId || !locationId) return;
 
     startHistoryTransition(async () => {
       const result = await getLastRepeatableOrderAction(customerId, locationId);
@@ -167,27 +141,18 @@ export function InternalOrderCreator({
         setHistoryChecked(true);
       }
     });
-  }, [customerId, locationId, mode]);
+  }, [customerId, locationId]);
 
   const itemsPayload = useMemo(
     () =>
       JSON.stringify(
-        lines.map((line) =>
-          line.inputMode === "amount_bs"
-            ? {
-                productId: line.productId,
-                inputMode: line.inputMode,
-                requestedAmountBs: numberOrNull(line.requestedAmountBs),
-                notes: line.notes,
-              }
-            : {
-                productId: line.productId,
-                inputMode: line.inputMode,
-                allowedUnitId: line.allowedUnitId || null,
-                quantity: numberOrNull(line.quantity),
-                notes: line.notes,
-              },
-        ),
+        lines.map((line) => ({
+          productId: line.productId,
+          inputMode: "quantity",
+          allowedUnitId: line.allowedUnitId || null,
+          quantity: numberOrNull(line.quantity),
+          notes: line.notes,
+        })),
       ),
     [lines],
   );
@@ -224,24 +189,12 @@ export function InternalOrderCreator({
         key: nextLineKey,
         productId,
         allowedUnitId: defaultUnit.id,
-        quantity: String(defaultUnit.minQuantity),
-        inputMode: "quantity",
-        requestedAmountBs: "",
+        quantity: String(Math.max(defaultUnit.minQuantity, 0.5)),
         notes: "",
       },
     ]);
     setNextLineKey((current) => current + 1);
     setSelectionMessage("");
-  }
-
-  function selectProductMode(
-    key: number,
-    inputMode: "quantity" | "amount_bs",
-  ) {
-    updateLine(key, {
-      inputMode,
-      requestedAmountBs: "",
-    });
   }
 
   function resetProductSelection() {
@@ -298,28 +251,6 @@ export function InternalOrderCreator({
         <td className="w-44 min-w-44 px-2 py-2">
           {line ? (
             <select
-              aria-label={`Forma de pedido de ${product.name}`}
-              value={line.inputMode}
-              onChange={(event) =>
-                selectProductMode(
-                  line.key,
-                  event.target.value as "quantity" | "amount_bs",
-                )
-              }
-              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="quantity">Por cantidad</option>
-              {product.amountBsAvailable ? (
-                <option value="amount_bs">Por importe en Bs</option>
-              ) : null}
-            </select>
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          )}
-        </td>
-        <td className="w-44 min-w-44 px-2 py-2">
-          {line?.inputMode === "quantity" ? (
-            <select
               aria-label={`Unidad de ${product.name}`}
               value={line.allowedUnitId}
               onChange={(event) =>
@@ -335,38 +266,20 @@ export function InternalOrderCreator({
               ))}
             </select>
           ) : (
-            <span className="text-xs text-muted-foreground">
-              {line ? "Cálculo automático" : "—"}
-            </span>
+            <span className="text-sm text-muted-foreground">—</span>
           )}
         </td>
         <td className="w-36 min-w-36 px-2 py-2">
-          {line?.inputMode === "quantity" ? (
+          {line ? (
             <Input
               aria-label={`Cantidad de ${product.name}`}
               type="number"
-              min={allowedUnit?.minQuantity ?? 0.001}
-              step={allowedUnit?.quantityStep ?? 0.001}
+              min={Math.max(allowedUnit?.minQuantity ?? 0.5, 0.5)}
+              step="0.5"
               value={line.quantity}
               onChange={(event) =>
                 updateLine(line.key, { quantity: event.target.value })
               }
-              required
-              className="h-9"
-            />
-          ) : line ? (
-            <Input
-              aria-label={`Importe en Bs de ${product.name}`}
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={line.requestedAmountBs}
-              onChange={(event) =>
-                updateLine(line.key, {
-                  requestedAmountBs: event.target.value,
-                })
-              }
-              placeholder="Bs"
               required
               className="h-9"
             />
@@ -433,15 +346,7 @@ export function InternalOrderCreator({
           key: nextLineKey + index,
           productId: item.productId,
           allowedUnitId: allowedUnit.id,
-          inputMode:
-            item.inputMode === "amount_bs" && product.amountBsAvailable
-              ? "amount_bs"
-              : "quantity",
-          quantity: String(item.quantity),
-          requestedAmountBs:
-            item.requestedAmountBs === null
-              ? ""
-              : String(item.requestedAmountBs),
+          quantity: String(item.inputMode === "quantity" ? item.quantity : 0.5),
           notes: item.notes,
         } satisfies DraftLine;
       })
@@ -469,20 +374,14 @@ export function InternalOrderCreator({
     setRepeatMessage("");
   }
 
-  function updateGuest(patch: Partial<GuestDraft>) {
-    setGuest((current) => ({ ...current, ...patch }));
-  }
-
   function openForm() {
     setIdempotencyKey((current) => current || crypto.randomUUID());
     setOpen(true);
   }
 
   function resetAfterConfirmedCreation() {
-    setMode("registered");
     setCustomerId("");
     setLocationId("");
-    setGuest(blankGuestDraft);
     setCustomerNotes("");
     setHistory(null);
     setHistoryChecked(false);
@@ -548,31 +447,12 @@ export function InternalOrderCreator({
       </CardHeader>
       <CardContent>
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
-          <input type="hidden" name="order_mode" value={mode} />
+          <input type="hidden" name="order_mode" value="registered" />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />
           <input type="hidden" name="items" value={itemsPayload} />
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="internal-order-mode">Tipo de cliente</Label>
-              <select
-                id="internal-order-mode"
-                value={mode}
-                onChange={(event) => {
-                  resetHistorySelection();
-                  setMode(event.target.value as "registered" | "guest");
-                }}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="registered">Cliente registrado</option>
-                <option value="guest">Cliente sin cuenta</option>
-              </select>
-            </div>
-          </div>
-
-          {mode === "registered" ? (
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="internal-customer">Cliente</Label>
                 <select
@@ -612,188 +492,92 @@ export function InternalOrderCreator({
                   ))}
                 </select>
               </div>
-              </div>
+            </div>
 
-              {customerId && locationId ? (
-                <section
-                  className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
-                  aria-labelledby="last-order-title"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h3
-                        id="last-order-title"
-                        className="flex items-center gap-2 font-semibold"
-                      >
-                        <Clock3 className="size-4 text-emerald-700" />
-                        Último pedido
-                      </h3>
-                      {historyPending ? (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Consultando el pedido más reciente…
+            {customerId && locationId ? (
+              <section
+                className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
+                aria-labelledby="last-order-title"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3
+                      id="last-order-title"
+                      className="flex items-center gap-2 font-semibold"
+                    >
+                      <Clock3 className="size-4 text-emerald-700" />
+                      Último pedido
+                    </h3>
+                    {historyPending ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Consultando el pedido más reciente…
+                      </p>
+                    ) : history ? (
+                      <div className="mt-2 space-y-1 text-sm">
+                        <p>
+                          {shortDate(history.submittedAt)} ·{" "}
+                          {history.lines.length} productos
                         </p>
-                      ) : history ? (
-                        <div className="mt-2 space-y-1 text-sm">
-                          <p>
-                            {shortDate(history.submittedAt)} ·{" "}
-                            {history.lines.length} productos
+                        <p className="text-muted-foreground">
+                          {history.source === "legacy"
+                            ? "Plantilla recuperada del sistema anterior"
+                            : `Origen: ${history.locationLabel}`}
+                        </p>
+                        {history.source === "current" &&
+                        !history.sameLocation ? (
+                          <p className="font-medium text-amber-800">
+                            Este pedido proviene de otra ubicación. La ubicación
+                            seleccionada no cambiará.
                           </p>
-                          <p className="text-muted-foreground">
-                            Origen: {history.locationLabel}
-                          </p>
-                          {!history.sameLocation ? (
-                            <p className="font-medium text-amber-800">
-                              Este pedido proviene de otra ubicación. La
-                              ubicación seleccionada no cambiará.
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : historyChecked && !historyError ? (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Este cliente todavía no tiene pedidos anteriores para
-                          repetir.
-                        </p>
-                      ) : null}
-                      {historyError ? (
-                        <p className="mt-1 text-sm text-destructive">
-                          {historyError}
-                        </p>
-                      ) : null}
-                    </div>
-                    {history ? (
-                      <Button
-                        type="button"
-                        onClick={repeatLastOrder}
-                        disabled={
-                          historyPending || repeatedOrderId === history.id
-                        }
-                      >
-                        <RotateCcw className="size-4" />
-                        {repeatedOrderId === history.id
-                          ? "Pedido cargado"
-                          : "Repetir último pedido"}
-                      </Button>
+                        ) : null}
+                      </div>
+                    ) : historyChecked && !historyError ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Este cliente todavía no tiene pedidos anteriores para
+                        repetir.
+                      </p>
+                    ) : null}
+                    {historyError ? (
+                      <p className="mt-1 text-sm text-destructive">
+                        {historyError}
+                      </p>
                     ) : null}
                   </div>
-                  {repeatMessage ? (
-                    <div
-                      className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-white p-3 text-sm text-emerald-900"
-                      role="status"
+                  {history ? (
+                    <Button
+                      type="button"
+                      onClick={repeatLastOrder}
+                      disabled={
+                        historyPending || repeatedOrderId === history.id
+                      }
                     >
-                      <span>{repeatMessage}</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={cancelRepeat}
-                      >
-                        <X className="size-4" />
-                        Cancelar repetición
-                      </Button>
-                    </div>
+                      <RotateCcw className="size-4" />
+                      {repeatedOrderId === history.id
+                        ? "Pedido cargado"
+                        : "Repetir último pedido"}
+                    </Button>
                   ) : null}
-                </section>
-              ) : null}
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="guest-business">Negocio</Label>
-                <Input
-                  id="guest-business"
-                  name="business_name"
-                  value={guest.businessName}
-                  onChange={(event) =>
-                    updateGuest({ businessName: event.target.value })
-                  }
-                  required
-                  minLength={2}
-                  maxLength={120}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-responsible">Responsable</Label>
-                <Input
-                  id="guest-responsible"
-                  name="responsible_name"
-                  value={guest.responsibleName}
-                  onChange={(event) =>
-                    updateGuest({ responsibleName: event.target.value })
-                  }
-                  required
-                  minLength={2}
-                  maxLength={120}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-phone">Teléfono</Label>
-                <Input
-                  id="guest-phone"
-                  name="phone"
-                  value={guest.phone}
-                  onChange={(event) =>
-                    updateGuest({ phone: event.target.value })
-                  }
-                  required
-                  maxLength={25}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-email">Correo opcional</Label>
-                <Input
-                  id="guest-email"
-                  name="email"
-                  value={guest.email}
-                  onChange={(event) =>
-                    updateGuest({ email: event.target.value })
-                  }
-                  type="email"
-                  maxLength={254}
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="guest-address">Dirección</Label>
-                <Input
-                  id="guest-address"
-                  name="address"
-                  value={guest.address}
-                  onChange={(event) =>
-                    updateGuest({ address: event.target.value })
-                  }
-                  required
-                  minLength={5}
-                  maxLength={300}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-location-label">
-                  Nombre de la ubicación
-                </Label>
-                <Input
-                  id="guest-location-label"
-                  name="location_label"
-                  value={guest.locationLabel}
-                  onChange={(event) =>
-                    updateGuest({ locationLabel: event.target.value })
-                  }
-                  maxLength={80}
-                  placeholder="Principal"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="guest-reference">Referencia</Label>
-                <Input
-                  id="guest-reference"
-                  name="location_reference"
-                  value={guest.locationReference}
-                  onChange={(event) =>
-                    updateGuest({ locationReference: event.target.value })
-                  }
-                  maxLength={300}
-                />
-              </div>
-            </div>
-          )}
+                </div>
+                {repeatMessage ? (
+                  <div
+                    className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-white p-3 text-sm text-emerald-900"
+                    role="status"
+                  >
+                    <span>{repeatMessage}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={cancelRepeat}
+                    >
+                      <X className="size-4" />
+                      Cancelar repetición
+                    </Button>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+          </div>
 
           <section
             className="space-y-3"
@@ -843,7 +627,7 @@ export function InternalOrderCreator({
             ) : null}
 
             <div className="max-h-[32rem] overflow-auto rounded-xl border overscroll-contain [touch-action:pan-x_pan-y]">
-              <table className="w-full min-w-[980px] border-collapse text-sm">
+              <table className="w-full min-w-[820px] border-collapse text-sm">
                 <thead className="sticky top-0 z-30 bg-slate-100 shadow-[0_1px_0_0_hsl(var(--border))]">
                   <tr>
                     <th className="sticky left-0 z-40 w-12 bg-slate-100 px-3 py-2 text-center font-semibold">
@@ -853,13 +637,10 @@ export function InternalOrderCreator({
                       Producto
                     </th>
                     <th className="w-44 px-2 py-2 text-left font-semibold">
-                      Forma
-                    </th>
-                    <th className="w-44 px-2 py-2 text-left font-semibold">
                       Unidad
                     </th>
                     <th className="w-36 px-2 py-2 text-left font-semibold">
-                      Cantidad / Bs
+                      Cantidad
                     </th>
                     <th className="min-w-64 px-2 py-2 text-left font-semibold">
                       Observación
@@ -870,7 +651,7 @@ export function InternalOrderCreator({
                   {catalogGroups.latest.length ? (
                     <tr className="border-b bg-emerald-100/80">
                       <th
-                        colSpan={6}
+                        colSpan={5}
                         className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-emerald-900"
                       >
                         Último pedido del cliente
@@ -883,7 +664,7 @@ export function InternalOrderCreator({
                   {catalogGroups.visibleAlphabetical.length ? (
                     <tr className="border-b bg-slate-100">
                       <th
-                        colSpan={6}
+                        colSpan={5}
                         className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-700"
                       >
                         {catalogGroups.latest.length
@@ -919,9 +700,7 @@ export function InternalOrderCreator({
                 type="button"
                 variant="outline"
                 onClick={() =>
-                  setCatalogLimit(
-                    (current) => current + PRODUCT_BATCH_SIZE,
-                  )
+                  setCatalogLimit((current) => current + PRODUCT_BATCH_SIZE)
                 }
               >
                 <Plus className="size-4" />
@@ -954,17 +733,6 @@ export function InternalOrderCreator({
             >
               {state.message}
               {state.reference ? ` Referencia: ${state.reference}` : ""}
-              {state.success && state.orderId ? (
-                <Button asChild className="mt-3 flex w-fit">
-                  <Link
-                    href={`/matriz-operativa?date=${new Intl.DateTimeFormat("en-CA", {
-                      timeZone: "America/La_Paz",
-                    }).format(new Date())}&mode=preparacion&order=${state.orderId}`}
-                  >
-                    Abrir en Matriz operativa
-                  </Link>
-                </Button>
-              ) : null}
             </div>
           ) : null}
 

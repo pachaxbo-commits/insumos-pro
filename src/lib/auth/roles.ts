@@ -15,20 +15,54 @@ export function getRoleLabel(role: UserRole | null | undefined) {
 }
 
 const roleRouteAccess: Record<UserRole, string[]> = {
-  administrador: ["*"],
-  ventas: ["/", "/ventas", "/clientes", "/productos", "/inventario"],
-  inventario: ["/", "/ingresos", "/matriz-operativa", "/inventario"],
+  administrador: ["/", "/pedidos", "/clientes"],
+  ventas: ["/"],
+  inventario: ["/", "/matriz-operativa"],
   entregador: ["/", "/matriz-operativa"],
-  finanzas: [
-    "/",
-    "/ventas",
-    "/compras",
-    "/finanzas",
-    "/clientes",
-    "/finanzas/cuentas-por-cobrar",
-    "/finanzas/cuentas-por-pagar",
-  ],
+  finanzas: ["/"],
 };
+
+export type FocusedWorkspace = {
+  href: string | null;
+  title: string;
+  description: string;
+  step: string;
+};
+
+export function getFocusedWorkspace(
+  role: UserRole | null | undefined,
+): FocusedWorkspace {
+  switch (role) {
+    case "administrador":
+      return {
+        href: "/pedidos",
+        title: "Crear pedidos",
+        description: "Registra el pedido solicitado por cada cliente.",
+        step: "Paso 1 de 3",
+      };
+    case "inventario":
+      return {
+        href: "/matriz-operativa",
+        title: "Preparar pedidos",
+        description: "Marca cantidades y observaciones para despacho.",
+        step: "Paso 2 de 3",
+      };
+    case "entregador":
+      return {
+        href: "/matriz-operativa",
+        title: "Registrar entregas",
+        description: "Anota las cantidades exactas que recibió el cliente.",
+        step: "Paso 3 de 3",
+      };
+    default:
+      return {
+        href: null,
+        title: "Módulo en pausa",
+        description: "Este perfil se habilitará en una siguiente etapa.",
+        step: "Bloqueado por ahora",
+      };
+  }
+}
 
 function normalizePath(pathname: string) {
   if (!pathname) return "/";

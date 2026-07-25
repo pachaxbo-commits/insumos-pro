@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { requireRoleAccess } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { UserRole } from "@/types/auth";
 
 export type MatrixActionResult = {
   success: boolean;
@@ -17,8 +18,19 @@ const id = z.string().uuid();
 const key = z.string().min(8).max(200);
 const quantity = z.number().finite().min(0).max(999999999);
 
-async function rpc(name: string, payload: Record<string, unknown>): Promise<MatrixActionResult> {
-  await requireRoleAccess("/matriz-operativa");
+async function rpc(
+  name: string,
+  payload: Record<string, unknown>,
+  allowedRoles: UserRole[],
+  revalidate = true,
+): Promise<MatrixActionResult> {
+  const auth = await requireRoleAccess("/matriz-operativa");
+  if (!auth.user.role || !allowedRoles.includes(auth.user.role)) {
+    return {
+      success: false,
+      message: "Esta acción no está habilitada para tu etapa del flujo.",
+    };
+  }
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { success: false, message: "Falta la conexion publica de Supabase." };
   const { data, error } = await supabase.rpc(name, payload);
@@ -29,8 +41,10 @@ async function rpc(name: string, payload: Record<string, unknown>): Promise<Matr
       conflict: error.code === "40001" || error.message.includes("QB_MATRIX_CONFLICT"),
     };
   }
-  revalidatePath("/matriz-operativa");
-  revalidatePath("/pedidos");
+  if (revalidate) {
+    revalidatePath("/matriz-operativa");
+    revalidatePath("/pedidos");
+  }
   return { success: true, message: "Cambio guardado.", data };
 }
 
@@ -53,7 +67,7 @@ export async function saveMatrixPreparationAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["inventario"], false);
 }
 
 export async function saveMatrixDeliveryAction(input: unknown) {
@@ -77,7 +91,7 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["entregador"], false);
 }
 
 export async function finalizeMatrixPreparationAction(input: unknown) {
@@ -89,7 +103,7 @@ export async function finalizeMatrixPreparationAction(input: unknown) {
     p_order_id: parsed.data.orderId,
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["inventario"]);
 }
 
 export async function confirmMatrixDeliveryAction(input: unknown) {
@@ -101,7 +115,7 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
     p_order_id: parsed.data.orderId,
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["entregador"]);
 }
 
 export async function reopenMatrixDeliveryAction(input: unknown) {
@@ -117,7 +131,7 @@ export async function reopenMatrixDeliveryAction(input: unknown) {
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_reason: parsed.data.reason,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["entregador"]);
 }
 
 export async function correctMatrixRequestAction(input: unknown) {
@@ -135,7 +149,7 @@ export async function correctMatrixRequestAction(input: unknown) {
     p_requested_quantity: parsed.data.requestedQuantity,
     p_reason: parsed.data.reason,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["administrador"]);
 }
 
 export async function reorderMatrixOrdersAction(input: unknown) {
@@ -151,5 +165,5 @@ export async function reorderMatrixOrdersAction(input: unknown) {
     p_order_ids: parsed.data.orderIds,
     p_expected_versions: parsed.data.expectedVersions,
     p_idempotency_key: parsed.data.idempotencyKey,
-  });
+  }, ["administrador"]);
 }

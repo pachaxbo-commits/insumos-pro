@@ -19,6 +19,7 @@ const actionState = (
 });
 
 const uuidSchema = z.string().uuid();
+const INTERNAL_ORDER_BATCH_SIZE = 30;
 
 const preparationLineSchema = z.object({
   orderItemId: z.string().uuid(),
@@ -168,76 +169,99 @@ export async function createQbInternalOrderAction(
     );
   }
 
-  const { data, error } = await supabase.rpc(
-    "create_qb17_internal_catalog_order",
-    {
-      p_order_mode: parsed.data.orderMode,
-      p_customer_account_id: parsed.data.customerAccountId,
-      p_customer_location_id: parsed.data.customerLocationId,
-      p_business_name: parsed.data.businessName || null,
-      p_full_name: parsed.data.responsibleName || null,
-      p_phone: parsed.data.phone || null,
-      p_email: parsed.data.email || null,
-      p_address: parsed.data.address || null,
-      p_location_label: parsed.data.locationLabel || null,
-      p_location_reference: parsed.data.locationReference || null,
-      p_customer_notes: parsed.data.customerNotes || null,
-      p_items: parsed.data.items.map((item) =>
-        item.inputMode === "amount_bs"
-          ? {
-              product_id: item.productId,
-              input_mode: "amount_bs",
-              requested_amount_bs: item.requestedAmountBs,
-              notes: item.notes || null,
-            }
-          : {
-              product_id: item.productId,
-              input_mode: "quantity",
-              allowed_unit_id: item.allowedUnitId,
-              quantity: item.quantity,
-              notes: item.notes || null,
-            },
+  const batches = Array.from(
+    { length: Math.ceil(parsed.data.items.length / INTERNAL_ORDER_BATCH_SIZE) },
+    (_, index) =>
+      parsed.data.items.slice(
+        index * INTERNAL_ORDER_BATCH_SIZE,
+        (index + 1) * INTERNAL_ORDER_BATCH_SIZE,
       ),
-      p_idempotency_key: parsed.data.idempotencyKey,
-    },
   );
+  const createdOrders: Array<{
+    id: string;
+    reference: string;
+    resultCode: string;
+  }> = [];
 
-  if (error) {
-    return actionState(false, internalOrderRpcErrorMessage(error));
-  }
-
-  const result = (
-    (data ?? []) as Array<{
-      created_order_id: string | null;
-      order_reference: string | null;
-      result_code: string;
-    }>
-  )[0];
-  if (!result || !["created", "already_created"].includes(result.result_code)) {
-    return actionState(
-      false,
-      internalOrderResultMessage(result?.result_code ?? ""),
+  for (const [index, items] of batches.entries()) {
+    const batchKey =
+      batches.length === 1
+        ? parsed.data.idempotencyKey
+        : `${parsed.data.idempotencyKey}-${String(index + 1).padStart(2, "0")}`;
+    const { data, error } = await supabase.rpc(
+      "create_qb17_internal_catalog_order",
+      {
+        p_order_mode: "registered",
+        p_customer_account_id: parsed.data.customerAccountId,
+        p_customer_location_id: parsed.data.customerLocationId,
+        p_business_name: parsed.data.businessName || null,
+        p_full_name: parsed.data.responsibleName || null,
+        p_phone: parsed.data.phone || null,
+        p_email: parsed.data.email || null,
+        p_address: parsed.data.address || null,
+        p_location_label: parsed.data.locationLabel || null,
+        p_location_reference: parsed.data.locationReference || null,
+        p_customer_notes: parsed.data.customerNotes || null,
+        p_items: items.map((item) => ({
+          product_id: item.productId,
+          input_mode: "quantity",
+          allowed_unit_id: item.allowedUnitId,
+          quantity: item.quantity,
+          notes: item.notes || null,
+        })),
+        p_idempotency_key: batchKey,
+      },
     );
-  }
 
-  const orderId = uuidSchema.safeParse(result.created_order_id);
-  const reference = result.order_reference?.trim();
-  if (!orderId.success || !reference) {
-    return actionState(
-      false,
-      "No pudimos confirmar la creación del pedido. Inténtalo nuevamente sin cambiar los datos.",
-    );
+    if (error) {
+      return actionState(false, internalOrderRpcErrorMessage(error));
+    }
+
+    const result = (
+      (data ?? []) as Array<{
+        created_order_id: string | null;
+        order_reference: string | null;
+        result_code: string;
+      }>
+    )[0];
+    if (
+      !result ||
+      !["created", "already_created"].includes(result.result_code)
+    ) {
+      return actionState(
+        false,
+        internalOrderResultMessage(result?.result_code ?? ""),
+      );
+    }
+
+    const orderId = uuidSchema.safeParse(result.created_order_id);
+    const reference = result.order_reference?.trim();
+    if (!orderId.success || !reference) {
+      return actionState(
+        false,
+        "No pudimos confirmar la creación del pedido. Inténtalo nuevamente sin cambiar los datos.",
+      );
+    }
+    createdOrders.push({
+      id: orderId.data,
+      reference,
+      resultCode: result.result_code,
+    });
   }
 
   revalidatePath("/pedidos");
+  const alreadyCreated = createdOrders.every(
+    (order) => order.resultCode === "already_created",
+  );
   return {
     success: true,
-    message:
-      result.result_code === "already_created"
-        ? "El pedido ya había sido recibido."
+    message: alreadyCreated
+      ? "El pedido ya había sido recibido."
+      : batches.length > 1
+        ? `Pedido creado en ${batches.length} partes y enviado a preparación.`
         : "Pedido creado y enviado a preparación.",
-    reference,
-    orderId: orderId.data,
+    reference: createdOrders.map((order) => order.reference).join(", "),
+    orderId: createdOrders[0].id,
   };
 }
 

@@ -107,6 +107,7 @@ export type QbRepeatableOrderLine = {
 
 export type QbRepeatableOrder = {
   id: string;
+  source: "current" | "legacy";
   submittedAt: string;
   locationId: string | null;
   locationLabel: string;

@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { UserMenu } from "@/components/auth/user-menu";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -15,7 +14,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { getRoleLabel } from "@/lib/auth/roles";
+import { getFocusedWorkspace, getRoleLabel } from "@/lib/auth/roles";
 import type { SessionUser } from "@/types/auth";
 
 type AppHeaderProps = {
@@ -24,6 +23,7 @@ type AppHeaderProps = {
 
 export function AppHeader({ user }: AppHeaderProps) {
   const [open, setOpen] = useState(false);
+  const workspace = getFocusedWorkspace(user.role);
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-[1.5rem] border border-white/60 bg-white/78 px-4 py-3 shadow-sm backdrop-blur lg:px-5">
@@ -46,19 +46,14 @@ export function AppHeader({ user }: AppHeaderProps) {
         <div className="flex min-w-0 items-center gap-3">
           <QbInsumosBrand variant="compact" />
           <h2 className="hidden font-heading text-lg font-semibold tracking-tight sm:block">
-            Gestión operativa
+            {workspace.title}
           </h2>
         </div>
       </div>
 
-      <div className="hidden min-w-0 flex-1 items-center justify-center px-4 md:flex">
-        <div className="relative w-full max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            readOnly
-            value="Gestión operativa de QB Insumos"
-            className="border-white bg-muted/70 pl-9 text-muted-foreground"
-          />
+      <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
+        <div className="rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+          {workspace.step} · {workspace.description}
         </div>
       </div>
 

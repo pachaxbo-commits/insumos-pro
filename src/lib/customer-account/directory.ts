@@ -15,14 +15,18 @@ export type QbCustomerDirectoryRow = {
   responsibleName: string;
   email: string;
   phone: string | null;
+  locationId: string | null;
   address: string | null;
   locationLabel: string | null;
+  locationReference: string | null;
   isActive: boolean;
 };
 
 type LocationRow = {
+  id: string;
   label: string;
   address: string;
+  reference: string | null;
   is_primary: boolean;
   is_active: boolean;
   sort_order: number;
@@ -50,7 +54,7 @@ export async function getQbCustomerDirectory(
   let query = supabase
     .from("customer_accounts")
     .select(
-      "id,business_name,responsible_name,email,phone,is_active,locations:qb_customer_locations(label,address,is_primary,is_active,sort_order)",
+      "id,business_name,responsible_name,email,phone,is_active,locations:qb_customer_locations(id,label,address,reference,is_primary,is_active,sort_order)",
     )
     .order("business_name", { ascending: true });
 
@@ -86,8 +90,10 @@ export async function getQbCustomerDirectory(
         responsibleName: account.responsible_name,
         email: account.email,
         phone: account.phone,
+        locationId: location?.id ?? null,
         address: location?.address ?? null,
         locationLabel: location?.label ?? null,
+        locationReference: location?.reference ?? null,
         isActive: account.is_active,
       };
     }),

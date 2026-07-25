@@ -16,7 +16,6 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
-  finalizeMatrixPreparationAction,
   reopenMatrixDeliveryAction,
   reorderMatrixOrdersAction,
   saveMatrixDeliveryAction,
@@ -61,7 +60,13 @@ function groupDomId(value: string) {
   return encodeURIComponent(value);
 }
 
-function stageHeaders() {
+function stageHeaders(stage: MatrixStage) {
+  if (stage === "preparacion") {
+    return ["CANT", "CHECK", "OBSERVACIÓN"];
+  }
+  if (stage === "entrega") {
+    return ["CANT", "CHECK INV.", "PESO/CANT. REAL", "OBSERVACIÓN"];
+  }
   return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
 }
 
@@ -69,9 +74,7 @@ function groupStatus(group: MatrixCustomerGroup) {
   if (group.orders.every((order) => order.status === "cancelado")) {
     return "Cancelado";
   }
-  if (
-    group.orders.every((order) => order.deliveryStatus === "confirmado")
-  ) {
+  if (group.orders.every((order) => order.deliveryStatus === "confirmado")) {
     return "Entrega confirmada";
   }
   if (group.orders.every((order) => order.status === "preparado")) {
@@ -88,14 +91,14 @@ function stageGuidance(stage: MatrixStage) {
     return {
       title: "Confirmación de Inventario",
       detail:
-        "Revisa cada línea. Marca CHECK si preparaste la cantidad solicitada; si no está disponible, deja el check vacío y escribe una observación. Completa el peso real cuando corresponda y luego pulsa “Finalizar preparación” en la cabecera del cliente.",
+        "Marca CHECK sin observación si está todo completo. Si hay una cantidad parcial, marca CHECK y explica la diferencia. Si no hay producto, deja el check vacío. No necesitas finalizar la preparación.",
     };
   }
   if (stage === "entrega") {
     return {
       title: "Confirmación del Entregador",
       detail:
-        "La entrega se habilita cuando Inventario finaliza la preparación. Revisa cada línea, marca CHECK, registra peso real y observaciones, y luego pulsa “Confirmar entrega” en la cabecera del cliente.",
+        "El check de Inventario queda como referencia. Sus cantidades completas se copian como valor inicial, pero Entrega puede corregir cualquier peso, cantidad u observación para registrar exactamente lo que recibió el cliente.",
     };
   }
   if (stage === "resumen") {
@@ -163,13 +166,13 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     preparedQuantity: sumLines(lines, "preparedQuantity"),
     preparedBaseQuantity: sumLines(lines, "preparedBaseQuantity"),
     preparationCheck: lines.every((line) => line.preparationCheck),
-    preparationActualWeightKg: sumNullable(
-      lines,
-      "preparationActualWeightKg",
+    preparationActualWeightKg: sumNullable(lines, "preparationActualWeightKg"),
+    preparationNote: uniqueText(lines.map((line) => line.preparationNote)).join(
+      " | ",
     ),
-    preparationNote: uniqueText(
-      lines.map((line) => line.preparationNote),
-    ).join(" | "),
+    preparedAt: lines.every((line) => line.preparedAt)
+      ? first.preparedAt
+      : null,
     externalQuantity: sumLines(lines, "externalQuantity"),
     deliveredQuantity: sumLines(lines, "deliveredQuantity"),
     deliveredBaseQuantity: sumLines(lines, "deliveredBaseQuantity"),
@@ -190,13 +193,85 @@ function distributeValue(lines: MatrixLine[], total: number) {
     }
     const value =
       requestedTotal > 0
-        ? Number(
-            ((total * line.requestedQuantity) / requestedTotal).toFixed(6),
-          )
+        ? Number(((total * line.requestedQuantity) / requestedTotal).toFixed(6))
         : Number((total / lines.length).toFixed(6));
     assigned += value;
     return value;
   });
+}
+
+function hasCompletePreparation(line: MatrixLine) {
+  return Boolean(
+    line.preparedAt && line.preparationCheck && !line.preparationNote.trim(),
+  );
+}
+
+function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
+  return lines.map((line) =>
+    hasCompletePreparation(line) &&
+    !line.deliveredAt &&
+    line.deliveryVersion === 0
+      ? {
+          ...line,
+          deliveredQuantity: line.preparedQuantity,
+          deliveryCheck: true,
+          deliveryActualWeightKg: line.controlsActualWeight
+            ? line.preparedQuantity
+            : null,
+        }
+      : line,
+  );
+}
+
+function mergeServerLines(
+  serverLines: MatrixLine[],
+  currentLines: MatrixLine[],
+) {
+  const currentById = new Map(
+    currentLines.map((line) => [line.orderItemId, line]),
+  );
+  const merged = serverLines.map((serverLine) => {
+    const current = currentById.get(serverLine.orderItemId);
+    if (!current) return serverLine;
+    let next = serverLine;
+
+    if (current.requestedVersion > serverLine.requestedVersion) {
+      next = {
+        ...next,
+        requestedQuantity: current.requestedQuantity,
+        requestedVersion: current.requestedVersion,
+      };
+    }
+    if (current.preparationVersion > serverLine.preparationVersion) {
+      next = {
+        ...next,
+        preparedQuantity: current.preparedQuantity,
+        preparedBaseQuantity: current.preparedBaseQuantity,
+        preparationCheck: current.preparationCheck,
+        preparationActualWeightKg: current.preparationActualWeightKg,
+        preparationNote: current.preparationNote,
+        preparationVersion: current.preparationVersion,
+        preparedBy: current.preparedBy,
+        preparedAt: current.preparedAt,
+      };
+    }
+    if (current.deliveryVersion > serverLine.deliveryVersion) {
+      next = {
+        ...next,
+        externalQuantity: current.externalQuantity,
+        deliveredQuantity: current.deliveredQuantity,
+        deliveredBaseQuantity: current.deliveredBaseQuantity,
+        deliveryCheck: current.deliveryCheck,
+        deliveryActualWeightKg: current.deliveryActualWeightKg,
+        deliveryNote: current.deliveryNote,
+        deliveryVersion: current.deliveryVersion,
+        deliveredBy: current.deliveredBy,
+        deliveredAt: current.deliveredAt,
+      };
+    }
+    return next;
+  });
+  return applyAutomaticDeliveryValues(merged);
 }
 
 export function OperationalMatrix({
@@ -208,14 +283,20 @@ export function OperationalMatrix({
   const [stage, setStage] = useState<MatrixStage>(() =>
     allowedStage(data.role, initialStage),
   );
-  const [lines, setLines] = useState(data.lines);
+  const [lines, setLines] = useState(() =>
+    applyAutomaticDeliveryValues(data.lines),
+  );
+  const linesRef = useRef(lines);
   const [orders, setOrders] = useState(data.orders);
+  const ordersRef = useRef(orders);
   const [message, setMessage] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [remotePending, setRemotePending] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
   const matrixScrollRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(new Set<string>());
+  const preparationSaveQueues = useRef(new Map<string, Promise<void>>());
+  const deliverySaveQueues = useRef(new Map<string, Promise<void>>());
   const customerGroups = useMemo(() => {
     const groups = new Map<string, MatrixCustomerGroup>();
     for (const order of orders) {
@@ -258,6 +339,27 @@ export function OperationalMatrix({
   const focusedCustomerId = initialOrderId
     ? groupByOrderId.get(initialOrderId)?.id
     : undefined;
+
+  useEffect(() => {
+    if (dirty.current.size) {
+      setRemotePending(true);
+      return;
+    }
+    const scrollLeft = matrixScrollRef.current?.scrollLeft ?? 0;
+    const scrollTop = matrixScrollRef.current?.scrollTop ?? 0;
+    const refreshedLines = mergeServerLines(data.lines, linesRef.current);
+    linesRef.current = refreshedLines;
+    setLines(refreshedLines);
+    ordersRef.current = data.orders;
+    setOrders(data.orders);
+    const frame = requestAnimationFrame(() => {
+      matrixScrollRef.current?.scrollTo({
+        left: scrollLeft,
+        top: scrollTop,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [data.lines, data.orders]);
 
   useEffect(() => {
     if (!focusedCustomerId) return;
@@ -383,54 +485,58 @@ export function OperationalMatrix({
     const preparationWeights =
       Object.hasOwn(patch, "preparationActualWeightKg") &&
       patch.preparationActualWeightKg !== null
-        ? distributeValue(
-            groupedLines,
-            patch.preparationActualWeightKg ?? 0,
-          )
+        ? distributeValue(groupedLines, patch.preparationActualWeightKg ?? 0)
         : [];
     const deliveryWeights =
       Object.hasOwn(patch, "deliveryActualWeightKg") &&
       patch.deliveryActualWeightKg !== null
         ? distributeValue(groupedLines, patch.deliveryActualWeightKg ?? 0)
         : [];
+    const deliveryQuantities =
+      Object.hasOwn(patch, "deliveredQuantity") &&
+      typeof patch.deliveredQuantity === "number"
+        ? distributeValue(groupedLines, patch.deliveredQuantity)
+        : [];
     const indexById = new Map(
       groupedLines.map((line, index) => [line.orderItemId, index]),
     );
 
-    setLines((current) =>
-      current.map((line) => {
-        if (!ids.has(line.orderItemId)) return line;
-        const index = indexById.get(line.orderItemId) ?? 0;
-        const next = { ...line, ...patch };
-        if (typeof patch.preparationCheck === "boolean") {
-          next.preparedQuantity = patch.preparationCheck
-            ? line.requestedQuantity
-            : 0;
-        }
-        if (Object.hasOwn(patch, "preparationActualWeightKg")) {
-          next.preparationActualWeightKg =
-            patch.preparationActualWeightKg === null
-              ? null
-              : preparationWeights[index];
-        }
-        if (typeof patch.deliveryCheck === "boolean") {
-          next.deliveredQuantity = patch.deliveryCheck
-            ? line.requestedQuantity
-            : 0;
-        }
-        if (Object.hasOwn(patch, "deliveryActualWeightKg")) {
-          next.deliveryActualWeightKg =
-            patch.deliveryActualWeightKg === null
-              ? null
-              : deliveryWeights[index];
-        }
-        return next;
-      }),
-    );
+    const updatedLines = linesRef.current.map((line) => {
+      if (!ids.has(line.orderItemId)) return line;
+      const index = indexById.get(line.orderItemId) ?? 0;
+      const next = { ...line, ...patch };
+      if (typeof patch.preparationCheck === "boolean") {
+        next.preparedQuantity = patch.preparationCheck
+          ? line.requestedQuantity
+          : 0;
+      }
+      if (Object.hasOwn(patch, "preparationActualWeightKg")) {
+        next.preparationActualWeightKg =
+          patch.preparationActualWeightKg === null
+            ? null
+            : preparationWeights[index];
+      }
+      if (typeof patch.deliveryCheck === "boolean") {
+        next.deliveryCheck = patch.deliveryCheck;
+      }
+      if (
+        Object.hasOwn(patch, "deliveredQuantity") &&
+        typeof patch.deliveredQuantity === "number"
+      ) {
+        next.deliveredQuantity = deliveryQuantities[index];
+      }
+      if (Object.hasOwn(patch, "deliveryActualWeightKg")) {
+        next.deliveryActualWeightKg =
+          patch.deliveryActualWeightKg === null ? null : deliveryWeights[index];
+      }
+      return next;
+    });
+    linesRef.current = updatedLines;
+    setLines(updatedLines);
   };
 
   const latestLine = (id: string) =>
-    lines.find((line) => line.orderItemId === id);
+    linesRef.current.find((line) => line.orderItemId === id);
 
   const finishSave = (
     id: string,
@@ -443,7 +549,6 @@ export function OperationalMatrix({
     versionField: "preparationVersion" | "deliveryVersion",
   ) => {
     if (result.success) {
-      dirty.current.delete(id);
       setMessage("Guardado.");
       if (result.data && typeof result.data === "object") {
         const response = result.data as {
@@ -452,30 +557,36 @@ export function OperationalMatrix({
         };
         const version = Number(response.row_version);
         if (Number.isInteger(version)) {
-          setLines((current) =>
-            current.map((line) =>
-              line.orderItemId === id
-                ? { ...line, [versionField]: version }
-                : line,
-            ),
+          const versionedLines = linesRef.current.map((line) =>
+            line.orderItemId === id
+              ? {
+                  ...line,
+                  [versionField]: Math.max(line[versionField], version),
+                }
+              : line,
           );
+          linesRef.current = versionedLines;
+          setLines(versionedLines);
         }
         if (typeof response.order_updated_at === "string") {
           const orderId = latestLine(id)?.orderId;
-          setOrders((current) =>
-            current.map((order) =>
-              order.id === orderId
-                ? {
-                    ...order,
-                    updatedAt: response.order_updated_at as string,
-                    status:
-                      versionField === "preparationVersion"
-                        ? "en_preparacion"
-                        : order.status,
-                  }
-                : order,
-            ),
+          const updatedOrders = ordersRef.current.map((order) =>
+            order.id === orderId
+              ? {
+                  ...order,
+                  updatedAt:
+                    String(response.order_updated_at) > order.updatedAt
+                      ? String(response.order_updated_at)
+                      : order.updatedAt,
+                  status:
+                    versionField === "preparationVersion"
+                      ? "en_preparacion"
+                      : order.status,
+                }
+              : order,
           );
+          ordersRef.current = updatedOrders;
+          setOrders(updatedOrders);
         }
       }
     } else {
@@ -487,29 +598,48 @@ export function OperationalMatrix({
     }
   };
 
-  const saveGroupedPreparation = async (ids: string[]) => {
-    const currentLines = ids
-      .map((id) => latestLine(id))
-      .filter((line): line is MatrixLine => Boolean(line));
-    const results = await Promise.all(
-      currentLines.map(async (line) => ({
-        line,
-        result: await saveMatrixPreparationAction({
+  const savePreparationLine = async (id: string) => {
+    const previous = preparationSaveQueues.current.get(id) ?? Promise.resolve();
+    const task = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const line = latestLine(id);
+        if (!line) {
+          return {
+            line: null,
+            result: { success: false, message: "Línea no disponible." },
+          };
+        }
+        const result = await saveMatrixPreparationAction({
           orderItemId: line.orderItemId,
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
-          actualWeightKg: line.controlsActualWeight
-            ? line.preparationActualWeightKg
-            : null,
+          actualWeightKg: null,
           note: line.preparationNote,
           idempotencyKey: idempotencyKey("prep"),
-        }),
-      })),
+        });
+        finishSave(line.orderItemId, result, "preparationVersion");
+        return { line, result };
+      });
+    const tail = task.then(
+      () => undefined,
+      () => undefined,
     );
-    results.forEach(({ line, result }) =>
-      finishSave(line.orderItemId, result, "preparationVersion"),
-    );
+    preparationSaveQueues.current.set(id, tail);
+    const output = await task;
+    if (preparationSaveQueues.current.get(id) === tail) {
+      preparationSaveQueues.current.delete(id);
+      if (output.result.success) dirty.current.delete(id);
+    }
+    return output;
+  };
+
+  const saveGroupedPreparation = async (ids: string[]) => {
+    const results = await Promise.all(ids.map(savePreparationLine));
+    const currentLines = results
+      .map(({ line }) => line)
+      .filter((line): line is MatrixLine => Boolean(line));
     if (results.every(({ result }) => result.success)) {
       setRemotePending(false);
       setMessage(
@@ -520,49 +650,73 @@ export function OperationalMatrix({
     }
   };
 
-  const saveGroupedDelivery = async (ids: string[]) => {
-    const currentLines = ids
-      .map((id) => latestLine(id))
-      .filter((line): line is MatrixLine => Boolean(line));
-    const results = await Promise.all(
-      currentLines.map(async (line) => {
+  const saveDeliveryLine = async (id: string) => {
+    const previous = deliverySaveQueues.current.get(id) ?? Promise.resolve();
+    const task = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const line = latestLine(id);
+        if (!line) {
+          return {
+            line: null,
+            externalQuantity: 0,
+            result: { success: false, message: "Línea no disponible." },
+          };
+        }
         const externalQuantity = Math.max(
           line.deliveredQuantity - line.preparedQuantity,
           0,
         );
-        return {
-          line,
+        const result = await saveMatrixDeliveryAction({
+          orderItemId: line.orderItemId,
+          expectedVersion: line.deliveryVersion,
           externalQuantity,
-          result: await saveMatrixDeliveryAction({
-            orderItemId: line.orderItemId,
-            expectedVersion: line.deliveryVersion,
-            externalQuantity,
-            deliveredQuantity: line.deliveredQuantity,
-            deliveryCheck: line.deliveryCheck,
-            actualWeightKg: line.controlsActualWeight
-              ? line.deliveryActualWeightKg
-              : null,
-            note: line.deliveryNote,
-            idempotencyKey: idempotencyKey("delivery"),
-          }),
-        };
-      }),
+          deliveredQuantity: line.deliveredQuantity,
+          deliveryCheck: line.deliveryCheck,
+          actualWeightKg: line.controlsActualWeight
+            ? line.deliveryActualWeightKg
+            : null,
+          note:
+            line.deliveryNote ||
+            line.preparationNote ||
+            (!line.preparedAt || !line.preparationCheck
+              ? "Cantidad final registrada por Entrega."
+              : ""),
+          idempotencyKey: idempotencyKey("delivery"),
+        });
+        finishSave(line.orderItemId, result, "deliveryVersion");
+        return { line, externalQuantity, result };
+      });
+    const tail = task.then(
+      () => undefined,
+      () => undefined,
     );
-    setLines((current) =>
-      current.map((line) => {
-        const saved = results.find(
-          ({ line: resultLine }) =>
-            resultLine.orderItemId === line.orderItemId,
-        );
-        return saved
-          ? { ...line, externalQuantity: saved.externalQuantity }
-          : line;
-      }),
-    );
-    results.forEach(({ line, result }) =>
-      finishSave(line.orderItemId, result, "deliveryVersion"),
-    );
-    if (results.every(({ result }) => result.success)) {
+    deliverySaveQueues.current.set(id, tail);
+    const output = await task;
+    if (deliverySaveQueues.current.get(id) === tail) {
+      deliverySaveQueues.current.delete(id);
+      if (output.result.success) dirty.current.delete(id);
+    }
+    return output;
+  };
+
+  const saveGroupedDelivery = async (ids: string[]) => {
+    const results = await Promise.all(ids.map(saveDeliveryLine));
+    const currentLines = results
+      .map(({ line }) => line)
+      .filter((line): line is MatrixLine => Boolean(line));
+    const savedLines = linesRef.current.map((line) => {
+      const saved = results.find(
+        ({ line: resultLine }) => resultLine?.orderItemId === line.orderItemId,
+      );
+      return saved
+        ? { ...line, externalQuantity: saved.externalQuantity }
+        : line;
+    });
+    linesRef.current = savedLines;
+    setLines(savedLines);
+    const success = results.every(({ result }) => result.success);
+    if (success) {
       setRemotePending(false);
       setMessage(
         currentLines.length > 1
@@ -570,15 +724,13 @@ export function OperationalMatrix({
           : "Guardado.",
       );
     }
+    return success;
   };
 
   const correctGroupedRequest = async (groupedLines: MatrixLine[]) => {
     const currentTotal = sumLines(groupedLines, "requestedQuantity");
     const value = Number(
-      window.prompt(
-        "Nueva cantidad solicitada",
-        String(currentTotal),
-      ),
+      window.prompt("Nueva cantidad solicitada", String(currentTotal)),
     );
     if (!Number.isFinite(value) || value <= 0) return;
     const reason = window.prompt("Motivo de corrección") ?? "";
@@ -609,6 +761,7 @@ export function OperationalMatrix({
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     const flattenedOrders = next.flatMap((group) => group.orders);
+    ordersRef.current = flattenedOrders;
     setOrders(flattenedOrders);
     const result = await reorderMatrixOrdersAction({
       operationalDate: data.operationalDate,
@@ -620,14 +773,15 @@ export function OperationalMatrix({
     });
     setMessage(result.message);
     if (result.success) {
-      setOrders(
-        flattenedOrders.map((order, position) => ({
-          ...order,
-          position: position + 1,
-          positionVersion: order.positionVersion + 1,
-        })),
-      );
+      const reordered = flattenedOrders.map((order, position) => ({
+        ...order,
+        position: position + 1,
+        positionVersion: order.positionVersion + 1,
+      }));
+      ordersRef.current = reordered;
+      setOrders(reordered);
     } else {
+      ordersRef.current = orders;
       setOrders(orders);
     }
     router.refresh();
@@ -635,13 +789,12 @@ export function OperationalMatrix({
 
   const actionForCustomer = async (
     group: MatrixCustomerGroup,
-    action: "prepare" | "confirm" | "reopen",
+    action: "confirm" | "reopen",
   ) => {
     const groupOrderIds = new Set(group.orders.map((order) => order.id));
-    const hasPendingSaves = lines.some(
+    const hasPendingSaves = linesRef.current.some(
       (line) =>
-        groupOrderIds.has(line.orderId) &&
-        dirty.current.has(line.orderItemId),
+        groupOrderIds.has(line.orderId) && dirty.current.has(line.orderItemId),
     );
     if (hasPendingSaves) {
       setMessage(
@@ -649,35 +802,79 @@ export function OperationalMatrix({
       );
       return;
     }
-    const reason =
-      action === "reopen"
-        ? (window.prompt("Motivo de reapertura") ?? "")
-        : "";
-    if (action === "reopen" && reason.trim().length < 3) return;
-    const applicableOrders = group.orders.flatMap((order) => {
-      const applies =
-        action === "prepare"
-          ? ["en_preparacion", "pendiente_preparacion"].includes(order.status)
-          : action === "confirm"
-            ? order.status === "preparado"
-            : order.deliveryStatus === "confirmado";
-      return applies ? [order] : [];
-    });
-    if (!applicableOrders.length) {
-      setMessage("Este cliente todavía no está listo para esa confirmación.");
-      return;
+    const groupLines = linesRef.current.filter((line) =>
+      groupOrderIds.has(line.orderId),
+    );
+    if (action === "confirm") {
+      if (groupLines.some((line) => !line.deliveryCheck)) {
+        setMessage(
+          "Completa los campos rojos de peso o cantidad real antes de confirmar.",
+        );
+        return;
+      }
+      if (
+        groupLines.some(
+          (line) =>
+            line.controlsActualWeight && line.deliveryActualWeightKg === null,
+        )
+      ) {
+        setMessage("Completa los pesos reales marcados en rojo.");
+        return;
+      }
+      if (
+        groupLines.some(
+          (line) =>
+            line.controlsActualWeight &&
+            line.deliveryActualWeightKg !== null &&
+            line.deliveryActualWeightKg < line.preparedQuantity &&
+            (line.deliveryNote || line.preparationNote).trim().length < 3,
+        )
+      ) {
+        setMessage(
+          "Explica en observaciones por qué el peso real es menor al preparado.",
+        );
+        return;
+      }
     }
+    const reason =
+      action === "reopen" ? (window.prompt("Motivo de reapertura") ?? "") : "";
+    if (action === "reopen" && reason.trim().length < 3) return;
     if (
-      action !== "reopen" &&
+      action === "confirm" &&
       !window.confirm(
-        action === "prepare"
-          ? `¿Finalizar la preparación de ${group.customerName}? Después podrá trabajar el entregador.`
-          : `¿Confirmar la entrega de ${group.customerName}? Esta acción registrará al usuario responsable.`,
+        `¿Confirmar la entrega de ${group.customerName}? Esta acción registrará al usuario responsable.`,
       )
     ) {
       return;
     }
     setActionPending(`${group.id}:${action}`);
+    if (action === "confirm") {
+      const saved = await saveGroupedDelivery(
+        groupLines.map((line) => line.orderItemId),
+      );
+      if (!saved) {
+        setActionPending(null);
+        setMessage(
+          "No se pudieron guardar todas las cantidades reales. Revisa los campos marcados.",
+        );
+        return;
+      }
+    }
+    const applicableOrders = ordersRef.current.flatMap((order) => {
+      if (!groupOrderIds.has(order.id)) return [];
+      const applies =
+        action === "confirm"
+          ? ["pendiente_preparacion", "en_preparacion", "preparado"].includes(
+              order.status,
+            ) && order.deliveryStatus !== "confirmado"
+          : order.deliveryStatus === "confirmado";
+      return applies ? [order] : [];
+    });
+    if (!applicableOrders.length) {
+      setActionPending(null);
+      setMessage("Este cliente todavía no está listo para esa confirmación.");
+      return;
+    }
     const results = await Promise.all(
       applicableOrders.map(async (order) => {
         const common = {
@@ -685,11 +882,9 @@ export function OperationalMatrix({
           expectedUpdatedAt: order.updatedAt,
           idempotencyKey: idempotencyKey(action),
         };
-        return action === "prepare"
-          ? finalizeMatrixPreparationAction(common)
-          : action === "confirm"
-            ? confirmMatrixDeliveryAction(common)
-            : reopenMatrixDeliveryAction({ ...common, reason });
+        return action === "confirm"
+          ? confirmMatrixDeliveryAction(common)
+          : reopenMatrixDeliveryAction({ ...common, reason });
       }),
     );
     const failed = results.find((result) => !result.success);
@@ -705,7 +900,7 @@ export function OperationalMatrix({
   const visibleStages: MatrixStage[] = canAdmin
     ? ["pedido", "preparacion", "entrega", "resumen"]
     : [defaultStage(data.role)];
-  const headers = stageHeaders();
+  const headers = stageHeaders(stage);
   const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
   return (
@@ -752,7 +947,9 @@ export function OperationalMatrix({
                 : "Cambios remotos"}
             </Button>
           ) : null}
-          {message ? <span className="text-muted-foreground">{message}</span> : null}
+          {message ? (
+            <span className="text-muted-foreground">{message}</span>
+          ) : null}
         </div>
       </div>
 
@@ -829,7 +1026,9 @@ export function OperationalMatrix({
                                 size="icon-sm"
                                 variant="ghost"
                                 aria-label="Mover cliente antes"
-                                onClick={() => void moveCustomer(groupIndex, -1)}
+                                onClick={() =>
+                                  void moveCustomer(groupIndex, -1)
+                                }
                               >
                                 <ChevronLeft />
                               </Button>
@@ -843,33 +1042,19 @@ export function OperationalMatrix({
                               </Button>
                             </>
                           ) : null}
-                          {stage === "preparacion" &&
-                          group.orders.some((order) =>
-                            ["en_preparacion", "pendiente_preparacion"].includes(
-                              order.status,
-                            ),
-                          ) ? (
-                            <Button
-                              size="xs"
-                              disabled={
-                                actionPending === `${group.id}:prepare`
-                              }
-                              onClick={() =>
-                                void actionForCustomer(group, "prepare")
-                              }
-                            >
-                              Finalizar preparación
-                            </Button>
-                          ) : null}
                           {stage === "entrega" &&
                           group.orders.some(
-                            (order) => order.status === "preparado",
+                            (order) =>
+                              [
+                                "pendiente_preparacion",
+                                "en_preparacion",
+                                "preparado",
+                              ].includes(order.status) &&
+                              order.deliveryStatus !== "confirmado",
                           ) ? (
                             <Button
                               size="xs"
-                              disabled={
-                                actionPending === `${group.id}:confirm`
-                              }
+                              disabled={actionPending === `${group.id}:confirm`}
                               onClick={() =>
                                 void actionForCustomer(group, "confirm")
                               }
@@ -877,16 +1062,14 @@ export function OperationalMatrix({
                               Confirmar entrega
                             </Button>
                           ) : null}
-                          {group.orders.some(
-                            (order) =>
-                              order.deliveryStatus === "confirmado",
+                          {canAdmin &&
+                          group.orders.some(
+                            (order) => order.deliveryStatus === "confirmado",
                           ) ? (
                             <Button
                               size="xs"
                               variant="outline"
-                              disabled={
-                                actionPending === `${group.id}:reopen`
-                              }
+                              disabled={actionPending === `${group.id}:reopen`}
                               onClick={() =>
                                 void actionForCustomer(group, "reopen")
                               }
@@ -953,24 +1136,29 @@ export function OperationalMatrix({
                     ) : null}
                     <tr data-product-color={row.productColor ?? "#FFFFFF"}>
                       <td
-                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        style={{
+                          backgroundColor: row.productColor ?? "#FFFFFF",
+                        }}
                         className="sticky left-0 z-30 border-b border-r px-1 py-1.5 text-center text-muted-foreground"
                       >
                         {index + 1}
                       </td>
                       <td
-                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        style={{
+                          backgroundColor: row.productColor ?? "#FFFFFF",
+                        }}
                         className="sticky left-9 z-30 max-w-40 border-b border-r px-2 py-1.5 font-medium md:max-w-56"
                       >
                         {row.productName}
                       </td>
                       <td
-                        style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}
+                        style={{
+                          backgroundColor: row.productColor ?? "#FFFFFF",
+                        }}
                         className="sticky left-[196px] z-30 border-b border-r px-1.5 py-1.5 md:left-[260px]"
                       >
-                        <span className="block uppercase">{row.sourceLabel}</span>
-                        <span className="text-[9px] text-muted-foreground">
-                          {row.baseUnitSymbol}
+                        <span className="block uppercase">
+                          {row.sourceLabel}
                         </span>
                       </td>
                       {customerGroups.map((group) => {
@@ -991,7 +1179,11 @@ export function OperationalMatrix({
                             : stage === "entrega"
                               ? group.orders.every(
                                   (order) =>
-                                    order.status === "preparado" &&
+                                    [
+                                      "pendiente_preparacion",
+                                      "en_preparacion",
+                                      "preparado",
+                                    ].includes(order.status) &&
                                     order.deliveryStatus !== "confirmado",
                                 )
                               : true;
@@ -1008,16 +1200,12 @@ export function OperationalMatrix({
                             }
                             onSavePreparation={() =>
                               void saveGroupedPreparation(
-                                groupedLines.map(
-                                  (item) => item.orderItemId,
-                                ),
+                                groupedLines.map((item) => item.orderItemId),
                               )
                             }
                             onSaveDelivery={() =>
                               void saveGroupedDelivery(
-                                groupedLines.map(
-                                  (item) => item.orderItemId,
-                                ),
+                                groupedLines.map((item) => item.orderItemId),
                               )
                             }
                             onCorrect={() =>
@@ -1076,9 +1264,7 @@ export function OperationalMatrix({
                     (groupedLines) =>
                       stage === "entrega"
                         ? groupedLines.every((line) => line.deliveryCheck)
-                        : groupedLines.every(
-                            (line) => line.preparationCheck,
-                          ),
+                        : groupedLines.every((line) => line.preparationCheck),
                   ).length;
                   return (
                     <th
@@ -1139,8 +1325,10 @@ function CheckEditor({
         type="checkbox"
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        onBlur={onBlur}
+        onChange={(event) => {
+          onChange(event.target.checked);
+          requestAnimationFrame(onBlur);
+        }}
       />
     </label>
   );
@@ -1152,17 +1340,21 @@ function NoteEditor({
   onChange,
   onBlur,
   disabled = false,
+  attention = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onBlur: () => void;
   disabled?: boolean;
+  attention?: boolean;
 }) {
   return (
     <Input
       aria-label={label}
-      className="h-7 min-w-36 px-2 text-xs"
+      className={`h-7 min-w-36 px-2 text-xs ${
+        attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
+      }`}
       value={value}
       placeholder="Nota"
       disabled={disabled}
@@ -1178,18 +1370,22 @@ function WeightEditor({
   onChange,
   onBlur,
   disabled = false,
+  attention = false,
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   onBlur: () => void;
   disabled?: boolean;
+  attention?: boolean;
 }) {
   return (
     <div className="relative min-w-24">
       <Input
         aria-label={label}
-        className="h-7 min-w-24 pr-7 text-right text-xs"
+        className={`h-7 min-w-24 pr-7 text-right text-xs ${
+          attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
+        }`}
         type="number"
         min={0}
         step="0.5"
@@ -1207,6 +1403,45 @@ function WeightEditor({
         kg
       </span>
     </div>
+  );
+}
+
+function QuantityEditor({
+  label,
+  value,
+  onChange,
+  onBlur,
+  disabled = false,
+  attention = false,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  onBlur: () => void;
+  disabled?: boolean;
+  attention?: boolean;
+}) {
+  return (
+    <Input
+      aria-label={label}
+      className={`h-7 min-w-24 text-right text-xs font-semibold ${
+        attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
+      }`}
+      type="number"
+      min={0}
+      step="0.5"
+      value={value ?? ""}
+      placeholder="Completar"
+      disabled={disabled}
+      onChange={(event) =>
+        onChange(
+          event.target.value === ""
+            ? null
+            : Math.max(Number(event.target.value), 0),
+        )
+      }
+      onBlur={onBlur}
+    />
   );
 }
 
@@ -1232,7 +1467,10 @@ function DesktopOrderCells(props: CellProps) {
   if (stage === "pedido") {
     return (
       <>
-        <td style={cellStyle} className={`${cellClass} border-l-2 font-semibold`}>
+        <td
+          style={cellStyle}
+          className={`${cellClass} border-l-2 font-semibold`}
+        >
           {formatQuantity(line.requestedQuantity)}
         </td>
         <td style={cellStyle} className={cellClass}>
@@ -1281,26 +1519,6 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td style={cellStyle} className={cellClass}>
-          {line.controlsActualWeight ? (
-            <WeightEditor
-              label={`Peso real bodega ${line.productName}`}
-              value={line.preparationActualWeightKg}
-              disabled={!editable}
-              onChange={(value) =>
-                onChange({ preparationActualWeightKg: value })
-              }
-              onBlur={onSavePreparation}
-            />
-          ) : (
-            <span
-              className="text-muted-foreground"
-              title="Este producto se controla solo por cantidad o unidad"
-            >
-              —
-            </span>
-          )}
-        </td>
-        <td style={cellStyle} className={cellClass}>
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
@@ -1313,53 +1531,114 @@ function DesktopOrderCells(props: CellProps) {
     );
   }
   if (stage === "entrega") {
+    const deliveryReady = Boolean(line.preparedAt);
+    const needsDeliveryReview =
+      !hasCompletePreparation(line) &&
+      !line.deliveredAt &&
+      line.deliveryVersion === 0;
+    const actualQuantity =
+      needsDeliveryReview && !line.deliveryCheck
+        ? null
+        : line.deliveredQuantity;
+    const actualWeight =
+      needsDeliveryReview && !line.deliveryCheck
+        ? null
+        : line.deliveryActualWeightKg;
+    const lowerThanPrepared =
+      line.controlsActualWeight &&
+      line.deliveryActualWeightKg !== null &&
+      line.deliveryActualWeightKg < line.preparedQuantity;
+    const noteMissingForShortfall =
+      lowerThanPrepared && line.deliveryNote.trim().length < 3;
+    const deliveryDisabled = !editable;
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
           <span className="font-semibold">
             {formatQuantity(line.requestedQuantity)}
           </span>
+          {deliveryReady ? (
+            <span className="mt-1 block text-[9px] text-muted-foreground">
+              Inventario: {formatQuantity(line.preparedQuantity)}
+            </span>
+          ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
-          <CheckEditor
-            label={`Check entrega ${line.productName}`}
-            checked={line.deliveryCheck}
-            disabled={!editable}
-            onChange={(checked) =>
-              onChange({
-                deliveryCheck: checked,
-                deliveredQuantity: checked ? line.requestedQuantity : 0,
-              })
-            }
-            onBlur={onSaveDelivery}
+          <input
+            aria-label={`Check de Inventario ${line.productName}`}
+            className="size-4 accent-emerald-700"
+            type="checkbox"
+            checked={line.preparationCheck}
+            disabled
           />
         </td>
-        <td style={cellStyle} className={cellClass}>
+        <td
+          style={cellStyle}
+          className={`${cellClass} ${
+            !deliveryReady || needsDeliveryReview
+              ? "bg-rose-50/90 ring-1 ring-inset ring-rose-300"
+              : ""
+          }`}
+        >
           {line.controlsActualWeight ? (
             <WeightEditor
               label={`Peso real entrega ${line.productName}`}
-              value={line.deliveryActualWeightKg}
-              disabled={!editable}
-              onChange={(value) => onChange({ deliveryActualWeightKg: value })}
+              value={actualWeight}
+              disabled={deliveryDisabled}
+              attention={!deliveryReady || needsDeliveryReview}
+              onChange={(value) =>
+                onChange({
+                  deliveryActualWeightKg: value,
+                  deliveredQuantity:
+                    value === null
+                      ? line.deliveredQuantity
+                      : line.preparedQuantity,
+                  deliveryCheck: value !== null,
+                })
+              }
               onBlur={onSaveDelivery}
             />
           ) : (
-            <span
-              className="text-muted-foreground"
-              title="Este producto se controla solo por cantidad o unidad"
-            >
-              —
-            </span>
+            <QuantityEditor
+              label={`Cantidad real entregada de ${line.productName}`}
+              value={actualQuantity}
+              disabled={deliveryDisabled}
+              attention={!deliveryReady || needsDeliveryReview}
+              onChange={(value) => {
+                if (value === null) return;
+                onChange({
+                  deliveredQuantity: value,
+                  deliveryCheck: true,
+                });
+              }}
+              onBlur={onSaveDelivery}
+            />
           )}
+          {deliveryReady && !needsDeliveryReview ? (
+            <span className="mt-1 block text-[9px] font-medium text-emerald-800">
+              Valor inicial de Inventario · editable
+            </span>
+          ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
+          {line.preparationNote ? (
+            <span className="mb-1 block text-left text-[9px] font-medium text-amber-800">
+              Inventario: {line.preparationNote}
+            </span>
+          ) : null}
           <NoteEditor
             label={`Observación entrega ${line.productName}`}
             value={line.deliveryNote}
-            disabled={!editable}
+            disabled={deliveryDisabled}
+            attention={needsDeliveryReview || noteMissingForShortfall}
             onChange={(value) => onChange({ deliveryNote: value })}
             onBlur={onSaveDelivery}
           />
+          {!deliveryReady ? (
+            <span className="mt-1 block text-[9px] font-semibold text-rose-700">
+              Pendiente de Inventario
+            </span>
+          ) : null}
         </td>
       </>
     );
@@ -1385,14 +1664,8 @@ function DesktopOrderCells(props: CellProps) {
         </span>
       </td>
       <td style={cellStyle} className={cellClass}>
-        {line.controlsActualWeight
-          ? (line.deliveryActualWeightKg ??
-            line.preparationActualWeightKg ??
-            "—")
-          : "—"}
-        {line.controlsActualWeight &&
-        (line.deliveryActualWeightKg !== null ||
-          line.preparationActualWeightKg !== null)
+        {line.controlsActualWeight ? (line.deliveryActualWeightKg ?? "—") : "—"}
+        {line.controlsActualWeight && line.deliveryActualWeightKg !== null
           ? " kg"
           : ""}
       </td>

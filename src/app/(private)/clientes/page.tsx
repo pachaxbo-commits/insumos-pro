@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
-import { Badge } from "@/components/ui/badge";
+import { CustomerDirectoryManager } from "@/components/customers/customer-directory-manager";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,14 +8,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireRoleAccess } from "@/lib/auth/session";
 import {
   getQbCustomerDirectory,
@@ -55,7 +47,7 @@ export default async function ClientesPage({
       <PageHeader
         eyebrow="Clientes"
         title="Directorio de clientes"
-        description="Consulta las cuentas y ubicaciones utilizadas para crear pedidos QB."
+        description="Registra y corrige los datos que utiliza el administrador al crear pedidos."
       />
       <Card className="border-white/60 bg-card/92 shadow-sm">
         <CardHeader className="gap-4">
@@ -64,7 +56,7 @@ export default async function ClientesPage({
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               {data.customers.length} cliente
               {data.customers.length === 1 ? "" : "s"} en el directorio
-              operativo. Busca por negocio, responsable, teléfono o correo.
+              operativo. Solo estos clientes aparecen al crear un pedido.
             </p>
           </div>
           <form
@@ -92,61 +84,12 @@ export default async function ClientesPage({
           </form>
         </CardHeader>
         <CardContent>
-          <div className="overflow-hidden rounded-2xl border border-border/70">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Responsable</TableHead>
-                  <TableHead>Contacto</TableHead>
-                  <TableHead>Ubicación</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.customers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <p className="font-medium">{customer.businessName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {customer.email}
-                      </p>
-                    </TableCell>
-                    <TableCell>{customer.responsibleName}</TableCell>
-                    <TableCell>{customer.phone ?? "Pendiente"}</TableCell>
-                    <TableCell>
-                      <p>{customer.locationLabel ?? "Sin ubicación"}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {customer.address ?? "Dirección pendiente"}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          customer.isActive
-                            ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "rounded-full border-slate-200 bg-slate-100 text-slate-600"
-                        }
-                      >
-                        {customer.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!data.customers.length ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      {data.error ?? "No hay clientes para estos filtros."}
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </div>
+          {data.error ? (
+            <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+              {data.error}
+            </p>
+          ) : null}
+          <CustomerDirectoryManager customers={data.customers} />
         </CardContent>
       </Card>
     </div>

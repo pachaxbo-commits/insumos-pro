@@ -1,29 +1,34 @@
-import { QbTransitionHome } from "@/components/qb-insumos/qb-transition-home";
 import { redirect } from "next/navigation";
+import { LockKeyhole } from "lucide-react";
+
+import { Card, CardContent } from "@/components/ui/card";
+import { getFocusedWorkspace } from "@/lib/auth/roles";
 import { requireRoleAccess } from "@/lib/auth/session";
-import { canAccessPath } from "@/lib/auth/roles";
-import { getActiveTransitionalModules } from "@/lib/qb-insumos/transition-policy";
-import { getQbReportsData } from "@/lib/reports/data";
-import { getQbOperationalSettingsData } from "@/lib/operational-settings/data";
 
 export default async function DashboardPage() {
   const auth = await requireRoleAccess("/");
-  if (auth.user.role === "inventario" || auth.user.role === "entregador") {
-    redirect("/matriz-operativa");
+  const workspace = getFocusedWorkspace(auth.user.role);
+
+  if (workspace.href) {
+    redirect(workspace.href);
   }
-  const activeModules = getActiveTransitionalModules().filter((module) =>
-    module.href ? canAccessPath(auth.user.role, module.href) : false,
-  );
-  const [reportsData, operationalSettings] = await Promise.all([
-    getQbReportsData(auth.user.role!, {}),
-    getQbOperationalSettingsData(),
-  ]);
 
   return (
-    <QbTransitionHome
-      activeModules={activeModules}
-      reportsData={reportsData}
-      operationalSettings={operationalSettings}
-    />
+    <Card className="mx-auto max-w-2xl border-amber-200 bg-amber-50/80">
+      <CardContent className="flex gap-4 p-8">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-900">
+          <LockKeyhole className="size-5" />
+        </div>
+        <div>
+          <h1 className="font-heading text-2xl font-semibold">
+            Módulo en pausa
+          </h1>
+          <p className="mt-2 leading-7 text-muted-foreground">
+            Este perfil se habilitará cuando terminemos y validemos el flujo
+            básico de pedidos, preparación y entrega.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

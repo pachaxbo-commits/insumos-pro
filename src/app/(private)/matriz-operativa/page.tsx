@@ -41,13 +41,22 @@ export default async function MatrizOperativaPage({
   const date = validDate(params.date ?? params.fecha);
   const mode = validMode(params.mode);
   const data = await getOperationalMatrixData(date, auth.user.role!);
+  const isInventory = auth.user.role === "inventario";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Operación diaria"
-        title="Matriz operativa"
-        description="Una sola vista por fecha para pedido, bodega, abastecimiento externo y entrega real."
+        eyebrow={
+          isInventory
+            ? "Paso 2 de 3 · Inventario"
+            : "Paso 3 de 3 · Entregador"
+        }
+        title={isInventory ? "Preparar pedidos" : "Registrar entregas"}
+        description={
+          isInventory
+            ? "Revisa únicamente los pedidos del día y confirma lo que queda preparado."
+            : "Registra las cantidades exactas entregadas al cliente y confirma la entrega."
+        }
       />
       <form className="flex flex-wrap items-end gap-3" method="get">
         <label className="text-sm font-medium">
@@ -64,7 +73,7 @@ export default async function MatrizOperativaPage({
         </button>
       </form>
       <OperationalMatrix
-        key={`${date}:${data.orders.map((order) => `${order.id}:${order.updatedAt}:${order.positionVersion}`).join("|")}:${data.lines.map((line) => `${line.orderItemId}:${line.requestedVersion}:${line.preparationVersion}:${line.deliveryVersion}`).join("|")}`}
+        key={date}
         data={data}
         initialStage={mode}
         initialOrderId={params.order}

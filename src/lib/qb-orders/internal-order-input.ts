@@ -38,7 +38,8 @@ const optionalUuid = (message: string) =>
 
 const nullableUuid = (message: string) =>
   z.preprocess(
-    (value) => (value === null || value === undefined || value === "" ? null : value),
+    (value) =>
+      value === null || value === undefined || value === "" ? null : value,
     z.string({ error: message }).uuid(message).nullable(),
   );
 
@@ -60,35 +61,22 @@ export const internalOrderItemSchema = z
         .string({ error: "Selecciona un producto." })
         .uuid("Selecciona un producto."),
       inputMode: z
-        .enum(["quantity", "amount_bs"], {
-          error: "Selecciona una forma de pedido válida.",
+        .literal("quantity", {
+          error: "El pedido debe registrar una cantidad.",
         })
         .optional()
         .default("quantity"),
       allowedUnitId: optionalUuid("Selecciona una unidad."),
       quantity: optionalPositiveNumber("Ingresa una cantidad válida.", 10000),
-      requestedAmountBs: optionalPositiveNumber("Ingresa un importe válido.", 1000000),
+      requestedAmountBs: optionalPositiveNumber(
+        "Ingresa un importe válido.",
+        1000000,
+      ),
       notes: optionalText(500),
     },
     { error: "Completa o elimina esta línea." },
   )
   .superRefine((item, context) => {
-    if (item.inputMode === "amount_bs") {
-      if (
-        item.requestedAmountBs === undefined ||
-        Math.abs(
-          item.requestedAmountBs * 100 - Math.round(item.requestedAmountBs * 100),
-        ) > 0.000001
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["requestedAmountBs"],
-          message: "Ingresa un importe válido.",
-        });
-      }
-      return;
-    }
-
     if (!item.allowedUnitId) {
       context.addIssue({
         code: "custom",
@@ -116,24 +104,27 @@ function isCompletelyEmptyLine(value: unknown) {
     line.notes,
   ].every(
     (field) =>
-      field === null || field === undefined ||
+      field === null ||
+      field === undefined ||
       (typeof field === "string" && field.trim() === ""),
   );
 }
 
 const internalOrderItemsSchema = z.preprocess(
   (value) =>
-    Array.isArray(value) ? value.filter((line) => !isCompletelyEmptyLine(line)) : value,
+    Array.isArray(value)
+      ? value.filter((line) => !isCompletelyEmptyLine(line))
+      : value,
   z
     .array(internalOrderItemSchema, { error: "Agrega productos válidos." })
     .min(1, "Agrega al menos un producto.")
-    .max(30, "El pedido admite hasta 30 productos."),
+    .max(100, "El pedido admite hasta 100 productos."),
 );
 
 export const createInternalOrderSchema = z
   .object({
-    orderMode: z.enum(["registered", "guest"], {
-      error: "Selecciona un tipo de cliente válido.",
+    orderMode: z.literal("registered", {
+      error: "Selecciona un cliente registrado.",
     }),
     customerAccountId: nullableUuid("Selecciona un cliente."),
     customerLocationId: nullableUuid("Selecciona una ubicación."),
@@ -151,7 +142,10 @@ export const createInternalOrderSchema = z
     items: internalOrderItemsSchema,
   })
   .superRefine((value, context) => {
-    if (new Set(value.items.map((item) => item.productId)).size !== value.items.length) {
+    if (
+      new Set(value.items.map((item) => item.productId)).size !==
+      value.items.length
+    ) {
       context.addIssue({
         code: "custom",
         path: ["items"],
@@ -159,55 +153,18 @@ export const createInternalOrderSchema = z
       });
     }
 
-    if (value.orderMode === "registered") {
-      if (!value.customerAccountId) {
-        context.addIssue({
-          code: "custom",
-          path: ["customerAccountId"],
-          message: "Selecciona un cliente.",
-        });
-      }
-      if (!value.customerLocationId) {
-        context.addIssue({
-          code: "custom",
-          path: ["customerLocationId"],
-          message: "Selecciona una ubicación.",
-        });
-      }
-      return;
-    }
-
-    if (value.businessName.length < 2) {
+    if (!value.customerAccountId) {
       context.addIssue({
         code: "custom",
-        path: ["businessName"],
-        message: "Ingresa el nombre del negocio.",
+        path: ["customerAccountId"],
+        message: "Selecciona un cliente.",
       });
     }
-    if (value.responsibleName.length < 2) {
+    if (!value.customerLocationId) {
       context.addIssue({
         code: "custom",
-        path: ["responsibleName"],
-        message: "Ingresa el nombre del responsable.",
-      });
-    }
-    const phoneDigits = value.phone.replace(/\D/g, "");
-    if (
-      !/^\+?[0-9\s()-]+$/.test(value.phone) ||
-      phoneDigits.length < 7 ||
-      phoneDigits.length > 15
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["phone"],
-        message: "Ingresa un teléfono válido.",
-      });
-    }
-    if (value.address.length < 5) {
-      context.addIssue({
-        code: "custom",
-        path: ["address"],
-        message: "Ingresa una dirección.",
+        path: ["customerLocationId"],
+        message: "Selecciona una ubicación.",
       });
     }
   });
