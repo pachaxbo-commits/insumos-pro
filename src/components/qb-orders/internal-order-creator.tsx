@@ -8,16 +8,28 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
-import { Check, Clock3, Plus, RotateCcw, Search, Send, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  CalendarDays,
+  Check,
+  Clock3,
+  Plus,
+  Search,
+  Send,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createQbInternalOrderAction } from "@/lib/qb-orders/actions";
-import { getLastRepeatableOrderAction } from "@/lib/qb-orders/creation-actions";
+import {
+  createQbInternalOrderAction,
+  updateQbInternalOrderAction,
+} from "@/lib/qb-orders/actions";
+import { getAverageRepeatableOrderAction } from "@/lib/qb-orders/creation-actions";
 import type {
+  QbInternalOrder,
   QbInternalOrderCreationData,
   QbOrderActionState,
   QbRepeatableOrder,
@@ -48,6 +60,33 @@ function shortDate(value: string) {
   }).format(new Date(value));
 }
 
+function boliviaToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/La_Paz",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function boliviaTomorrow() {
+  const date = new Date(`${boliviaToday()}T12:00:00-04:00`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function initialDraftLines(order?: QbInternalOrder): DraftLine[] {
+  return (order?.items ?? []).map((item, index) => ({
+    key: index + 1,
+    productId: item.productId,
+    allowedUnitId: item.allowedUnitId,
+    quantity: String(item.requestedQuantity),
+    notes: item.notes ?? "",
+  }));
+}
+
 function normalizeSearch(value: string) {
   return value
     .normalize("NFD")
@@ -60,16 +99,35 @@ export function InternalOrderCreator({
   customers,
   products,
   initiallyOpen = false,
-}: QbInternalOrderCreationData & { initiallyOpen?: boolean }) {
-  const [open, setOpen] = useState(initiallyOpen);
-  const [customerId, setCustomerId] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [customerNotes, setCustomerNotes] = useState("");
-  const [idempotencyKey, setIdempotencyKey] = useState(() =>
-    initiallyOpen ? crypto.randomUUID() : "",
+  editingOrder,
+  onCancelEdit,
+}: QbInternalOrderCreationData & {
+  initiallyOpen?: boolean;
+  editingOrder?: QbInternalOrder | null;
+  onCancelEdit?: () => void;
+}) {
+  const router = useRouter();
+  const editing = Boolean(editingOrder);
+  const maxSelectedProducts = editing ? 30 : MAX_ORDER_PRODUCTS;
+  const startingLines = initialDraftLines(editingOrder ?? undefined);
+  const [open, setOpen] = useState(initiallyOpen || editing);
+  const [customerId, setCustomerId] = useState(
+    editingOrder?.customerAccountId ?? "",
   );
-  const [nextLineKey, setNextLineKey] = useState(1);
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [locationId, setLocationId] = useState(
+    editingOrder?.customerLocationId ?? "",
+  );
+  const [operationalDate, setOperationalDate] = useState(
+    editingOrder?.operationalDate ?? boliviaTomorrow,
+  );
+  const [customerNotes, setCustomerNotes] = useState(
+    editingOrder?.customerNotes ?? "",
+  );
+  const [idempotencyKey, setIdempotencyKey] = useState(() =>
+    initiallyOpen || editing ? crypto.randomUUID() : "",
+  );
+  const [nextLineKey, setNextLineKey] = useState(startingLines.length + 1);
+  const [lines, setLines] = useState<DraftLine[]>(startingLines);
   const [productSearch, setProductSearch] = useState("");
   const [catalogLimit, setCatalogLimit] = useState(PRODUCT_BATCH_SIZE);
   const [selectionMessage, setSelectionMessage] = useState("");
@@ -79,12 +137,9 @@ export function InternalOrderCreator({
   const [history, setHistory] = useState<QbRepeatableOrder | null>(null);
   const [historyChecked, setHistoryChecked] = useState(false);
   const [historyError, setHistoryError] = useState("");
-  const [repeatMessage, setRepeatMessage] = useState("");
-  const [repeatedOrderId, setRepeatedOrderId] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const submissionInFlightRef = useRef(false);
   const historyRequestRef = useRef(0);
-  const repeatLoadingRef = useRef(false);
   const selectedCustomer = customers.find(
     (customer) => customer.id === customerId,
   );
@@ -131,7 +186,11 @@ export function InternalOrderCreator({
     if (!customerId || !locationId) return;
 
     startHistoryTransition(async () => {
-      const result = await getLastRepeatableOrderAction(customerId, locationId);
+      setHistoryError("");
+      const result = await getAverageRepeatableOrderAction(
+        customerId,
+        locationId,
+      );
       if (request !== historyRequestRef.current) return;
       if (result.success) {
         setHistory(result.order);
@@ -172,14 +231,20 @@ export function InternalOrderCreator({
       setSelectionMessage("");
       return;
     }
-    if (lines.length >= MAX_ORDER_PRODUCTS) {
+    if (lines.length >= maxSelectedProducts) {
       setSelectionMessage(
-        `Puedes incluir hasta ${MAX_ORDER_PRODUCTS} productos por pedido.`,
+        `Puedes incluir hasta ${maxSelectedProducts} productos por pedido.`,
       );
       return;
     }
     const product = products.find((item) => item.id === productId);
+    const suggestion = history?.lines.find(
+      (item) => item.productId === productId,
+    );
     const defaultUnit =
+      product?.allowedUnits.find(
+        (unit) => unit.id === suggestion?.allowedUnitId,
+      ) ??
       product?.allowedUnits.find((unit) => unit.isDefault) ??
       product?.allowedUnits[0];
     if (!product || !defaultUnit) return;
@@ -189,7 +254,11 @@ export function InternalOrderCreator({
         key: nextLineKey,
         productId,
         allowedUnitId: defaultUnit.id,
-        quantity: String(Math.max(defaultUnit.minQuantity, 0.5)),
+        quantity: String(
+          suggestion?.inputMode === "quantity"
+            ? suggestion.quantity
+            : Math.max(defaultUnit.minQuantity, 0.5),
+        ),
         notes: "",
       },
     ]);
@@ -204,7 +273,7 @@ export function InternalOrderCreator({
     setSelectionMessage("");
   }
 
-  function productRow(productId: string, rowNumber: number) {
+  function productRow(productId: string) {
     const product = productIndex.get(productId);
     if (!product) return null;
     const line = linesByProductId.get(productId);
@@ -212,6 +281,13 @@ export function InternalOrderCreator({
     const allowedUnit = line
       ? product.allowedUnits.find((unit) => unit.id === line.allowedUnitId)
       : undefined;
+    const suggestedUnitId = history?.lines.find(
+      (item) => item.productId === productId,
+    )?.allowedUnitId;
+    const visibleUnit =
+      product.allowedUnits.find((unit) => unit.id === suggestedUnitId) ??
+      product.allowedUnits.find((unit) => unit.isDefault) ??
+      product.allowedUnits[0];
 
     return (
       <tr
@@ -243,9 +319,6 @@ export function InternalOrderCreator({
               ) : null}
               {product.name}
             </span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              {product.categoryName ?? "Sin categoría"} · Producto {rowNumber}
-            </span>
           </button>
         </td>
         <td className="w-44 min-w-44 px-2 py-2">
@@ -266,7 +339,9 @@ export function InternalOrderCreator({
               ))}
             </select>
           ) : (
-            <span className="text-sm text-muted-foreground">—</span>
+            <span className="text-sm text-muted-foreground">
+              {visibleUnit?.label ?? "Sin unidad"}
+            </span>
           )}
         </td>
         <td className="w-36 min-w-36 px-2 py-2">
@@ -289,7 +364,7 @@ export function InternalOrderCreator({
         </td>
         <td className="min-w-64 px-2 py-2">
           {line ? (
-            <Input
+            <Textarea
               aria-label={`Nota de ${product.name}`}
               value={line.notes}
               onChange={(event) =>
@@ -297,7 +372,9 @@ export function InternalOrderCreator({
               }
               placeholder="Nota opcional"
               maxLength={500}
-              className="h-9"
+              rows={2}
+              className="min-h-9 resize-y whitespace-pre-wrap"
+              onKeyDown={(event) => event.stopPropagation()}
             />
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
@@ -323,55 +400,6 @@ export function InternalOrderCreator({
     setHistory(null);
     setHistoryChecked(false);
     setHistoryError("");
-    setRepeatMessage("");
-    setRepeatedOrderId("");
-  }
-
-  function repeatLastOrder() {
-    if (!history || repeatLoadingRef.current || repeatedOrderId === history.id)
-      return;
-    repeatLoadingRef.current = true;
-    const repeatedLines = history.lines
-      .map((item, index) => {
-        const product = products.find(
-          (candidate) => candidate.id === item.productId,
-        );
-        if (!product) return null;
-        const allowedUnit =
-          product.allowedUnits.find((unit) => unit.id === item.allowedUnitId) ??
-          product.allowedUnits.find((unit) => unit.isDefault) ??
-          product.allowedUnits[0];
-        if (!allowedUnit) return null;
-        return {
-          key: nextLineKey + index,
-          productId: item.productId,
-          allowedUnitId: allowedUnit.id,
-          quantity: String(item.inputMode === "quantity" ? item.quantity : 0.5),
-          notes: item.notes,
-        } satisfies DraftLine;
-      })
-      .filter((line): line is DraftLine => line !== null);
-
-    if (!repeatedLines.length) {
-      setRepeatMessage(
-        "Los productos de ese pedido ya no están disponibles para repetir.",
-      );
-      repeatLoadingRef.current = false;
-      return;
-    }
-    setLines(repeatedLines);
-    setNextLineKey(nextLineKey + repeatedLines.length);
-    setRepeatedOrderId(history.id);
-    setRepeatMessage(
-      `Se cargaron ${repeatedLines.length} productos del pedido del ${shortDate(history.submittedAt)}. Puedes editarlos antes de crear el nuevo pedido.`,
-    );
-    repeatLoadingRef.current = false;
-  }
-
-  function cancelRepeat() {
-    resetProductSelection();
-    setRepeatedOrderId("");
-    setRepeatMessage("");
   }
 
   function openForm() {
@@ -382,11 +410,10 @@ export function InternalOrderCreator({
   function resetAfterConfirmedCreation() {
     setCustomerId("");
     setLocationId("");
+    setOperationalDate(boliviaTomorrow());
     setCustomerNotes("");
     setHistory(null);
     setHistoryChecked(false);
-    setRepeatMessage("");
-    setRepeatedOrderId("");
     resetProductSelection();
     setNextLineKey(1);
     setIdempotencyKey(crypto.randomUUID());
@@ -395,16 +422,22 @@ export function InternalOrderCreator({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submissionInFlightRef.current || !idempotencyKey) return;
+    if (submissionInFlightRef.current || (!editing && !idempotencyKey)) return;
 
     const formData = new FormData(event.currentTarget);
     submissionInFlightRef.current = true;
     startTransition(async () => {
       try {
-        const result = await createQbInternalOrderAction(state, formData);
+        const result = editing
+          ? await updateQbInternalOrderAction(state, formData)
+          : await createQbInternalOrderAction(state, formData);
         setState(result);
-        if (result.success && result.orderId && result.reference) {
+        if (!editing && result.success && result.orderId && result.reference) {
           resetAfterConfirmedCreation();
+        }
+        if (editing && result.success) {
+          router.refresh();
+          onCancelEdit?.();
         }
       } catch {
         setState({
@@ -431,15 +464,20 @@ export function InternalOrderCreator({
     <Card className="border-emerald-200">
       <CardHeader className="flex-row items-center justify-between gap-3">
         <div>
-          <CardTitle>Nuevo pedido</CardTitle>
+          <CardTitle>{editing ? "Editar pedido" : "Nuevo pedido"}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Registra el pedido y envíalo al checklist de preparación.
+            {editing
+              ? `Actualiza ${editingOrder?.reference}. La edición se bloqueará al iniciar preparación.`
+              : "Registra el pedido y envíalo al checklist de preparación."}
           </p>
         </div>
         <Button
           type="button"
           variant="ghost"
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            if (editing) onCancelEdit?.();
+            else setOpen(false);
+          }}
           disabled={pending}
         >
           Cerrar
@@ -450,17 +488,38 @@ export function InternalOrderCreator({
           <input type="hidden" name="order_mode" value="registered" />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />
           <input type="hidden" name="items" value={itemsPayload} />
+          {editingOrder ? (
+            <>
+              <input type="hidden" name="order_id" value={editingOrder.id} />
+              <input
+                type="hidden"
+                name="expected_updated_at"
+                value={editingOrder.updatedAt}
+              />
+              <input
+                type="hidden"
+                name="customer_account_id"
+                value={customerId}
+              />
+              <input
+                type="hidden"
+                name="customer_location_id"
+                value={locationId}
+              />
+            </>
+          ) : null}
 
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="internal-customer">Cliente</Label>
                 <select
                   id="internal-customer"
-                  name="customer_account_id"
+                  name={editing ? undefined : "customer_account_id"}
                   value={customerId}
                   onChange={(event) => selectCustomer(event.target.value)}
                   required
+                  disabled={editing}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   <option value="">Seleccionar cliente</option>
@@ -475,13 +534,14 @@ export function InternalOrderCreator({
                 <Label htmlFor="internal-location">Ubicación</Label>
                 <select
                   id="internal-location"
-                  name="customer_location_id"
+                  name={editing ? undefined : "customer_location_id"}
                   value={locationId}
                   onChange={(event) => {
                     resetHistorySelection();
                     setLocationId(event.target.value);
                   }}
                   required
+                  disabled={editing}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   <option value="">Seleccionar ubicación</option>
@@ -492,49 +552,77 @@ export function InternalOrderCreator({
                   ))}
                 </select>
               </div>
+              <div className="space-y-2">
+                <Label
+                  htmlFor="internal-operational-date"
+                  className="flex items-center gap-2"
+                >
+                  <CalendarDays className="size-4 text-emerald-700" />
+                  Fecha de entrega
+                </Label>
+                <Input
+                  id="internal-operational-date"
+                  name="operational_date"
+                  type="date"
+                  min={boliviaToday()}
+                  value={operationalDate}
+                  onChange={(event) => setOperationalDate(event.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  El pedido aparecerá en la planilla de esta fecha.
+                </p>
+              </div>
             </div>
 
             {customerId && locationId ? (
               <section
                 className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
-                aria-labelledby="last-order-title"
+                aria-labelledby="order-average-title"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3
-                      id="last-order-title"
+                      id="order-average-title"
                       className="flex items-center gap-2 font-semibold"
                     >
                       <Clock3 className="size-4 text-emerald-700" />
-                      Último pedido
+                      Promedio de los últimos 8 pedidos
                     </h3>
                     {historyPending ? (
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Consultando el pedido más reciente…
+                        Calculando el promedio del historial…
                       </p>
                     ) : history ? (
                       <div className="mt-2 space-y-1 text-sm">
                         <p>
-                          {shortDate(history.submittedAt)} ·{" "}
+                          {history.sampleSize} pedido
+                          {history.sampleSize === 1 ? "" : "s"} disponible
+                          {history.sampleSize === 1 ? "" : "s"} ·{" "}
                           {history.lines.length} productos
                         </p>
                         <p className="text-muted-foreground">
-                          {history.source === "legacy"
-                            ? "Plantilla recuperada del sistema anterior"
-                            : `Origen: ${history.locationLabel}`}
+                          Período: {shortDate(history.oldestSubmittedAt)} al{" "}
+                          {shortDate(history.submittedAt)}. Las cantidades
+                          consideran como cero los productos que no aparecieron
+                          en alguno de esos pedidos.
                         </p>
-                        {history.source === "current" &&
-                        !history.sameLocation ? (
+                        <p className="font-medium text-emerald-800">
+                          Historial cargado automáticamente. Marca únicamente
+                          los productos que necesites; la cantidad sugerida
+                          seguirá siendo editable.
+                        </p>
+                        {!history.sameLocation ? (
                           <p className="font-medium text-amber-800">
-                            Este pedido proviene de otra ubicación. La ubicación
-                            seleccionada no cambiará.
+                            El promedio incluye pedidos de otras ubicaciones. La
+                            ubicación seleccionada no cambiará.
                           </p>
                         ) : null}
                       </div>
                     ) : historyChecked && !historyError ? (
                       <p className="mt-1 text-sm text-muted-foreground">
                         Este cliente todavía no tiene pedidos anteriores para
-                        repetir.
+                        calcular un promedio.
                       </p>
                     ) : null}
                     {historyError ? (
@@ -543,38 +631,7 @@ export function InternalOrderCreator({
                       </p>
                     ) : null}
                   </div>
-                  {history ? (
-                    <Button
-                      type="button"
-                      onClick={repeatLastOrder}
-                      disabled={
-                        historyPending || repeatedOrderId === history.id
-                      }
-                    >
-                      <RotateCcw className="size-4" />
-                      {repeatedOrderId === history.id
-                        ? "Pedido cargado"
-                        : "Repetir último pedido"}
-                    </Button>
-                  ) : null}
                 </div>
-                {repeatMessage ? (
-                  <div
-                    className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-white p-3 text-sm text-emerald-900"
-                    role="status"
-                  >
-                    <span>{repeatMessage}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={cancelRepeat}
-                    >
-                      <X className="size-4" />
-                      Cancelar repetición
-                    </Button>
-                  </div>
-                ) : null}
               </section>
             ) : null}
           </div>
@@ -591,14 +648,14 @@ export function InternalOrderCreator({
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Marca el producto y escribe su cantidad en la misma fila. Los
-                  del último pedido aparecen primero.
+                  sugeridos por el promedio aparecen primero.
                 </p>
               </div>
               <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
                 <span className="font-semibold text-emerald-800">
                   {lines.length}
                 </span>{" "}
-                de {MAX_ORDER_PRODUCTS} seleccionados
+                de {maxSelectedProducts} seleccionados
               </div>
             </div>
 
@@ -654,12 +711,12 @@ export function InternalOrderCreator({
                         colSpan={5}
                         className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-emerald-900"
                       >
-                        Último pedido del cliente
+                        Promedio de pedidos del cliente
                       </th>
                     </tr>
                   ) : null}
-                  {catalogGroups.latest.map((product, index) =>
-                    productRow(product.id, index + 1),
+                  {catalogGroups.latest.map((product) =>
+                    productRow(product.id),
                   )}
                   {catalogGroups.visibleAlphabetical.length ? (
                     <tr className="border-b bg-slate-100">
@@ -673,11 +730,8 @@ export function InternalOrderCreator({
                       </th>
                     </tr>
                   ) : null}
-                  {catalogGroups.visibleAlphabetical.map((product, index) =>
-                    productRow(
-                      product.id,
-                      catalogGroups.latest.length + index + 1,
-                    ),
+                  {catalogGroups.visibleAlphabetical.map((product) =>
+                    productRow(product.id),
                   )}
                   {!catalogGroups.latest.length &&
                   !catalogGroups.visibleAlphabetical.length ? (
@@ -738,10 +792,18 @@ export function InternalOrderCreator({
 
           <Button
             type="submit"
-            disabled={pending || !idempotencyKey || lines.length === 0}
+            disabled={
+              pending || (!editing && !idempotencyKey) || lines.length === 0
+            }
           >
             <Send className="size-4" />
-            {pending ? "Creando..." : "Crear pedido"}
+            {pending
+              ? editing
+                ? "Guardando..."
+                : "Creando..."
+              : editing
+                ? "Guardar cambios"
+                : "Crear pedido"}
           </Button>
         </form>
       </CardContent>

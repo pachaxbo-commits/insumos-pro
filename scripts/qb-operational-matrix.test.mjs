@@ -25,6 +25,7 @@ const [
   newProduct,
   deliveryUnlock,
   receiptDeliveryTruth,
+  preparationWeightBaseline,
 ] = await Promise.all([
   read(
     "supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql",
@@ -59,6 +60,9 @@ const [
   ),
   read(
     "supabase/migrations/20260725011100_qb_receipt_delivery_truth_and_undo.sql",
+  ),
+  read(
+    "supabase/migrations/20260804010000_qb_preparation_actual_weight_baseline.sql",
   ),
 ]);
 
@@ -134,7 +138,7 @@ assert.match(matrix, /Math\.max\(line\[versionField\], version\)/);
 assert.match(matrix, /postgres_changes/);
 assert.doesNotMatch(
   matrix,
-  /selectedMobileOrder|selectedOrder|MobileRow|<select/,
+  /selectedMobileOrder|selectedOrder|MobileRow/,
 );
 assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /scrollIntoView/);
@@ -155,7 +159,8 @@ assert.doesNotMatch(
   /Hay cambios de este cliente guardándose/,
 );
 assert.match(matrix, /moveCustomer/);
-assert.match(matrix, /"CHECK INV\.", "PESO\/CANT\. REAL"/);
+assert.match(matrix, /"CHECK INV\.\/ENT\.", "PESO\/CANT\. REAL"/);
+assert.match(matrix, /"CHECK", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
 assert.match(
@@ -165,10 +170,42 @@ assert.match(
 assert.match(matrix, /function QuantityEditor/);
 assert.match(matrix, /Cantidad real entregada de/);
 assert.match(matrix, /deliveryCheck: true/);
+assert.match(matrix, /function hasDeliveryCheck/);
+assert.match(
+  matrix,
+  /return line\.preparationCheck \|\| line\.deliveryCheck/,
+);
+assert.match(matrix, /Check de Entrega faltante/);
+assert.match(
+  matrix,
+  /disabled=\{deliveryDisabled \|\| line\.preparationCheck\}/,
+);
+assert.match(matrix, /groupedLines\.every\(hasDeliveryCheck\)/);
+assert.match(matrix, /updateMissingDeliveryChecks/);
+assert.match(matrix, /function NoteEditor[\s\S]*<Textarea/);
+assert.match(matrix, /placeholder="Escribe una observación"/);
+assert.match(matrix, /whitespace-pre-wrap/);
+assert.match(matrix, /onKeyDown=\{\(event\) => event\.stopPropagation\(\)\}/);
 assert.match(matrix, /preparationActualWeightKg/);
 assert.match(matrix, /deliveryActualWeightKg/);
 assert.doesNotMatch(matrix, /Peso real bodega/);
-assert.match(matrix, /function WeightEditor[\s\S]*step="0\.5"/);
+assert.match(matrix, /function WeightEditor[\s\S]*step="any"/);
+assert.match(matrix, /const WEIGHT_UNITS =/);
+assert.match(matrix, /kilograms: 0\.001/);
+assert.match(matrix, /kilograms: 0\.45359237/);
+assert.match(matrix, /Peso real preparado de/);
+assert.match(
+  matrix,
+  /actualWeightKg: line\.controlsActualWeight[\s\S]*line\.preparationActualWeightKg/,
+);
+assert.match(
+  preparationWeightBaseline,
+  /v_prepared_weight_kg := coalesce\([\s\S]*v_preparation_item\.actual_weight_kg/,
+);
+assert.match(
+  preparationWeightBaseline,
+  /delivery_item\.actual_weight_kg[\s\S]*< coalesce\([\s\S]*preparation_item\.actual_weight_kg/,
+);
 assert.match(matrix, /line\.controlsActualWeight \? \(/);
 assert.match(matrix, /Valor inicial de Inventario · editable/);
 assert.match(matrix, /mergeServerLines/);

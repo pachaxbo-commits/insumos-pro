@@ -28,6 +28,7 @@ export type QbPreparationItem = {
 export type QbInternalOrderItem = {
   id: string;
   productId: string;
+  allowedUnitId: string;
   productName: string;
   sourceLabel: string;
   requestedQuantity: number;
@@ -55,6 +56,8 @@ export type QbInternalOrder = {
   id: string;
   reference: string;
   status: QbOrderStatus;
+  customerAccountId: string;
+  customerLocationId: string;
   operationalDate: string;
   submittedAt: string;
   updatedAt: string;
@@ -107,8 +110,10 @@ export type QbRepeatableOrderLine = {
 
 export type QbRepeatableOrder = {
   id: string;
-  source: "current" | "legacy";
+  source: "average";
   submittedAt: string;
+  oldestSubmittedAt: string;
+  sampleSize: number;
   locationId: string | null;
   locationLabel: string;
   sameLocation: boolean;

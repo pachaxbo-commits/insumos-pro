@@ -10,9 +10,9 @@ export default async function PedidosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Paso 1 de 3 · Administrador"
+        eyebrow="Operación de pedidos · Administrador"
         title="Crear pedidos"
-        description="Esta es la única tarea habilitada para administración durante esta etapa."
+        description="Crea pedidos con fecha de entrega y continúa directamente con su preparación o entrega."
       />
       <OrderCreationWorkspace {...data} />
     </div>

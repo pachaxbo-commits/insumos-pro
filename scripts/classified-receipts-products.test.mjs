@@ -91,7 +91,8 @@ test("17 el buscador limita resultados y admite teclado", () => {
 });
 test("18 ingresos, pedidos y configuracion reutilizan el buscador", () => {
   assert.match(ingresos, /<ProductCombobox/);
-  assert.match(orderCreator, /<ProductCombobox/);
+  assert.match(orderCreator, /data-product-order-table/);
+  assert.match(orderCreator, /normalizeSearch\(productSearch\)/);
   assert.match(productConfig, /<ProductCombobox/);
 });
 test("19 la imagen se valida por firma y MIME", () => {

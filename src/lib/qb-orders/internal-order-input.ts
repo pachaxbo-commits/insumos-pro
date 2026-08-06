@@ -54,6 +54,25 @@ const optionalPositiveNumber = (message: string, maximum: number) =>
       .optional(),
   );
 
+function boliviaToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/La_Paz",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+const operationalDate = z
+  .string({ error: "Selecciona la fecha de entrega." })
+  .date("Selecciona una fecha de entrega válida.")
+  .refine(
+    (value) => value >= boliviaToday(),
+    "La fecha de entrega no puede ser anterior a hoy.",
+  );
+
 export const internalOrderItemSchema = z
   .object(
     {
@@ -135,6 +154,7 @@ export const createInternalOrderSchema = z
     address: optionalText(300),
     locationLabel: optionalText(80),
     locationReference: optionalText(300),
+    operationalDate,
     customerNotes: optionalText(1000),
     idempotencyKey: z
       .string({ error: "No pudimos preparar el envío. Inténtalo nuevamente." })
@@ -193,6 +213,7 @@ export function parseInternalOrderFormData(formData: FormData) {
     address: formData.get("address"),
     locationLabel: formData.get("location_label"),
     locationReference: formData.get("location_reference"),
+    operationalDate: formData.get("operational_date"),
     customerNotes: formData.get("customer_notes"),
     idempotencyKey: formData.get("idempotency_key"),
     items,

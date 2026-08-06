@@ -42,18 +42,29 @@ export default async function MatrizOperativaPage({
   const mode = validMode(params.mode);
   const data = await getOperationalMatrixData(date, auth.user.role!);
   const isInventory = auth.user.role === "inventario";
+  const isAdmin = auth.user.role === "administrador";
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow={
-          isInventory
+          isAdmin
+            ? "Operación completa · Administrador"
+            : isInventory
             ? "Paso 2 de 3 · Inventario"
             : "Paso 3 de 3 · Entregador"
         }
-        title={isInventory ? "Preparar pedidos" : "Registrar entregas"}
+        title={
+          isAdmin
+            ? "Preparación y entregas"
+            : isInventory
+              ? "Preparar pedidos"
+              : "Registrar entregas"
+        }
         description={
-          isInventory
+          isAdmin
+            ? "Prepara pedidos, registra entregas y revisa toda la planilla operativa desde un solo lugar."
+            : isInventory
             ? "Revisa únicamente los pedidos del día y confirma lo que queda preparado."
             : "Registra las cantidades exactas entregadas al cliente y confirma la entrega."
         }

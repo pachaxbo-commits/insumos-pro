@@ -364,7 +364,7 @@ export function GuestCheckoutForm({ lines, onRemove }: GuestCheckoutFormProps) {
                         : `Solicitado por cantidad: ${quantity(line.quantity)} ${line.unitLabel}`}
                     </p>
                     {line.notes ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{line.notes}</p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{line.notes}</p>
                     ) : null}
                   </div>
                   <Button

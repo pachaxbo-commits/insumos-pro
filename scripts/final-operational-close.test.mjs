@@ -5,13 +5,15 @@ import test from "node:test";
 import { canAccessPath } from "../src/lib/auth/roles.ts";
 
 test("inventory role is limited to the final operational surface", () => {
-  for (const path of ["/", "/matriz-operativa", "/ingresos", "/inventario"]) {
+  for (const path of ["/", "/matriz-operativa"]) {
     assert.equal(canAccessPath("inventario", path), true, path);
   }
 
   for (const path of [
     "/pedidos",
     "/pedidos/uno",
+    "/ingresos",
+    "/inventario",
     "/productos",
     "/parametrizacion",
     "/configuracion",
@@ -30,15 +32,23 @@ test("inventory role is limited to the final operational surface", () => {
 test("administrator retains the complete internal surface", () => {
   for (const path of [
     "/",
-    "/productos",
-    "/parametrizacion",
-    "/configuracion",
     "/pedidos",
-    "/ingresos",
-    "/inventario",
+    "/matriz-operativa",
+    "/clientes",
     "/recibos",
   ]) {
     assert.equal(canAccessPath("administrador", path), true, path);
+  }
+
+  for (const path of [
+    "/productos",
+    "/parametrizacion",
+    "/configuracion",
+    "/ingresos",
+    "/inventario",
+    "/reportes",
+  ]) {
+    assert.equal(canAccessPath("administrador", path), false, path);
   }
 });
 

@@ -306,7 +306,7 @@ function PreparationEditor({
                   {item.baseUnitSymbol}
                 </p>
                 {item.notes ? (
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">
                     {item.notes}
                   </p>
                 ) : null}
@@ -378,12 +378,16 @@ function PreparationEditor({
               </div>
 
               <div className="lg:col-span-4">
-                <Input
+                <Textarea
                   value={line.notes}
                   onChange={(event) =>
                     updateLine(item.id, { notes: event.target.value })
                   }
                   placeholder="Nota interna opcional"
+                  maxLength={500}
+                  rows={2}
+                  className="resize-y whitespace-pre-wrap"
+                  onKeyDown={(event) => event.stopPropagation()}
                 />
               </div>
             </div>
@@ -541,7 +545,7 @@ function OrderCard({
                 <div>
                   <p className="font-medium">{item.productName}</p>
                   {item.notes ? (
-                    <p className="text-muted-foreground">{item.notes}</p>
+                    <p className="whitespace-pre-wrap break-words text-muted-foreground">{item.notes}</p>
                   ) : null}
                   {item.preparationItem ? (
                     <p className="mt-1 text-xs text-muted-foreground">

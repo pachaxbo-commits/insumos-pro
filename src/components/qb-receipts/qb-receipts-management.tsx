@@ -123,6 +123,47 @@ function hasAtMostTwoDecimals(value: string) {
   return Math.abs(price * 100 - Math.round(price * 100)) < 0.00000001;
 }
 
+function ReceiptFactorInput({
+  receiptId,
+  label,
+  name,
+  defaultValue,
+}: {
+  receiptId: string;
+  label: string;
+  name:
+    | "distance_factor_percent"
+    | "exigency_factor_percent"
+    | "weather_factor_percent"
+    | "extraordinary_factor_percent";
+  defaultValue: number;
+}) {
+  const inputId = `${name}-${receiptId}`;
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={inputId}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={inputId}
+          name={name}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          max="1000"
+          step="1"
+          defaultValue={defaultValue}
+          required
+          className="pr-9"
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+          %
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function CreateReceiptPanel({
   groups,
   action,
@@ -366,38 +407,30 @@ function DraftEditor({
         <input type="hidden" name="lines" value={linesPayload} />
 
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-2">
-            <Label>Distancia</Label>
-            <select
-              name="distance_factor_percent"
-              defaultValue={receipt.distanceFactorPercent}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
-          </div>
-          <div className="space-y-2">
-            <Label>Exigencia</Label>
-            <select
-              name="exigency_factor_percent"
-              defaultValue={receipt.exigencyFactorPercent}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
-          </div>
-          <div className="space-y-2">
-            <Label>Clima</Label>
-            <select
-              name="weather_factor_percent"
-              defaultValue={receipt.weatherFactorPercent}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
-          </div>
-          <div className="space-y-2">
-            <Label>Extraordinario</Label>
-            <select
-              name="extraordinary_factor_percent"
-              defaultValue={receipt.extraordinaryFactorPercent}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            ><option value={0}>No aplica (0%)</option><option value={5}>Aplicar (5%)</option></select>
-          </div>
+          <ReceiptFactorInput
+            receiptId={receipt.id}
+            label="Distancia"
+            name="distance_factor_percent"
+            defaultValue={receipt.distanceFactorPercent}
+          />
+          <ReceiptFactorInput
+            receiptId={receipt.id}
+            label="Exigencia"
+            name="exigency_factor_percent"
+            defaultValue={receipt.exigencyFactorPercent}
+          />
+          <ReceiptFactorInput
+            receiptId={receipt.id}
+            label="Clima"
+            name="weather_factor_percent"
+            defaultValue={receipt.weatherFactorPercent}
+          />
+          <ReceiptFactorInput
+            receiptId={receipt.id}
+            label="Extraordinario"
+            name="extraordinary_factor_percent"
+            defaultValue={receipt.extraordinaryFactorPercent}
+          />
         </div>
 
         <div className="rounded-md border bg-background">

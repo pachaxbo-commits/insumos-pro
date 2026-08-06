@@ -31,7 +31,7 @@ export async function getOperationalMatrixData(
 
   const { data: orderData, error: orderError } = await supabase
     .from("qb_orders")
-    .select("id, customer_account_id, public_reference, status, updated_at, customer_snapshot, location_snapshot")
+    .select("id, customer_account_id, public_reference, status, updated_at, customer_notes, customer_snapshot, location_snapshot")
     .eq("operational_date", operationalDate)
     .neq("status", "cancelado")
     .order("submitted_at", { ascending: true });
@@ -50,7 +50,7 @@ export async function getOperationalMatrixData(
       supabase
         .from("qb_order_items")
         .select(
-          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
+          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, customer_notes, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true }),
@@ -133,6 +133,7 @@ export async function getOperationalMatrixData(
         locationLabel:
           snapshotText(order.location_snapshot, "label") ??
           snapshotText(order.location_snapshot, "address"),
+        customerNotes: String(order.customer_notes ?? ""),
         status: String(order.status),
         updatedAt: String(order.updated_at),
         position: numberOr(day?.position, index + 1),
@@ -172,6 +173,7 @@ export async function getOperationalMatrixData(
       sourceLabel: String(item.source_label),
       baseUnitSymbol: String(item.base_unit_symbol),
       requestedQuantity: numberOr(item.requested_quantity),
+      requestedNote: String(item.customer_notes ?? ""),
       requestedVersion: numberOr(item.row_version),
       preparedQuantity: numberOr(prep?.actual_quantity),
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),

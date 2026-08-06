@@ -210,11 +210,11 @@ test("admin keeps subtotal while customer export exposes only the final total", 
   assert.equal((documentSource.match(/receipt\.subtotalAmount/g) ?? []).length, 1);
 });
 
-test("visibleNote is rendered once for both receipt variants", () => {
+test("visibleNote is rendered only in the administrative receipt", () => {
   assert.equal((documentSource.match(/receipt\.visibleNote/g) ?? []).length, 2);
   assert.match(
     documentSource,
-    /\{receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
+    /\{!isCustomerExport && receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
   );
 });
 

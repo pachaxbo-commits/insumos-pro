@@ -94,6 +94,7 @@ const validProductUnits = new Set(
 );
 const unitById = new Map(units.map((unit) => [unit.id, unit]));
 const itemsByOrder = new Map();
+const historySize = 8;
 
 for (const item of orderItems) {
   const current = itemsByOrder.get(item.order_id) ?? [];
@@ -101,18 +102,24 @@ for (const item of orderItems) {
   itemsByOrder.set(item.order_id, current);
 }
 
-const latestOrderByCustomer = new Map();
+const recentOrdersByCustomer = new Map();
 for (const order of orders) {
   if (order.confirmed !== "t") continue;
-  const current = latestOrderByCustomer.get(order.user_id);
-  if (
-    !current ||
-    String(order.order_date).localeCompare(String(current.order_date)) > 0 ||
-    (order.order_date === current.order_date &&
-      Number(order.id) > Number(current.id))
-  ) {
-    latestOrderByCustomer.set(order.user_id, order);
-  }
+  const current = recentOrdersByCustomer.get(order.user_id) ?? [];
+  current.push(order);
+  recentOrdersByCustomer.set(order.user_id, current);
+}
+for (const [customerId, customerOrders] of recentOrdersByCustomer) {
+  recentOrdersByCustomer.set(
+    customerId,
+    customerOrders
+      .sort(
+        (left, right) =>
+          String(right.order_date).localeCompare(String(left.order_date)) ||
+          Number(right.id) - Number(left.id),
+      )
+      .slice(0, historySize),
+  );
 }
 
 const audit = {
@@ -131,76 +138,78 @@ const audit = {
 const templates = [];
 
 for (const customer of activeCustomers) {
-  const order = latestOrderByCustomer.get(customer.id);
-  if (!order) continue;
+  const customerOrders = recentOrdersByCustomer.get(customer.id) ?? [];
+  if (!customerOrders.length) continue;
   audit.customersWithConfirmedOrder += 1;
 
-  const consolidated = new Map();
-  for (const item of (itemsByOrder.get(order.id) ?? []).sort(
-    (left, right) => Number(left.id) - Number(right.id),
-  )) {
-    const quantity = Number(item.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      audit.zeroQuantityLinesOmitted += 1;
-      continue;
-    }
-    audit.positiveSourceLines += 1;
-
-    if (
-      !activeProductIds.has(item.product_id) ||
-      !activeUnitIds.has(item.unit_of_measure_id) ||
-      !validProductUnits.has(`${item.product_id}:${item.unit_of_measure_id}`)
-    ) {
-      audit.inactiveOrInvalidLinesOmitted += 1;
-      continue;
-    }
-
-    if (
-      ["BS", "BS."].includes(
-        String(unitById.get(item.unit_of_measure_id)?.abbreviation ?? "")
-          .trim()
-          .toUpperCase(),
-      )
-    ) {
-      audit.positiveBsLines += 1;
-    }
-
-    const current = consolidated.get(item.product_id);
-    if (current) {
-      current.quantity += quantity;
-      if (item.notes?.trim() && !current.notes.includes(item.notes.trim())) {
-        current.notes.push(item.notes.trim());
+  for (const order of customerOrders) {
+    const consolidated = new Map();
+    for (const item of (itemsByOrder.get(order.id) ?? []).sort(
+      (left, right) => Number(left.id) - Number(right.id),
+    )) {
+      const quantity = Number(item.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        audit.zeroQuantityLinesOmitted += 1;
+        continue;
       }
-      continue;
+      audit.positiveSourceLines += 1;
+
+      if (
+        !activeProductIds.has(item.product_id) ||
+        !activeUnitIds.has(item.unit_of_measure_id) ||
+        !validProductUnits.has(`${item.product_id}:${item.unit_of_measure_id}`)
+      ) {
+        audit.inactiveOrInvalidLinesOmitted += 1;
+        continue;
+      }
+
+      if (
+        ["BS", "BS."].includes(
+          String(unitById.get(item.unit_of_measure_id)?.abbreviation ?? "")
+            .trim()
+            .toUpperCase(),
+        )
+      ) {
+        audit.positiveBsLines += 1;
+      }
+
+      const current = consolidated.get(item.product_id);
+      if (current) {
+        current.quantity += quantity;
+        if (item.notes?.trim() && !current.notes.includes(item.notes.trim())) {
+          current.notes.push(item.notes.trim());
+        }
+        continue;
+      }
+
+      consolidated.set(item.product_id, {
+        productId: item.product_id,
+        unitId: item.unit_of_measure_id,
+        quantity,
+        notes: item.notes?.trim() ? [item.notes.trim()] : [],
+        sortOrder: consolidated.size + 1,
+      });
     }
 
-    consolidated.set(item.product_id, {
-      productId: item.product_id,
-      unitId: item.unit_of_measure_id,
-      quantity,
-      notes: item.notes?.trim() ? [item.notes.trim()] : [],
-      sortOrder: consolidated.size + 1,
+    const lines = [...consolidated.values()].map((line) => {
+      const normalized = normalizeQuantity(line.quantity);
+      if (Math.abs(normalized - line.quantity) > 0.000001) {
+        audit.normalizedQuantities += 1;
+      }
+      return {
+        ...line,
+        quantity: normalized,
+        notes: [...new Set(line.notes)].join(" | ").slice(0, 500),
+      };
     });
+    if (!lines.length) continue;
+
+    audit.usableTemplates += 1;
+    audit.consolidatedLines += lines.length;
+    audit.largestTemplate = Math.max(audit.largestTemplate, lines.length);
+    if (lines.length > 30) audit.templatesOver30Lines += 1;
+    templates.push({ customer, order, lines });
   }
-
-  const lines = [...consolidated.values()].map((line) => {
-    const normalized = normalizeQuantity(line.quantity);
-    if (Math.abs(normalized - line.quantity) > 0.000001) {
-      audit.normalizedQuantities += 1;
-    }
-    return {
-      ...line,
-      quantity: normalized,
-      notes: [...new Set(line.notes)].join(" | ").slice(0, 500),
-    };
-  });
-  if (!lines.length) continue;
-
-  audit.usableTemplates += 1;
-  audit.consolidatedLines += lines.length;
-  audit.largestTemplate = Math.max(audit.largestTemplate, lines.length);
-  if (lines.length > 30) audit.templatesOver30Lines += 1;
-  templates.push({ customer, order, lines });
 }
 
 console.log(JSON.stringify(audit, null, 2));
@@ -225,7 +234,7 @@ const lineRows = templates.flatMap(({ customer, order, lines }) =>
   ]),
 );
 
-const migration = `-- Plantillas reutilizables del último pedido confirmado de cada cliente antiguo.
+const migration = `-- Plantillas reutilizables de los últimos ${historySize} pedidos confirmados de cada cliente antiguo.
 -- Solo se importan cantidades positivas, productos/unidades activos y combinaciones válidas.
 -- Los productos repetidos se consolidan y las cantidades se ajustan al paso actual de 0.5.
 

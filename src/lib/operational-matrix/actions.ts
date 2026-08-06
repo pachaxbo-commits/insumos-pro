@@ -71,7 +71,7 @@ export async function saveMatrixPreparationAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["inventario"], false);
+  }, ["administrador", "inventario"], false);
 }
 
 export async function saveMatrixDeliveryAction(input: unknown) {
@@ -95,7 +95,7 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["entregador"], false);
+  }, ["administrador", "entregador"], false);
 }
 
 export async function finalizeMatrixPreparationAction(input: unknown) {
@@ -107,7 +107,7 @@ export async function finalizeMatrixPreparationAction(input: unknown) {
     p_order_id: parsed.data.orderId,
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["inventario"]);
+  }, ["administrador", "inventario"]);
 }
 
 export async function confirmMatrixDeliveryAction(input: unknown) {
@@ -123,7 +123,7 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
   const firstAttempt = await rpc(
     "confirm_qb_matrix_delivery",
     payload,
-    ["entregador"],
+    ["administrador", "entregador"],
   );
   if (!firstAttempt.conflict) return firstAttempt;
 
@@ -142,7 +142,7 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
       ...payload,
       p_expected_updated_at: String(currentOrder.updated_at),
     },
-    ["entregador"],
+    ["administrador", "entregador"],
   );
 }
 
@@ -159,7 +159,7 @@ export async function reopenMatrixDeliveryAction(input: unknown) {
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_reason: parsed.data.reason,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["entregador"]);
+  }, ["administrador", "entregador"]);
 }
 
 export async function correctMatrixRequestAction(input: unknown) {

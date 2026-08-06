@@ -3,9 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [page, component, creator, actions, data, migration, sqlContract] = await Promise.all([
+const [page, creator, actions, data, migration, sqlContract] = await Promise.all([
   read("src/app/(private)/pedidos/page.tsx"),
-  read("src/components/qb-orders/qb-orders-management.tsx"),
   read("src/components/qb-orders/internal-order-creator.tsx"),
   read("src/lib/qb-orders/actions.ts"),
   read("src/lib/qb-orders/data.ts"),
@@ -15,40 +14,43 @@ const [page, component, creator, actions, data, migration, sqlContract] = await 
 const creationActions = await read("src/lib/qb-orders/creation-actions.ts");
 
 test("Nuevo pedido solo se habilita para administrador", () => {
-  assert.match(page, /auth\.user\.role === "administrador"/);
-  assert.match(component, /canCreateOrder \? \([\s\S]*<LazyInternalOrderCreator/);
+  assert.match(page, /requireRoleAccess\("\/pedidos"\)/);
+  assert.match(page, /<OrderCreationWorkspace/);
   assert.match(actions, /auth\.user\.role !== "administrador"/);
   assert.match(creationActions, /auth\.user\.role !== "administrador"/);
 });
 
-test("la interfaz permite cliente registrado o invitado manual", () => {
-  assert.match(creator, /Cliente registrado/);
-  assert.match(creator, /Cliente sin cuenta/);
+test("la interfaz crea pedidos únicamente para clientes registrados", () => {
+  assert.match(creator, /name=\{editing \? undefined : "customer_account_id"\}/);
+  assert.match(creator, />Cliente<\/Label>/);
   for (const name of ["business_name", "responsible_name", "phone", "address"]) {
-    assert.match(creator, new RegExp(`name="${name}"`));
+    assert.doesNotMatch(creator, new RegExp(`name="${name}"`));
   }
 });
 
 test("la interfaz selecciona productos, unidades y cantidades permitidas", () => {
   assert.match(creator, /products\.map/);
   assert.match(creator, /product\?\.allowedUnits/);
-  assert.match(creator, /min=\{allowedUnit\?\.minQuantity/);
-  assert.match(creator, /step=\{allowedUnit\?\.quantityStep/);
+  assert.match(
+    creator,
+    /min=\{Math\.max\(allowedUnit\?\.minQuantity \?\? 0\.5, 0\.5\)\}/,
+  );
+  assert.match(creator, /step="0\.5"/);
 });
 
 test("Nuevo pedido usa una tabla continua y no el selector producto por producto", () => {
   assert.match(creator, /data-product-order-table/);
-  assert.match(creator, /<table className="w-full min-w-\[980px\]/);
+  assert.match(creator, /<table className="w-full min-w-\[820px\]/);
   assert.match(creator, /overflow-auto/);
   assert.match(creator, /type="checkbox"/);
-  assert.match(creator, /Cantidad \/ Bs/);
+  assert.match(creator, />\s*Cantidad\s*</);
   assert.doesNotMatch(creator, /ProductCombobox/);
   assert.doesNotMatch(creator, /Agregar producto/);
 });
 
-test("la tabla prioriza el último pedido y pagina el resto alfabéticamente", () => {
-  assert.match(creator, /history\?\.lines\.map/);
-  assert.match(creator, /Último pedido del cliente/);
+test("la tabla prioriza el promedio histórico y pagina el resto alfabéticamente", () => {
+  assert.match(creator, /history\?\.lines/);
+  assert.match(creator, /Promedio de pedidos del cliente/);
   assert.match(creator, /localeCompare\(right\.name, "es"\)/);
   assert.match(creator, /const PRODUCT_BATCH_SIZE = 40/);
   assert.match(creator, /Mostrar\{" "\}/);

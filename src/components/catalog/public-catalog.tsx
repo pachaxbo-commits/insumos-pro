@@ -159,7 +159,7 @@ function CartSummary({
                     </Button>
                   </div>
                   {item.notes ? (
-                    <p className="mt-2 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                    <p className="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
                       {item.notes}
                     </p>
                   ) : null}

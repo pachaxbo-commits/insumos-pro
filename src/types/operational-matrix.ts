@@ -8,6 +8,7 @@ export type MatrixOrder = {
   reference: string;
   customerName: string;
   locationLabel: string | null;
+  customerNotes: string;
   status: string;
   updatedAt: string;
   position: number;
@@ -27,6 +28,7 @@ export type MatrixLine = {
   sourceLabel: string;
   baseUnitSymbol: string;
   requestedQuantity: number;
+  requestedNote: string;
   requestedVersion: number;
   preparedQuantity: number;
   preparedBaseQuantity: number;

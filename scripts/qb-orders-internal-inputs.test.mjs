@@ -14,6 +14,7 @@ const productB = "44444444-4444-4444-8444-444444444444";
 const unitA = "55555555-5555-4555-8555-555555555555";
 const unitB = "66666666-6666-4666-8666-666666666666";
 const idempotencyKey = "77777777-7777-4777-8777-777777777777";
+const operationalDate = "2099-12-31";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const componentSource = source("src/components/qb-orders/internal-order-creator.tsx");
@@ -42,6 +43,7 @@ function registeredForm(items = [quantityLine()], includeNotes = true) {
   formData.set("order_mode", "registered");
   formData.set("customer_account_id", customerId);
   formData.set("customer_location_id", locationId);
+  formData.set("operational_date", operationalDate);
   formData.set("idempotency_key", idempotencyKey);
   formData.set("items", JSON.stringify(items));
   if (includeNotes) formData.set("customer_notes", "");
@@ -56,6 +58,7 @@ function guestForm(items = [quantityLine()]) {
   formData.set("phone", "+59170000000");
   formData.set("address", "Dirección QA controlada");
   formData.set("idempotency_key", idempotencyKey);
+  formData.set("operational_date", operationalDate);
   formData.set("items", JSON.stringify(items));
   return formData;
 }
@@ -86,6 +89,19 @@ test("04 una línea válida acepta nota vacía", () => {
   if (parsed.success) assert.equal(parsed.data.items[0].notes, "");
 });
 
+test("04b las observaciones conservan espacios internos y saltos de línea", () => {
+  const note = "  dos   palabras\ncon separación  ";
+  const formData = registeredForm([quantityLine(productA, unitA, note)]);
+  formData.set("customer_notes", note);
+  const parsed = parseInternalOrderFormData(formData);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.items[0].notes, "dos   palabras\ncon separación");
+    assert.equal(parsed.data.customerNotes, "dos   palabras\ncon separación");
+  }
+  assert.match(componentSource, /<Textarea[\s\S]*Nota de \$\{product\.name\}/);
+});
+
 test("05 registered normaliza a vacío los campos guest recibidos como null", () => {
   const parsed = parseInternalOrderFormData(registeredForm());
   assert.equal(parsed.success, true);
@@ -108,6 +124,7 @@ test("05 registered normaliza a vacío los campos guest recibidos como null", ()
 test("06 coordenadas ausentes equivalen al par null/null", () => {
   const parsed = createInternalOrderSchema.safeParse({
     orderMode: "registered",
+    operationalDate,
     customerAccountId: customerId,
     customerLocationId: locationId,
     latitude: null,
@@ -122,6 +139,7 @@ test("06 coordenadas ausentes equivalen al par null/null", () => {
 test("07 place ID nulo no forma parte del contrato interno vigente", () => {
   const parsed = createInternalOrderSchema.safeParse({
     orderMode: "registered",
+    operationalDate,
     customerAccountId: customerId,
     customerLocationId: locationId,
     googlePlaceId: null,
@@ -132,15 +150,14 @@ test("07 place ID nulo no forma parte del contrato interno vigente", () => {
   assert.doesNotMatch(actionSource, /p_google_place_id/);
 });
 
-test("08 guest válido acepta correo opcional nulo", () => {
+test("08 el flujo interno rechaza pedidos guest", () => {
   const parsed = parseInternalOrderFormData(guestForm());
-  assert.equal(parsed.success, true);
-  if (parsed.success) assert.equal(parsed.data.email, "");
+  assert.equal(parsed.success, false);
 });
 
-test("09 guest válido funciona sin coordenadas", () => {
+test("09 el contrato interno exige cliente registrado", () => {
   const parsed = parseInternalOrderFormData(guestForm());
-  assert.equal(parsed.success, true);
+  assert.equal(parsed.success, false);
 });
 
 test("10 reproduce dos líneas quantity válidas", () => {
@@ -151,12 +168,11 @@ test("10 reproduce dos líneas quantity válidas", () => {
   if (parsed.success) assert.equal(parsed.data.items.length, 2);
 });
 
-test("11 acepta una línea quantity y una amount_bs", () => {
+test("11 el pedido interno exige cantidades y rechaza amount_bs", () => {
   const parsed = parseInternalOrderFormData(
     registeredForm([quantityLine(), amountLine()]),
   );
-  assert.equal(parsed.success, true);
-  if (parsed.success) assert.deepEqual(parsed.data.items.map((item) => item.inputMode), ["quantity", "amount_bs"]);
+  assert.equal(parsed.success, false);
 });
 
 test("12 registered sin cliente devuelve mensaje de dominio", () => {
@@ -212,7 +228,10 @@ test("16 cantidad cero se rechaza", () => {
 test("17 error de servidor conserva el formulario", () => {
   assert.match(componentSource, /event\.preventDefault\(\)/);
   assert.doesNotMatch(componentSource, /<form action=/);
-  assert.match(componentSource, /if \(result\.success && result\.orderId && result\.reference\)/);
+  assert.match(
+    componentSource,
+    /if \(!editing && result\.success && result\.orderId && result\.reference\)/,
+  );
 });
 
 test("18 error de red conserva valores y muestra mensaje español", () => {
@@ -225,16 +244,19 @@ test("19 éxito confirmado limpia todos los borradores", () => {
   for (const reset of [
     /setCustomerId\(""\)/,
     /setLocationId\(""\)/,
-    /setGuest\(blankGuestDraft\)/,
+    /setOperationalDate\(boliviaTomorrow\(\)\)/,
     /setCustomerNotes\(""\)/,
-    /setLines\(\[blankLine\(1\)\]\)/,
+    /setLines\(\[\]\)/,
   ]) assert.match(componentSource, reset);
   assert.match(componentSource, /formRef\.current\?\.reset\(\)/);
 });
 
 test("20 doble clic queda bloqueado y conserva idempotencia en reintentos", () => {
   assert.match(componentSource, /submissionInFlightRef\.current/);
-  assert.match(componentSource, /disabled=\{pending \|\| !idempotencyKey\}/);
+  assert.match(
+    componentSource,
+    /pending \|\| \(!editing && !idempotencyKey\) \|\| lines\.length === 0/,
+  );
   assert.doesNotMatch(
     componentSource.match(/catch \{[\s\S]*?\} finally/)?.[0] ?? "",
     /setIdempotencyKey/,
@@ -245,7 +267,7 @@ test("20 doble clic queda bloqueado y conserva idempotencia en reintentos", () =
 test("21 la acción confirma UUID y referencia antes de declarar éxito", () => {
   assert.match(actionSource, /uuidSchema\.safeParse\(result\.created_order_id\)/);
   assert.match(actionSource, /!orderId\.success \|\| !reference/);
-  assert.match(actionSource, /orderId: orderId\.data/);
+  assert.match(actionSource, /orderId: createdOrders\[0\]\.id/);
 });
 
 test("22 crear un pedido no modifica stock", () => {
@@ -256,7 +278,7 @@ test("22 crear un pedido no modifica stock", () => {
 test("23 la interfaz nunca expone mensajes técnicos de Zod", () => {
   const createActionSource = actionSource.slice(
     actionSource.indexOf("export async function createQbInternalOrderAction"),
-    actionSource.indexOf("export async function startQbOrderPreparationAction"),
+    actionSource.indexOf("export async function updateQbInternalOrderAction"),
   );
   assert.doesNotMatch(componentSource + createActionSource, /expected string|received null|SQLSTATE/i);
   assert.doesNotMatch(createActionSource, /errorMessage\(error/);
@@ -268,6 +290,8 @@ test("24 una solicitud inválida se detiene antes de invocar la RPC", () => {
   );
   assert.equal(duplicate.success, false);
   const validationIndex = actionSource.indexOf("if (!parsed.success)");
-  const rpcIndex = actionSource.indexOf('"create_qb17_internal_catalog_order"');
+  const rpcIndex = actionSource.indexOf(
+    '"create_qb17_internal_catalog_order_with_date"',
+  );
   assert.ok(validationIndex > 0 && rpcIndex > validationIndex);
 });

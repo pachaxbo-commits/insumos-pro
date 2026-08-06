@@ -55,9 +55,18 @@ const receiptLineUpdateSchema = z
     }
   });
 
-const receiptFactorSchema = z.coerce.number().refine(
-  (value) => value === 0 || value === 5,
-  "Cada factor debe estar desactivado (0%) o activado (5%).",
+const receiptFactorSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? Number.NaN : value,
+  z.coerce
+    .number()
+    .finite()
+    .min(0)
+    .max(1000)
+    .refine(
+      (value) => Number.isInteger(value),
+      "Cada porcentaje debe ser un número entero.",
+    ),
 );
 
 const updateDraftSchema = z.object({
@@ -167,7 +176,7 @@ export async function updateQbReceiptDraftAction(
 
   if (!parsed.success) {
     return initialFailure(
-      "El precio debe ser un número positivo válido o quedar pendiente. Cada factor debe ser 0% o 5%.",
+      "El precio debe ser un número positivo válido o quedar pendiente. Cada porcentaje debe ser un número entero entre 0% y 1000%.",
     );
   }
 

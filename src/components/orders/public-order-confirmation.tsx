@@ -252,7 +252,7 @@ export function PublicOrderConfirmation() {
                   ) : null}
 
                   {item.notes ? (
-                    <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-xs text-[#676e68]">
+                    <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-white/70 px-3 py-2 text-xs text-[#676e68]">
                       {item.notes}
                     </p>
                   ) : null}

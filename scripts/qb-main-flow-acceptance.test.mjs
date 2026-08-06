@@ -26,6 +26,8 @@ const [
   deliveryConfirmationMigration,
   forceDeleteCustomerMigration,
   customerDeleteCompatibilityMigration,
+  deliveryDateMigration,
+  legacyHistoryMigration,
 ] = await Promise.all([
   read("src/components/qb-orders/internal-order-creator.tsx"),
   read("src/lib/qb-orders/creation-actions.ts"),
@@ -56,41 +58,53 @@ const [
   read(
     "supabase/migrations/20260725010900_qb_customer_delete_snapshot_compatibility.sql",
   ),
+  read(
+    "supabase/migrations/20260729010000_qb_internal_order_delivery_date.sql",
+  ),
+  read(
+    "supabase/migrations/20260729010100_qb_legacy_last_eight_order_templates.sql",
+  ),
 ]);
 
-// Repetir pedido: selección focalizada, fallback explícito y estado sin histórico.
-assert.match(creator, /Último pedido/);
-assert.match(creator, /Repetir último pedido/);
-assert.match(creator, /todavía no tiene pedidos anteriores para\s+repetir/);
-assert.match(creator, /proviene de otra ubicación/);
+// Sugerencia de pedido: promedio editable de hasta ocho pedidos.
+assert.match(creator, /Promedio de los últimos 8 pedidos/);
+assert.match(creator, /Historial cargado autom/);
+assert.doesNotMatch(creator, /Usar promedio/);
+assert.match(creator, /checked=\{selected\}/);
+assert.match(creator, /todavía no tiene pedidos anteriores para\s+calcular un promedio/);
+assert.match(creator, /promedio incluye pedidos de otras ubicaciones/);
 assert.match(creator, /ubicación\s+seleccionada no cambiará/);
 assert.match(
   creationActions,
   /\.eq\("customer_location_id", selection\.data\.locationId\)/,
 );
 assert.match(creationActions, /\.neq\("status", "cancelado"\)/);
+assert.match(creationActions, /const ORDER_AVERAGE_SIZE = 8/);
 assert.ok(
-  (creationActions.match(/\.limit\(1\)/g) ?? []).length >= 2,
-  "same-location and customer fallback queries are both limited",
+  (creationActions.match(/\.limit\(ORDER_AVERAGE_SIZE\)/g) ?? []).length >= 3,
+  "current and legacy history queries are limited to eight",
 );
 assert.match(
   creationActions,
-  /if \(!template\.data\) return \{ success: true, order: null \}/,
+  /if \(!samples\.length\) return \{ success: true, order: null \}/,
 );
-assert.match(creationActions, /\.eq\("order_id", order\.id\)/);
+assert.match(creationActions, /\.in\("order_id", selectedCurrentIds\)/);
 assert.doesNotMatch(
   creationActions,
   /\.from\("qb_orders"\)[\s\S]{0,500}\.limit\(80\)/,
 );
 assert.match(creationActions, /\.from\("qb_legacy_order_templates"\)/);
 assert.match(creationActions, /\.from\("qb_legacy_order_template_lines"\)/);
-assert.match(creationActions, /source: "legacy"/);
-assert.match(creationActions, /source: "current"/);
-assert.match(creator, /Plantilla recuperada del sistema anterior/);
+assert.match(creationActions, /source: "average"/);
+assert.match(creationActions, /item\.totalBaseQuantity \/ samples\.length/);
+assert.match(creator, /consideran como cero/);
 assert.match(legacyTemplateMigration, /activeCustomers/);
 assert.match(legacyTemplateMigration, /source_order_id/);
 assert.match(legacyTemplateMigration, /template_count <> 38/);
 assert.match(legacyTemplateMigration, /line_count <> 330/);
+assert.match(legacyHistoryMigration, /últimos 8 pedidos confirmados/);
+assert.match(legacyHistoryMigration, /template_count <> 274/);
+assert.match(legacyHistoryMigration, /line_count <> 2211/);
 assert.match(bsQuantityMigration, /QB_BS_QUANTITY_GUARD_NOT_FOUND/);
 
 // Una plantilla grande se divide de forma idempotente sin perder productos.
@@ -119,14 +133,15 @@ for (const forbidden of [
 ]) {
   assert.doesNotMatch(creator, new RegExp(forbidden));
 }
-assert.match(creator, /repeatLoadingRef\.current/);
-assert.match(creator, /repeatedOrderId === history\.id/);
-assert.match(creator, /setLines\(repeatedLines\)/);
+assert.match(creator, /historyRequestRef\.current/);
+assert.match(creator, /const suggestion = history\?\.lines\.find/);
+assert.match(creator, /checked=\{selected\}/);
+assert.doesNotMatch(creator, /setLines\(repeatedLines\)/);
 assert.doesNotMatch(
-  creator.match(/function repeatLastOrder\(\)[\s\S]*?\n  \}/)?.[0] ?? "",
+  creator.match(/function applyAverageOrder\(\)[\s\S]*?\n  \}/)?.[0] ?? "",
   /createQbInternalOrderAction/,
 );
-assert.match(creator, /Cancelar repetición/);
+assert.doesNotMatch(creator, /Quitar promedio/);
 assert.doesNotMatch(creator, /Abrir en Matriz operativa/);
 
 // Navegación principal y preservación de contexto.
@@ -136,7 +151,7 @@ assert.match(
 );
 assert.match(
   roles,
-  /administrador: \["\/", "\/pedidos", "\/clientes", "\/recibos"\]/,
+  /administrador: \[[\s\S]*"\/pedidos"[\s\S]*"\/matriz-operativa"/,
 );
 assert.match(roles, /inventario: \["\/", "\/matriz-operativa"\]/);
 assert.match(roles, /entregador: \["\/", "\/matriz-operativa"\]/);
@@ -178,12 +193,12 @@ assert.match(
   /grant select on table public\.qb_order_items to service_role/,
 );
 
-// Una sola matriz continua en escritorio y móvil, sin selector ni filtrado.
+// Una sola matriz continua en escritorio y móvil, sin selector de clientes ni filtrado.
 assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
 assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
 assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|selectedLines/);
 assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
-assert.doesNotMatch(matrix, /<select/);
+assert.match(matrix, /Unidad de \$\{label\.toLowerCase\(\)\}/);
 assert.doesNotMatch(matrix, /orders\.filter/);
 assert.match(matrix, /touch-pan-x[\s\S]*overflow-auto/);
 assert.match(matrix, /customerGroups\.map\(\(group/);
@@ -211,10 +226,12 @@ assert.match(matrix, /TOTALES/);
 assert.match(matrix, /TOTALES POR CLIENTE/);
 assert.match(matrix, /Check bodega/);
 assert.match(matrix, /Check de Inventario/);
+assert.match(matrix, /Check de Entrega faltante/);
+assert.match(matrix, /groupedLines\.every\(hasDeliveryCheck\)/);
 assert.doesNotMatch(matrix, /Finalizar preparación/);
 assert.match(matrix, /Confirmar entrega/);
 assert.match(matrix, /Deshacer entrega/);
-assert.match(matrix, /data\.role === "entregador"/);
+assert.match(matrix, /\["administrador", "entregador"\]\.includes\(data\.role\)/);
 assert.match(
   matrix,
   /Guardando cantidades reales y confirmando la entrega/,
@@ -229,7 +246,7 @@ assert.match(matrix, /disabled=\{!editable\}/);
 assert.match(matrix, /preparationCheck/);
 assert.match(matrix, /deliveryCheck/);
 assert.doesNotMatch(matrix, /<Card/);
-assert.match(matrix, /"CHECK INV\.", "PESO\/CANT\. REAL"/);
+assert.match(matrix, /"CHECK INV\.\/ENT\.", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
 assert.match(matrix, /Cantidad real entregada de/);
@@ -263,6 +280,30 @@ assert.match(matrixActions, /\.select\("updated_at"\)/);
 assert.match(
   matrixActions,
   /p_expected_updated_at: String\(currentOrder\.updated_at\)/,
+);
+
+// Fecha de entrega elegida y sincronizada con la matriz.
+assert.match(creator, /name="operational_date"/);
+assert.match(creator, /type="date"/);
+assert.match(orderInput, /operationalDate/);
+assert.match(orderActions, /p_operational_date: parsed\.data\.operationalDate/);
+assert.match(
+  orderActions,
+  /create_qb17_internal_catalog_order_with_date/,
+);
+assert.match(deliveryDateMigration, /p_operational_date date/);
+assert.match(
+  deliveryDateMigration,
+  /update public\.qb_operational_day_orders/,
+);
+assert.match(deliveryDateMigration, /update public\.qb_orders/);
+assert.match(
+  matrixActions,
+  /\["administrador", "inventario"\]/,
+);
+assert.match(
+  matrixActions,
+  /\["administrador", "entregador"\]/,
 );
 
 console.log("QB main-flow acceptance contracts: OK");

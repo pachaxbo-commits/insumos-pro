@@ -20,6 +20,8 @@ type SupabaseServerClient = NonNullable<
 type OrderRow = {
   id: string;
   public_reference: string;
+  customer_account_id: string;
+  customer_location_id: string;
   status: QbOrderStatus;
   operational_date: string;
   submitted_at: string;
@@ -34,6 +36,7 @@ type ItemRow = {
   id: string;
   order_id: string;
   product_id: string;
+  allowed_unit_id: string;
   source_label: string;
   requested_quantity: number | string;
   order_input_mode: "quantity" | "amount_bs";
@@ -290,7 +293,7 @@ export async function getQbInternalOrdersData(
   const { data: ordersData, error } = await supabase
     .from("qb_orders")
     .select(
-      "id, public_reference, status, operational_date, submitted_at, updated_at, customer_notes, customer_snapshot, location_snapshot, delivered_at",
+      "id, public_reference, customer_account_id, customer_location_id, status, operational_date, submitted_at, updated_at, customer_notes, customer_snapshot, location_snapshot, delivered_at",
     )
     .order("submitted_at", { ascending: false })
     .limit(80);
@@ -312,7 +315,7 @@ export async function getQbInternalOrdersData(
     supabase
       .from("qb_order_items")
       .select(
-        "id, order_id, product_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)",
+        "id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)",
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true }),
@@ -376,6 +379,7 @@ export async function getQbInternalOrdersData(
       return {
         id: item.id,
         productId: item.product_id,
+        allowedUnitId: item.allowed_unit_id,
         productName: productName(item),
         sourceLabel: item.source_label,
         requestedQuantity: Number(item.requested_quantity) || 0,
@@ -416,6 +420,8 @@ export async function getQbInternalOrdersData(
       id: order.id,
       reference: order.public_reference,
       status: order.status,
+      customerAccountId: order.customer_account_id,
+      customerLocationId: order.customer_location_id,
       operationalDate: String(order.operational_date),
       submittedAt: order.submitted_at,
       updatedAt: order.updated_at,

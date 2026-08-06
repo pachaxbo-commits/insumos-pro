@@ -232,7 +232,7 @@ export function PublicCheckout({
                             ? `Solicitado por importe: Bs ${bolivianos(item.requestedAmountBs ?? 0)}`
                             : `Solicitado por cantidad: ${quantity(item.quantity)} ${unit.label}`}
                         </p>
-                        {item.notes ? <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p> : null}
+                        {item.notes ? <p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{item.notes}</p> : null}
                       </div>
                       <Button
                         type="button"

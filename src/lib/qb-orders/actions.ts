@@ -20,6 +20,10 @@ const actionState = (
 
 const uuidSchema = z.string().uuid();
 const INTERNAL_ORDER_BATCH_SIZE = 30;
+const updateOrderTargetSchema = z.object({
+  orderId: z.string().uuid(),
+  expectedUpdatedAt: z.string().trim().min(1),
+});
 
 const preparationLineSchema = z.object({
   orderItemId: z.string().uuid(),
@@ -135,6 +139,8 @@ function internalOrderResultMessage(resultCode: string) {
       return "No repitas un producto en el mismo pedido.";
     case "invalid_contact":
       return "Revisa los datos del cliente sin cuenta.";
+    case "invalid_operational_date":
+      return "Selecciona una fecha de entrega válida, desde hoy en adelante.";
     default:
       return "No pudimos crear el pedido. Revisa los datos e inténtalo nuevamente.";
   }
@@ -189,7 +195,7 @@ export async function createQbInternalOrderAction(
         ? parsed.data.idempotencyKey
         : `${parsed.data.idempotencyKey}-${String(index + 1).padStart(2, "0")}`;
     const { data, error } = await supabase.rpc(
-      "create_qb17_internal_catalog_order",
+      "create_qb17_internal_catalog_order_with_date",
       {
         p_order_mode: "registered",
         p_customer_account_id: parsed.data.customerAccountId,
@@ -202,6 +208,7 @@ export async function createQbInternalOrderAction(
         p_location_label: parsed.data.locationLabel || null,
         p_location_reference: parsed.data.locationReference || null,
         p_customer_notes: parsed.data.customerNotes || null,
+        p_operational_date: parsed.data.operationalDate,
         p_items: items.map((item) => ({
           product_id: item.productId,
           input_mode: "quantity",
@@ -250,6 +257,7 @@ export async function createQbInternalOrderAction(
   }
 
   revalidatePath("/pedidos");
+  revalidatePath("/matriz-operativa");
   const alreadyCreated = createdOrders.every(
     (order) => order.resultCode === "already_created",
   );
@@ -258,10 +266,88 @@ export async function createQbInternalOrderAction(
     message: alreadyCreated
       ? "El pedido ya había sido recibido."
       : batches.length > 1
-        ? `Pedido creado en ${batches.length} partes y enviado a preparación.`
-        : "Pedido creado y enviado a preparación.",
+        ? `Pedido creado en ${batches.length} partes para entrega el ${parsed.data.operationalDate} y enviado a preparación.`
+        : `Pedido creado para entrega el ${parsed.data.operationalDate} y enviado a preparación.`,
     reference: createdOrders.map((order) => order.reference).join(", "),
     orderId: createdOrders[0].id,
+  };
+}
+
+export async function updateQbInternalOrderAction(
+  _previous: QbOrderActionState,
+  formData: FormData,
+): Promise<QbOrderActionState> {
+  const auth = await requireRoleAccess("/pedidos");
+  if (auth.user.role !== "administrador") {
+    return actionState(false, "Solo un administrador puede editar pedidos.");
+  }
+
+  const target = updateOrderTargetSchema.safeParse({
+    orderId: formData.get("order_id"),
+    expectedUpdatedAt: formData.get("expected_updated_at"),
+  });
+  const parsed = parseInternalOrderFormData(formData);
+  if (!target.success || !parsed.success) {
+    return actionState(
+      false,
+      parsed.success
+        ? "El pedido que intentas editar no es válido."
+        : (parsed.error.issues[0]?.message ?? "Revisa el pedido."),
+    );
+  }
+  if (parsed.data.items.length > INTERNAL_ORDER_BATCH_SIZE) {
+    return actionState(
+      false,
+      `Un pedido editable admite hasta ${INTERNAL_ORDER_BATCH_SIZE} productos.`,
+    );
+  }
+
+  const { supabase } = await getSupabaseOrState();
+  if (!supabase) {
+    return actionState(false, "No pudimos editar el pedido en este momento.");
+  }
+
+  const { data, error } = await supabase.rpc(
+    "admin_update_qb_internal_order",
+    {
+      p_order_id: target.data.orderId,
+      p_expected_updated_at: target.data.expectedUpdatedAt,
+      p_customer_notes: parsed.data.customerNotes || null,
+      p_operational_date: parsed.data.operationalDate,
+      p_items: parsed.data.items.map((item) => ({
+        product_id: item.productId,
+        allowed_unit_id: item.allowedUnitId,
+        quantity: item.quantity,
+        notes: item.notes || null,
+      })),
+    },
+  );
+
+  if (error) {
+    const message = errorMessage(error, "No pudimos editar el pedido.");
+    if (
+      message.includes("QB_ORDER_EDIT_CONFLICT") ||
+      message.includes("QB_ORDER_EDIT_STARTED")
+    ) {
+      return actionState(
+        false,
+        message.includes("QB_ORDER_EDIT_STARTED")
+          ? "El pedido ya inició preparación y no admite una edición completa."
+          : "El pedido cambió en otro dispositivo. Actualiza la página.",
+        true,
+      );
+    }
+    return actionState(false, message);
+  }
+
+  revalidatePath("/pedidos");
+  revalidatePath("/matriz-operativa");
+  return {
+    ...actionState(true, "Pedido actualizado correctamente."),
+    orderId:
+      data && typeof data === "object" && "id" in data
+        ? String(data.id)
+        : target.data.orderId,
   };
 }
 

@@ -12,6 +12,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   confirmMatrixDeliveryAction,
@@ -49,7 +50,7 @@ function allowedStage(
   requested?: MatrixStage,
 ) {
   if (role !== "administrador") return defaultStage(role);
-  return requested ?? "pedido";
+  return requested ?? "preparacion";
 }
 
 function rowKey(line: MatrixLine) {
@@ -62,10 +63,10 @@ function groupDomId(value: string) {
 
 function stageHeaders(stage: MatrixStage) {
   if (stage === "preparacion") {
-    return ["CANT", "CHECK", "OBSERVACIÓN"];
+    return ["CANT", "CHECK", "PESO/CANT. REAL", "OBSERVACIÓN"];
   }
   if (stage === "entrega") {
-    return ["CANT", "CHECK INV.", "PESO/CANT. REAL", "OBSERVACIÓN"];
+    return ["CANT", "CHECK INV./ENT.", "PESO/CANT. REAL", "OBSERVACIÓN"];
   }
   return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
 }
@@ -91,14 +92,14 @@ function stageGuidance(stage: MatrixStage) {
     return {
       title: "Confirmación de Inventario",
       detail:
-        "Marca CHECK sin observación si está todo completo. Si hay una cantidad parcial, marca CHECK y explica la diferencia. Si no hay producto, deja el check vacío. No necesitas finalizar la preparación.",
+        "Registra la cantidad o el peso real preparado. Para productos por peso puedes elegir kg, gramos, libras u onzas; el sistema convierte el valor a kg al guardar. Si no hay producto, deja el check vacío. No necesitas finalizar la preparación.",
     };
   }
   if (stage === "entrega") {
     return {
       title: "Confirmación del Entregador",
       detail:
-        "El check de Inventario queda como referencia. Sus cantidades completas se copian como valor inicial, pero Entrega puede corregir cualquier peso, cantidad u observación para registrar exactamente lo que recibió el cliente.",
+        "Los checks completados por Inventario quedan bloqueados como referencia. Entrega puede marcar solamente las líneas faltantes y corregir cualquier peso, cantidad u observación para registrar exactamente lo que recibió el cliente.",
     };
   }
   if (stage === "resumen") {
@@ -126,6 +127,7 @@ type MatrixCustomerGroup = {
   customerName: string;
   locationLabel: string;
   references: string;
+  generalNotes: string;
   orders: MatrixOrder[];
 };
 
@@ -163,6 +165,9 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
   return {
     ...first,
     requestedQuantity: sumLines(lines, "requestedQuantity"),
+    requestedNote: uniqueText(lines.map((line) => line.requestedNote)).join(
+      " | ",
+    ),
     preparedQuantity: sumLines(lines, "preparedQuantity"),
     preparedBaseQuantity: sumLines(lines, "preparedBaseQuantity"),
     preparationCheck: lines.every((line) => line.preparationCheck),
@@ -176,7 +181,7 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     externalQuantity: sumLines(lines, "externalQuantity"),
     deliveredQuantity: sumLines(lines, "deliveredQuantity"),
     deliveredBaseQuantity: sumLines(lines, "deliveredBaseQuantity"),
-    deliveryCheck: lines.every((line) => line.deliveryCheck),
+    deliveryCheck: lines.every(hasDeliveryCheck),
     deliveryActualWeightKg: sumNullable(lines, "deliveryActualWeightKg"),
     deliveryNote: uniqueText(lines.map((line) => line.deliveryNote)).join(
       " | ",
@@ -206,6 +211,10 @@ function hasCompletePreparation(line: MatrixLine) {
   );
 }
 
+function hasDeliveryCheck(line: MatrixLine) {
+  return line.preparationCheck || line.deliveryCheck;
+}
+
 function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
   return lines.map((line) =>
     hasCompletePreparation(line) &&
@@ -216,7 +225,7 @@ function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
           deliveredQuantity: line.preparedQuantity,
           deliveryCheck: true,
           deliveryActualWeightKg: line.controlsActualWeight
-            ? line.preparedQuantity
+            ? (line.preparationActualWeightKg ?? line.preparedQuantity)
             : null,
         }
       : line,
@@ -311,6 +320,9 @@ export function OperationalMatrix({
             .map((item) => item.locationLabel ?? "")
             .filter(Boolean),
         ).join(", ");
+        current.generalNotes = uniqueText(
+          current.orders.map((item) => item.customerNotes),
+        ).join(" | ");
         continue;
       }
       groups.set(order.customerKey, {
@@ -318,6 +330,7 @@ export function OperationalMatrix({
         customerName: order.customerName,
         locationLabel: order.locationLabel ?? "",
         references: order.reference,
+        generalNotes: order.customerNotes,
         orders: [order],
       });
     }
@@ -535,6 +548,34 @@ export function OperationalMatrix({
     setLines(updatedLines);
   };
 
+  const updateMissingDeliveryChecks = (
+    groupedLines: MatrixLine[],
+    checked: boolean,
+  ) => {
+    const missingIds = new Set(
+      groupedLines
+        .filter((line) => !line.preparationCheck)
+        .map((line) => line.orderItemId),
+    );
+    if (!missingIds.size) return;
+    missingIds.forEach((id) => dirty.current.add(id));
+    const updatedLines = linesRef.current.map((line) => {
+      if (!missingIds.has(line.orderItemId)) return line;
+      return {
+        ...line,
+        deliveryCheck: checked,
+        deliveryActualWeightKg:
+          checked &&
+          line.controlsActualWeight &&
+          line.deliveryActualWeightKg === null
+            ? 0
+            : line.deliveryActualWeightKg,
+      };
+    });
+    linesRef.current = updatedLines;
+    setLines(updatedLines);
+  };
+
   const latestLine = (id: string) =>
     linesRef.current.find((line) => line.orderItemId === id);
 
@@ -615,7 +656,9 @@ export function OperationalMatrix({
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
-          actualWeightKg: null,
+          actualWeightKg: line.controlsActualWeight
+            ? line.preparationActualWeightKg
+            : null,
           note: line.preparationNote,
           idempotencyKey: idempotencyKey("prep"),
         });
@@ -660,6 +703,7 @@ export function OperationalMatrix({
           return {
             line: null,
             externalQuantity: 0,
+            effectiveDeliveryCheck: false,
             result: { success: false, message: "Línea no disponible." },
           };
         }
@@ -667,12 +711,13 @@ export function OperationalMatrix({
           line.deliveredQuantity - line.preparedQuantity,
           0,
         );
+        const effectiveDeliveryCheck = hasDeliveryCheck(line);
         const result = await saveMatrixDeliveryAction({
           orderItemId: line.orderItemId,
           expectedVersion: line.deliveryVersion,
           externalQuantity,
           deliveredQuantity: line.deliveredQuantity,
-          deliveryCheck: line.deliveryCheck,
+          deliveryCheck: effectiveDeliveryCheck,
           actualWeightKg: line.controlsActualWeight
             ? line.deliveryActualWeightKg
             : null,
@@ -685,7 +730,7 @@ export function OperationalMatrix({
           idempotencyKey: idempotencyKey("delivery"),
         });
         finishSave(line.orderItemId, result, "deliveryVersion");
-        return { line, externalQuantity, result };
+        return { line, externalQuantity, effectiveDeliveryCheck, result };
       });
     const tail = task.then(
       () => undefined,
@@ -710,7 +755,11 @@ export function OperationalMatrix({
         ({ line: resultLine }) => resultLine?.orderItemId === line.orderItemId,
       );
       return saved
-        ? { ...line, externalQuantity: saved.externalQuantity }
+        ? {
+            ...line,
+            externalQuantity: saved.externalQuantity,
+            deliveryCheck: saved.effectiveDeliveryCheck ?? line.deliveryCheck,
+          }
         : line;
     });
     linesRef.current = savedLines;
@@ -796,7 +845,7 @@ export function OperationalMatrix({
       groupOrderIds.has(line.orderId),
     );
     if (action === "confirm") {
-      if (groupLines.some((line) => !line.deliveryCheck)) {
+      if (groupLines.some((line) => !hasDeliveryCheck(line))) {
         setMessage(
           "Completa los campos rojos de peso o cantidad real antes de confirmar.",
         );
@@ -816,7 +865,8 @@ export function OperationalMatrix({
           (line) =>
             line.controlsActualWeight &&
             line.deliveryActualWeightKg !== null &&
-            line.deliveryActualWeightKg < line.preparedQuantity &&
+            line.deliveryActualWeightKg <
+              (line.preparationActualWeightKg ?? line.preparedQuantity) &&
             (line.deliveryNote || line.preparationNote).trim().length < 3,
         )
       ) {
@@ -1012,6 +1062,14 @@ export function OperationalMatrix({
                           <span className="mt-1 inline-flex rounded-full border border-slate-300 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold text-slate-700">
                             {groupStatus(group)}
                           </span>
+                          {group.generalNotes ? (
+                            <span
+                              className="mt-1 block max-w-64 truncate text-[10px] font-semibold text-amber-800"
+                              title={group.generalNotes}
+                            >
+                              Nota del pedido: {group.generalNotes}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="flex shrink-0 gap-0.5">
                           {canAdmin ? (
@@ -1057,7 +1115,7 @@ export function OperationalMatrix({
                             </Button>
                           ) : null}
                           {stage === "entrega" &&
-                          data.role === "entregador" &&
+                          ["administrador", "entregador"].includes(data.role) &&
                           group.orders.some(
                             (order) => order.deliveryStatus === "confirmado",
                           ) ? (
@@ -1203,6 +1261,16 @@ export function OperationalMatrix({
                                 groupedLines.map((item) => item.orderItemId),
                               )
                             }
+                            onToggleMissingDeliveryCheck={(checked) =>
+                              updateMissingDeliveryChecks(groupedLines, checked)
+                            }
+                            onSaveMissingDeliveryCheck={() =>
+                              void saveGroupedDelivery(
+                                groupedLines
+                                  .filter((item) => !item.preparationCheck)
+                                  .map((item) => item.orderItemId),
+                              )
+                            }
                             onCorrect={() =>
                               void correctGroupedRequest(groupedLines)
                             }
@@ -1258,7 +1326,7 @@ export function OperationalMatrix({
                   const completed = [...customerRows.values()].filter(
                     (groupedLines) =>
                       stage === "entrega"
-                        ? groupedLines.every((line) => line.deliveryCheck)
+                        ? groupedLines.every(hasDeliveryCheck)
                         : groupedLines.every((line) => line.preparationCheck),
                   ).length;
                   return (
@@ -1296,6 +1364,8 @@ type CellProps = {
   onChange: (patch: Partial<MatrixLine>) => void;
   onSavePreparation: () => void;
   onSaveDelivery: () => void;
+  onToggleMissingDeliveryCheck: (checked: boolean) => void;
+  onSaveMissingDeliveryCheck: () => void;
   onCorrect: () => void;
 };
 
@@ -1345,23 +1415,57 @@ function NoteEditor({
   attention?: boolean;
 }) {
   return (
-    <Input
+    <Textarea
       aria-label={label}
-      className={`h-7 min-w-36 px-2 text-xs ${
+      className={`min-h-12 min-w-44 resize-y whitespace-pre-wrap px-2 py-1.5 text-xs ${
         attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
       }`}
       value={value}
-      placeholder="Nota"
+      rows={2}
+      maxLength={500}
+      placeholder="Escribe una observación"
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
+      onKeyDown={(event) => event.stopPropagation()}
       onBlur={onBlur}
     />
   );
 }
 
+const WEIGHT_UNITS = {
+  kg: { label: "kg", kilograms: 1 },
+  g: { label: "g", kilograms: 0.001 },
+  lb: { label: "lb", kilograms: 0.45359237 },
+  oz: { label: "oz", kilograms: 0.028349523125 },
+} as const;
+
+type WeightUnit = keyof typeof WEIGHT_UNITS;
+
+function suggestedWeightUnit(unitHint: string): WeightUnit {
+  const normalized = unitHint
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (/\b(lbs?|libra|libras)\b/.test(normalized)) return "lb";
+  if (/\b(oz|onza|onzas)\b/.test(normalized)) return "oz";
+  if (/\b(g|gr|gramo|gramos)\b/.test(normalized)) return "g";
+  return "kg";
+}
+
+function weightFromKilograms(value: number | null, unit: WeightUnit) {
+  if (value === null) return null;
+  return Number((value / WEIGHT_UNITS[unit].kilograms).toFixed(6));
+}
+
+function weightToKilograms(value: number | null, unit: WeightUnit) {
+  if (value === null) return null;
+  return Number((value * WEIGHT_UNITS[unit].kilograms).toFixed(6));
+}
+
 function WeightEditor({
   label,
   value,
+  unitHint,
   onChange,
   onBlur,
   disabled = false,
@@ -1369,34 +1473,55 @@ function WeightEditor({
 }: {
   label: string;
   value: number | null;
+  unitHint: string;
   onChange: (value: number | null) => void;
   onBlur: () => void;
   disabled?: boolean;
   attention?: boolean;
 }) {
+  const [unit, setUnit] = useState<WeightUnit>(() =>
+    suggestedWeightUnit(unitHint),
+  );
+  const displayValue = weightFromKilograms(value, unit);
+
   return (
-    <div className="relative min-w-24">
+    <div className="flex min-w-36 items-center gap-1">
       <Input
         aria-label={label}
-        className={`h-7 min-w-24 pr-7 text-right text-xs ${
+        className={`h-7 min-w-24 text-right text-xs font-semibold ${
           attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
         }`}
         type="number"
         min={0}
-        step="0.5"
-        value={value ?? ""}
+        step="any"
+        value={displayValue ?? ""}
         placeholder="0"
         disabled={disabled}
         onChange={(event) =>
           onChange(
-            event.target.value === "" ? null : Number(event.target.value),
+            weightToKilograms(
+              event.target.value === ""
+                ? null
+                : Math.max(Number(event.target.value), 0),
+              unit,
+            ),
           )
         }
         onBlur={onBlur}
       />
-      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground">
-        kg
-      </span>
+      <select
+        aria-label={`Unidad de ${label.toLowerCase()}`}
+        className="h-7 rounded-md border border-input bg-background px-1 text-[11px] font-semibold"
+        value={unit}
+        disabled={disabled}
+        onChange={(event) => setUnit(event.target.value as WeightUnit)}
+      >
+        {Object.entries(WEIGHT_UNITS).map(([value, option]) => (
+          <option key={value} value={value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -1450,6 +1575,8 @@ function DesktopOrderCells(props: CellProps) {
     onChange,
     onSavePreparation,
     onSaveDelivery,
+    onToggleMissingDeliveryCheck,
+    onSaveMissingDeliveryCheck,
     onCorrect,
   } = props;
   const cellStyle = {
@@ -1475,6 +1602,11 @@ function DesktopOrderCells(props: CellProps) {
           <span className="text-muted-foreground">—</span>
         </td>
         <td style={cellStyle} className={cellClass}>
+          {line.requestedNote ? (
+            <span className="mb-1 block max-w-44 whitespace-pre-wrap break-words text-left text-[10px] font-medium text-amber-900">
+              {line.requestedNote}
+            </span>
+          ) : null}
           {canAdmin ? (
             <Button
               size="xs"
@@ -1484,7 +1616,7 @@ function DesktopOrderCells(props: CellProps) {
             >
               Editar
             </Button>
-          ) : (
+          ) : line.requestedNote ? null : (
             "—"
           )}
         </td>
@@ -1492,6 +1624,10 @@ function DesktopOrderCells(props: CellProps) {
     );
   }
   if (stage === "preparacion") {
+    const actualPreparedQuantity =
+      !line.preparedAt && !line.preparationCheck
+        ? null
+        : line.preparedQuantity;
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
@@ -1508,12 +1644,57 @@ function DesktopOrderCells(props: CellProps) {
               onChange({
                 preparationCheck: checked,
                 preparedQuantity: checked ? line.requestedQuantity : 0,
+                preparationActualWeightKg:
+                  !checked && line.controlsActualWeight
+                    ? null
+                    : line.preparationActualWeightKg,
               })
             }
             onBlur={onSavePreparation}
           />
         </td>
         <td style={cellStyle} className={cellClass}>
+          {line.controlsActualWeight ? (
+            <WeightEditor
+              label={`Peso real preparado de ${line.productName}`}
+              value={line.preparationActualWeightKg}
+              unitHint={`${line.sourceLabel} ${line.baseUnitSymbol}`}
+              disabled={!editable}
+              attention={!line.preparedAt}
+              onChange={(value) =>
+                onChange({
+                  preparationActualWeightKg: value,
+                  preparedQuantity:
+                    value === null ? line.preparedQuantity : line.requestedQuantity,
+                  preparationCheck: value !== null,
+                })
+              }
+              onBlur={onSavePreparation}
+            />
+          ) : (
+            <QuantityEditor
+              label={`Cantidad real preparada de ${line.productName}`}
+              value={actualPreparedQuantity}
+              disabled={!editable}
+              attention={!line.preparedAt}
+              onChange={(value) => {
+                if (value === null) return;
+                onChange({
+                  preparedQuantity: value,
+                  preparationCheck:
+                    Math.abs(value - line.requestedQuantity) < 0.000001,
+                });
+              }}
+              onBlur={onSavePreparation}
+            />
+          )}
+        </td>
+        <td style={cellStyle} className={cellClass}>
+          {line.requestedNote ? (
+            <span className="mb-1 block max-w-44 whitespace-pre-wrap break-words text-left text-[9px] font-semibold text-amber-900">
+              Pedido: {line.requestedNote}
+            </span>
+          ) : null}
           <NoteEditor
             label={`Observación bodega ${line.productName}`}
             value={line.preparationNote}
@@ -1542,7 +1723,8 @@ function DesktopOrderCells(props: CellProps) {
     const lowerThanPrepared =
       line.controlsActualWeight &&
       line.deliveryActualWeightKg !== null &&
-      line.deliveryActualWeightKg < line.preparedQuantity;
+      line.deliveryActualWeightKg <
+        (line.preparationActualWeightKg ?? line.preparedQuantity);
     const noteMissingForShortfall =
       lowerThanPrepared && line.deliveryNote.trim().length < 3;
     const deliveryDisabled = !editable;
@@ -1559,12 +1741,16 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
-          <input
-            aria-label={`Check de Inventario ${line.productName}`}
-            className="size-4 accent-emerald-700"
-            type="checkbox"
-            checked={line.preparationCheck}
-            disabled
+          <CheckEditor
+            label={
+              line.preparationCheck
+                ? `Check de Inventario ${line.productName}`
+                : `Check de Entrega faltante ${line.productName}`
+            }
+            checked={hasDeliveryCheck(line)}
+            disabled={deliveryDisabled || line.preparationCheck}
+            onChange={onToggleMissingDeliveryCheck}
+            onBlur={onSaveMissingDeliveryCheck}
           />
         </td>
         <td
@@ -1579,6 +1765,7 @@ function DesktopOrderCells(props: CellProps) {
             <WeightEditor
               label={`Peso real entrega ${line.productName}`}
               value={actualWeight}
+              unitHint={`${line.sourceLabel} ${line.baseUnitSymbol}`}
               disabled={deliveryDisabled}
               attention={!deliveryReady || needsDeliveryReview}
               onChange={(value) =>
@@ -1616,8 +1803,13 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
+          {line.requestedNote ? (
+            <span className="mb-1 block whitespace-pre-wrap break-words text-left text-[9px] font-semibold text-amber-900">
+              Pedido: {line.requestedNote}
+            </span>
+          ) : null}
           {line.preparationNote ? (
-            <span className="mb-1 block text-left text-[9px] font-medium text-amber-800">
+            <span className="mb-1 block whitespace-pre-wrap break-words text-left text-[9px] font-medium text-amber-800">
               Inventario: {line.preparationNote}
             </span>
           ) : null}
@@ -1664,8 +1856,14 @@ function DesktopOrderCells(props: CellProps) {
           ? " kg"
           : ""}
       </td>
-      <td style={cellStyle} className={`${cellClass} min-w-36 text-left`}>
-        {line.deliveryNote || line.preparationNote || "—"}
+      <td
+        style={cellStyle}
+        className={`${cellClass} min-w-36 whitespace-pre-wrap break-words text-left`}
+      >
+        {line.deliveryNote ||
+          line.preparationNote ||
+          line.requestedNote ||
+          "—"}
       </td>
     </>
   );
