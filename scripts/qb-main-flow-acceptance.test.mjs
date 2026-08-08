@@ -260,7 +260,9 @@ assert.doesNotMatch(
   matrix,
   /disabled=\{deliveryDisabled \|\| !needsDeliveryReview\}/,
 );
-assert.match(matrix, /step="0\.5"/);
+assert.match(matrix, /inputMode="decimal"/);
+assert.match(matrix, /replace\(",", "\."\)/);
+assert.doesNotMatch(matrix, /step="0\.5"/);
 assert.match(matrix, /externalQuantity/);
 assert.match(matrix, /preparedQuantity/);
 assert.match(matrix, /deliveredQuantity/);

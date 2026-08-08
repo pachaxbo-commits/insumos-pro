@@ -163,9 +163,14 @@ assert.match(matrix, /"CHECK INV\.\/ENT\.", "PESO\/CANT\. REAL"/);
 assert.match(matrix, /"CHECK", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
-assert.match(
+assert.doesNotMatch(
   matrix,
   /preparedQuantity: checked \? line\.requestedQuantity : 0/,
+);
+assert.match(matrix, /const preparationQuantities =/);
+assert.match(
+  matrix,
+  /distributeValue\(groupedLines, patch\.preparedQuantity\)/,
 );
 assert.match(matrix, /function QuantityEditor/);
 assert.match(matrix, /Cantidad real entregada de/);
@@ -189,7 +194,9 @@ assert.match(matrix, /onKeyDown=\{\(event\) => event\.stopPropagation\(\)\}/);
 assert.match(matrix, /preparationActualWeightKg/);
 assert.match(matrix, /deliveryActualWeightKg/);
 assert.doesNotMatch(matrix, /Peso real bodega/);
-assert.match(matrix, /function WeightEditor[\s\S]*step="any"/);
+assert.match(matrix, /function DecimalInput/);
+assert.match(matrix, /inputMode="decimal"/);
+assert.match(matrix, /pattern="\[0-9\]\*\[\.,\]\?\[0-9\]\*"/);
 assert.match(matrix, /const WEIGHT_UNITS =/);
 assert.match(matrix, /kilograms: 0\.001/);
 assert.match(matrix, /kilograms: 0\.45359237/);
@@ -214,7 +221,7 @@ assert.doesNotMatch(
   matrix,
   /disabled=\{deliveryDisabled \|\| !needsDeliveryReview\}/,
 );
-assert.match(matrix, /needsDeliveryReview && !line\.deliveryCheck\s+\? null/);
+assert.doesNotMatch(matrix, /needsDeliveryReview && !line\.deliveryCheck\s+\? null/);
 assert.match(matrix, /!line\.deliveredAt &&\s+line\.deliveryVersion === 0/);
 assert.match(matrix, /line\.deliveredQuantity - line\.preparedQuantity/);
 assert.match(

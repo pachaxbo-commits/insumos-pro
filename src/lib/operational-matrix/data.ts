@@ -31,11 +31,14 @@ export async function getOperationalMatrixData(
 
   const { data: orderData, error: orderError } = await supabase
     .from("qb_orders")
-    .select("id, customer_account_id, public_reference, status, updated_at, customer_notes, customer_snapshot, location_snapshot")
+    .select(
+      "id, customer_account_id, public_reference, status, updated_at, customer_notes, customer_snapshot, location_snapshot",
+    )
     .eq("operational_date", operationalDate)
     .neq("status", "cancelado")
     .order("submitted_at", { ascending: true });
-  if (orderError) throw new Error(`No se pudo cargar la matriz: ${orderError.message}`);
+  if (orderError)
+    throw new Error(`No se pudo cargar la matriz: ${orderError.message}`);
 
   const rawOrders = orderData ?? [];
   const orderIds = rawOrders.map((order) => String(order.id));
@@ -50,7 +53,7 @@ export async function getOperationalMatrixData(
       supabase
         .from("qb_order_items")
         .select(
-          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, customer_notes, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
+          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, base_quantity, customer_notes, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true }),
@@ -63,18 +66,28 @@ export async function getOperationalMatrixData(
         .select("order_id, status")
         .in("order_id", orderIds),
     ]);
-  for (const result of [dayResult, itemsResult, preparationsResult, confirmationsResult]) {
-    if (result.error) throw new Error(`No se pudo cargar la matriz: ${result.error.message}`);
+  for (const result of [
+    dayResult,
+    itemsResult,
+    preparationsResult,
+    confirmationsResult,
+  ]) {
+    if (result.error)
+      throw new Error(`No se pudo cargar la matriz: ${result.error.message}`);
   }
 
   const itemRows = itemsResult.data ?? [];
   const itemIds = itemRows.map((item) => String(item.id));
-  const preparationIds = (preparationsResult.data ?? []).map((item) => String(item.id));
+  const preparationIds = (preparationsResult.data ?? []).map((item) =>
+    String(item.id),
+  );
   const [preparationItemsResult, deliveryItemsResult] = await Promise.all([
     preparationIds.length
       ? supabase
           .from("qb_order_preparation_items")
-          .select("id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)")
+          .select(
+            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)",
+          )
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
     itemIds.length
@@ -89,7 +102,8 @@ export async function getOperationalMatrixData(
   if (preparationItemsResult.error || deliveryItemsResult.error) {
     throw new Error(
       `No se pudo cargar el detalle: ${
-        preparationItemsResult.error?.message ?? deliveryItemsResult.error?.message
+        preparationItemsResult.error?.message ??
+        deliveryItemsResult.error?.message
       }`,
     );
   }
@@ -104,10 +118,16 @@ export async function getOperationalMatrixData(
     (confirmationsResult.data ?? []).map((row) => [String(row.order_id), row]),
   );
   const prepItems = new Map(
-    (preparationItemsResult.data ?? []).map((row) => [String(row.order_item_id), row]),
+    (preparationItemsResult.data ?? []).map((row) => [
+      String(row.order_item_id),
+      row,
+    ]),
   );
   const deliveryItems = new Map(
-    (deliveryItemsResult.data ?? []).map((row) => [String(row.order_item_id), row]),
+    (deliveryItemsResult.data ?? []).map((row) => [
+      String(row.order_item_id),
+      row,
+    ]),
   );
 
   const orders: MatrixOrder[] = rawOrders
@@ -147,59 +167,114 @@ export async function getOperationalMatrixData(
     .sort((a, b) => a.position - b.position);
 
   const lines: MatrixLine[] = itemRows.map((item) => {
-    const product = Array.isArray(item.product) ? item.product[0] : item.product;
+    const product = Array.isArray(item.product)
+      ? item.product[0]
+      : item.product;
     const categoryValue = (product as { category?: unknown } | null)?.category;
-    const category = Array.isArray(categoryValue) ? categoryValue[0] : categoryValue;
+    const category = Array.isArray(categoryValue)
+      ? categoryValue[0]
+      : categoryValue;
     const prep = prepItems.get(String(item.id));
     const delivery = deliveryItems.get(String(item.id));
-    const preparedByValue = (prep as { prepared_by?: unknown } | undefined)?.prepared_by;
-    const preparedBy = Array.isArray(preparedByValue) ? preparedByValue[0] : preparedByValue;
-    const deliveredByValue = (delivery as { delivered_by_profile?: unknown } | undefined)?.delivered_by_profile;
-    const deliveredBy = Array.isArray(deliveredByValue) ? deliveredByValue[0] : deliveredByValue;
+    const preparedByValue = (prep as { prepared_by?: unknown } | undefined)
+      ?.prepared_by;
+    const preparedBy = Array.isArray(preparedByValue)
+      ? preparedByValue[0]
+      : preparedByValue;
+    const deliveredByValue = (
+      delivery as { delivered_by_profile?: unknown } | undefined
+    )?.delivered_by_profile;
+    const deliveredBy = Array.isArray(deliveredByValue)
+      ? deliveredByValue[0]
+      : deliveredByValue;
+    const controlsActualWeight = Boolean(
+      (product as { controls_actual_weight?: unknown } | null)
+        ?.controls_actual_weight,
+    );
+    const requestedQuantity = numberOr(item.requested_quantity);
+    const requestedBaseQuantity = numberOr(item.base_quantity);
+    const preparationCheck = Boolean(prep?.preparation_check);
+    const rawPreparedQuantity = numberOr(prep?.actual_quantity);
+    const preparedQuantity =
+      preparationCheck && rawPreparedQuantity <= 0.000001
+        ? requestedQuantity
+        : rawPreparedQuantity;
+    const rawPreparationWeight =
+      prep?.actual_weight_kg === null ||
+      typeof prep?.actual_weight_kg === "undefined"
+        ? null
+        : numberOr(prep.actual_weight_kg);
+    const preparationActualWeightKg =
+      preparationCheck &&
+      controlsActualWeight &&
+      (rawPreparationWeight === null || rawPreparationWeight <= 0.000001)
+        ? requestedBaseQuantity
+        : rawPreparationWeight;
+    const deliveryCheck = Boolean(delivery?.delivery_check);
+    const rawDeliveredQuantity = numberOr(delivery?.delivered_quantity);
+    const deliveredQuantity =
+      deliveryCheck && rawDeliveredQuantity <= 0.000001
+        ? requestedQuantity
+        : rawDeliveredQuantity;
+    const rawDeliveryWeight =
+      delivery?.actual_weight_kg === null ||
+      typeof delivery?.actual_weight_kg === "undefined"
+        ? null
+        : numberOr(delivery.actual_weight_kg);
+    const deliveryActualWeightKg =
+      deliveryCheck &&
+      controlsActualWeight &&
+      (rawDeliveryWeight === null || rawDeliveryWeight <= 0.000001)
+        ? preparationActualWeightKg && preparationActualWeightKg > 0.000001
+          ? preparationActualWeightKg
+          : requestedBaseQuantity
+        : rawDeliveryWeight;
     return {
       orderItemId: String(item.id),
       orderId: String(item.order_id),
       productId: String(item.product_id),
-      productName: String((product as { name?: unknown } | null)?.name ?? "Producto"),
+      productName: String(
+        (product as { name?: unknown } | null)?.name ?? "Producto",
+      ),
       productColor:
         String(
           (product as { matrix_color?: unknown } | null)?.matrix_color ?? "",
         ) || null,
-      controlsActualWeight: Boolean(
-        (product as { controls_actual_weight?: unknown } | null)
-          ?.controls_actual_weight,
+      controlsActualWeight,
+      categoryName: String(
+        (category as { name?: unknown } | null)?.name ?? "Sin categoría",
       ),
-      categoryName: String((category as { name?: unknown } | null)?.name ?? "Sin categoría"),
       sourceLabel: String(item.source_label),
       baseUnitSymbol: String(item.base_unit_symbol),
-      requestedQuantity: numberOr(item.requested_quantity),
+      requestedQuantity,
+      requestedBaseQuantity,
       requestedNote: String(item.customer_notes ?? ""),
       requestedVersion: numberOr(item.row_version),
-      preparedQuantity: numberOr(prep?.actual_quantity),
+      preparedQuantity,
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),
-      preparationCheck: Boolean(prep?.preparation_check),
-      preparationActualWeightKg:
-        prep?.actual_weight_kg === null ||
-        typeof prep?.actual_weight_kg === "undefined"
-          ? null
-          : numberOr(prep.actual_weight_kg),
+      preparationCheck,
+      preparationActualWeightKg,
       preparationNote: String(prep?.notes ?? ""),
       preparationVersion: numberOr(prep?.row_version),
-      preparedBy: String((preparedBy as { full_name?: unknown } | null)?.full_name ?? "") || null,
+      preparedBy:
+        String(
+          (preparedBy as { full_name?: unknown } | null)?.full_name ?? "",
+        ) || null,
       preparedAt: prep?.prepared_at_line ? String(prep.prepared_at_line) : null,
       externalQuantity: numberOr(delivery?.externally_sourced_quantity),
-      deliveredQuantity: numberOr(delivery?.delivered_quantity),
+      deliveredQuantity,
       deliveredBaseQuantity: numberOr(delivery?.delivered_base_quantity),
-      deliveryCheck: Boolean(delivery?.delivery_check),
-      deliveryActualWeightKg:
-        delivery?.actual_weight_kg === null ||
-        typeof delivery?.actual_weight_kg === "undefined"
-          ? null
-          : numberOr(delivery.actual_weight_kg),
+      deliveryCheck,
+      deliveryActualWeightKg,
       deliveryNote: String(delivery?.delivery_note ?? ""),
       deliveryVersion: numberOr(delivery?.row_version),
-      deliveredBy: String((deliveredBy as { full_name?: unknown } | null)?.full_name ?? "") || null,
-      deliveredAt: delivery?.delivered_at ? String(delivery.delivered_at) : null,
+      deliveredBy:
+        String(
+          (deliveredBy as { full_name?: unknown } | null)?.full_name ?? "",
+        ) || null,
+      deliveredAt: delivery?.delivered_at
+        ? String(delivery.delivered_at)
+        : null,
     };
   });
   return { operationalDate, role, orders, lines };

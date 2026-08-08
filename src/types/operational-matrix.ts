@@ -28,6 +28,7 @@ export type MatrixLine = {
   sourceLabel: string;
   baseUnitSymbol: string;
   requestedQuantity: number;
+  requestedBaseQuantity: number;
   requestedNote: string;
   requestedVersion: number;
   preparedQuantity: number;

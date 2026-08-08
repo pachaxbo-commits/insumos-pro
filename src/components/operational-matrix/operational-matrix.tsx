@@ -92,14 +92,14 @@ function stageGuidance(stage: MatrixStage) {
     return {
       title: "Confirmación de Inventario",
       detail:
-        "Registra la cantidad o el peso real preparado. Para productos por peso puedes elegir kg, gramos, libras u onzas; el sistema convierte el valor a kg al guardar. Si no hay producto, deja el check vacío. No necesitas finalizar la preparación.",
+        "Registra la cantidad o el peso real preparado. Todos los productos muestran su unidad y puedes usar decimales con punto o coma. Cambiar la cantidad no marca el check. Si marcas el check dejando la cantidad en cero, se toma por defecto todo lo solicitado.",
     };
   }
   if (stage === "entrega") {
     return {
       title: "Confirmación del Entregador",
       detail:
-        "Los checks completados por Inventario quedan bloqueados como referencia. Entrega puede marcar solamente las líneas faltantes y corregir cualquier peso, cantidad u observación para registrar exactamente lo que recibió el cliente.",
+        "Los checks completados por Inventario quedan bloqueados como referencia. Entrega puede registrar la cantidad real de todos los productos y marcar manualmente solamente las líneas faltantes. Cambiar una cantidad no activa el check; marcarlo con la cantidad en cero toma por defecto todo lo solicitado.",
     };
   }
   if (stage === "resumen") {
@@ -139,6 +139,7 @@ function sumLines(
   lines: MatrixLine[],
   field:
     | "requestedQuantity"
+    | "requestedBaseQuantity"
     | "preparedQuantity"
     | "preparedBaseQuantity"
     | "externalQuantity"
@@ -165,6 +166,7 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
   return {
     ...first,
     requestedQuantity: sumLines(lines, "requestedQuantity"),
+    requestedBaseQuantity: sumLines(lines, "requestedBaseQuantity"),
     requestedNote: uniqueText(lines.map((line) => line.requestedNote)).join(
       " | ",
     ),
@@ -248,6 +250,7 @@ function mergeServerLines(
       next = {
         ...next,
         requestedQuantity: current.requestedQuantity,
+        requestedBaseQuantity: current.requestedBaseQuantity,
         requestedVersion: current.requestedVersion,
       };
     }
@@ -500,6 +503,11 @@ export function OperationalMatrix({
       patch.preparationActualWeightKg !== null
         ? distributeValue(groupedLines, patch.preparationActualWeightKg ?? 0)
         : [];
+    const preparationQuantities =
+      Object.hasOwn(patch, "preparedQuantity") &&
+      typeof patch.preparedQuantity === "number"
+        ? distributeValue(groupedLines, patch.preparedQuantity)
+        : [];
     const deliveryWeights =
       Object.hasOwn(patch, "deliveryActualWeightKg") &&
       patch.deliveryActualWeightKg !== null
@@ -518,10 +526,11 @@ export function OperationalMatrix({
       if (!ids.has(line.orderItemId)) return line;
       const index = indexById.get(line.orderItemId) ?? 0;
       const next = { ...line, ...patch };
-      if (typeof patch.preparationCheck === "boolean") {
-        next.preparedQuantity = patch.preparationCheck
-          ? line.requestedQuantity
-          : 0;
+      if (
+        Object.hasOwn(patch, "preparedQuantity") &&
+        typeof patch.preparedQuantity === "number"
+      ) {
+        next.preparedQuantity = preparationQuantities[index];
       }
       if (Object.hasOwn(patch, "preparationActualWeightKg")) {
         next.preparationActualWeightKg =
@@ -564,11 +573,19 @@ export function OperationalMatrix({
       return {
         ...line,
         deliveryCheck: checked,
+        deliveredQuantity:
+          checked && line.deliveredQuantity <= 0.000001
+            ? line.requestedQuantity
+            : line.deliveredQuantity,
         deliveryActualWeightKg:
           checked &&
           line.controlsActualWeight &&
-          line.deliveryActualWeightKg === null
-            ? 0
+          (line.deliveryActualWeightKg === null ||
+            line.deliveryActualWeightKg <= 0.000001)
+            ? line.preparationActualWeightKg &&
+              line.preparationActualWeightKg > 0.000001
+              ? line.preparationActualWeightKg
+              : line.requestedBaseQuantity
             : line.deliveryActualWeightKg,
       };
     });
@@ -1462,6 +1479,84 @@ function weightToKilograms(value: number | null, unit: WeightUnit) {
   return Number((value * WEIGHT_UNITS[unit].kilograms).toFixed(6));
 }
 
+function decimalInputText(value: number | null) {
+  return value === null ? "" : String(value);
+}
+
+function parseDecimalInput(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  if (!/^\d*(?:\.\d*)?$/.test(normalized) || normalized.endsWith(".")) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(parsed, 0) : undefined;
+}
+
+function DecimalInput({
+  label,
+  value,
+  onChange,
+  onBlur,
+  disabled,
+  attention,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  onBlur: () => void;
+  disabled: boolean;
+  attention: boolean;
+}) {
+  const [rawValue, setRawValue] = useState(() => decimalInputText(value));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setRawValue(decimalInputText(value));
+  }, [value]);
+
+  const emitValue = (next: string) => {
+    const parsed = parseDecimalInput(next);
+    if (parsed !== undefined) onChange(parsed);
+    return parsed;
+  };
+
+  return (
+    <Input
+      aria-label={label}
+      className={`h-7 min-w-24 text-right text-xs font-semibold ${
+        attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
+      }`}
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      pattern="[0-9]*[.,]?[0-9]*"
+      value={rawValue}
+      placeholder="0"
+      disabled={disabled}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onChange={(event) => {
+        const next = event.target.value.replace(/\s/g, "");
+        if (!/^\d*(?:[.,]\d*)?$/.test(next)) return;
+        setRawValue(next);
+        emitValue(next);
+      }}
+      onBlur={() => {
+        focused.current = false;
+        const parsed = emitValue(rawValue);
+        if (parsed === undefined) {
+          setRawValue(decimalInputText(value));
+        } else {
+          setRawValue(decimalInputText(parsed));
+        }
+        onBlur();
+      }}
+    />
+  );
+}
+
 function WeightEditor({
   label,
   value,
@@ -1486,27 +1581,12 @@ function WeightEditor({
 
   return (
     <div className="flex min-w-36 items-center gap-1">
-      <Input
-        aria-label={label}
-        className={`h-7 min-w-24 text-right text-xs font-semibold ${
-          attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
-        }`}
-        type="number"
-        min={0}
-        step="any"
-        value={displayValue ?? ""}
-        placeholder="0"
+      <DecimalInput
+        label={label}
+        value={displayValue}
         disabled={disabled}
-        onChange={(event) =>
-          onChange(
-            weightToKilograms(
-              event.target.value === ""
-                ? null
-                : Math.max(Number(event.target.value), 0),
-              unit,
-            ),
-          )
-        }
+        attention={attention}
+        onChange={(next) => onChange(weightToKilograms(next, unit))}
         onBlur={onBlur}
       />
       <select
@@ -1529,6 +1609,7 @@ function WeightEditor({
 function QuantityEditor({
   label,
   value,
+  unitLabel,
   onChange,
   onBlur,
   disabled = false,
@@ -1536,32 +1617,29 @@ function QuantityEditor({
 }: {
   label: string;
   value: number | null;
+  unitLabel: string;
   onChange: (value: number | null) => void;
   onBlur: () => void;
   disabled?: boolean;
   attention?: boolean;
 }) {
   return (
-    <Input
-      aria-label={label}
-      className={`h-7 min-w-24 text-right text-xs font-semibold ${
-        attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
-      }`}
-      type="number"
-      min={0}
-      step="0.5"
-      value={value ?? ""}
-      placeholder="Completar"
-      disabled={disabled}
-      onChange={(event) =>
-        onChange(
-          event.target.value === ""
-            ? null
-            : Math.max(Number(event.target.value), 0),
-        )
-      }
-      onBlur={onBlur}
-    />
+    <div className="flex min-w-36 items-center gap-1">
+      <DecimalInput
+        label={label}
+        value={value}
+        disabled={disabled}
+        attention={attention}
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+      <span
+        title={unitLabel}
+        className="flex h-7 max-w-24 items-center truncate rounded-md border border-input bg-background px-2 text-[10px] font-semibold uppercase"
+      >
+        {unitLabel}
+      </span>
+    </div>
   );
 }
 
@@ -1624,10 +1702,10 @@ function DesktopOrderCells(props: CellProps) {
     );
   }
   if (stage === "preparacion") {
-    const actualPreparedQuantity =
-      !line.preparedAt && !line.preparationCheck
-        ? null
-        : line.preparedQuantity;
+    const canMarkPreparationComplete = line.controlsActualWeight
+      ? true
+      : line.preparedQuantity <= 0.000001 ||
+        Math.abs(line.preparedQuantity - line.requestedQuantity) < 0.000001;
     return (
       <>
         <td style={cellStyle} className={`${cellClass} border-l-2`}>
@@ -1639,15 +1717,24 @@ function DesktopOrderCells(props: CellProps) {
           <CheckEditor
             label={`Check bodega ${line.productName}`}
             checked={line.preparationCheck}
-            disabled={!editable}
+            disabled={
+              !editable ||
+              (!line.preparationCheck && !canMarkPreparationComplete)
+            }
             onChange={(checked) =>
               onChange({
                 preparationCheck: checked,
-                preparedQuantity: checked ? line.requestedQuantity : 0,
-                preparationActualWeightKg:
-                  !checked && line.controlsActualWeight
-                    ? null
-                    : line.preparationActualWeightKg,
+                ...(checked && line.preparedQuantity <= 0.000001
+                  ? { preparedQuantity: line.requestedQuantity }
+                  : {}),
+                ...(checked &&
+                line.controlsActualWeight &&
+                (line.preparationActualWeightKg === null ||
+                  line.preparationActualWeightKg <= 0.000001)
+                  ? {
+                      preparationActualWeightKg: line.requestedBaseQuantity,
+                    }
+                  : {}),
               })
             }
             onBlur={onSavePreparation}
@@ -1664,9 +1751,8 @@ function DesktopOrderCells(props: CellProps) {
               onChange={(value) =>
                 onChange({
                   preparationActualWeightKg: value,
-                  preparedQuantity:
-                    value === null ? line.preparedQuantity : line.requestedQuantity,
-                  preparationCheck: value !== null,
+                  preparedQuantity: value === null ? 0 : line.requestedQuantity,
+                  preparationCheck: false,
                 })
               }
               onBlur={onSavePreparation}
@@ -1674,17 +1760,16 @@ function DesktopOrderCells(props: CellProps) {
           ) : (
             <QuantityEditor
               label={`Cantidad real preparada de ${line.productName}`}
-              value={actualPreparedQuantity}
+              value={line.preparedQuantity}
+              unitLabel={line.sourceLabel}
               disabled={!editable}
               attention={!line.preparedAt}
-              onChange={(value) => {
-                if (value === null) return;
+              onChange={(value) =>
                 onChange({
-                  preparedQuantity: value,
-                  preparationCheck:
-                    Math.abs(value - line.requestedQuantity) < 0.000001,
-                });
-              }}
+                  preparedQuantity: value ?? 0,
+                  preparationCheck: false,
+                })
+              }
               onBlur={onSavePreparation}
             />
           )}
@@ -1712,14 +1797,6 @@ function DesktopOrderCells(props: CellProps) {
       !hasCompletePreparation(line) &&
       !line.deliveredAt &&
       line.deliveryVersion === 0;
-    const actualQuantity =
-      needsDeliveryReview && !line.deliveryCheck
-        ? null
-        : line.deliveredQuantity;
-    const actualWeight =
-      needsDeliveryReview && !line.deliveryCheck
-        ? null
-        : line.deliveryActualWeightKg;
     const lowerThanPrepared =
       line.controlsActualWeight &&
       line.deliveryActualWeightKg !== null &&
@@ -1764,18 +1841,15 @@ function DesktopOrderCells(props: CellProps) {
           {line.controlsActualWeight ? (
             <WeightEditor
               label={`Peso real entrega ${line.productName}`}
-              value={actualWeight}
+              value={line.deliveryActualWeightKg}
               unitHint={`${line.sourceLabel} ${line.baseUnitSymbol}`}
               disabled={deliveryDisabled}
               attention={!deliveryReady || needsDeliveryReview}
               onChange={(value) =>
                 onChange({
                   deliveryActualWeightKg: value,
-                  deliveredQuantity:
-                    value === null
-                      ? line.deliveredQuantity
-                      : line.preparedQuantity,
-                  deliveryCheck: value !== null,
+                  deliveredQuantity: value === null ? 0 : line.preparedQuantity,
+                  deliveryCheck: false,
                 })
               }
               onBlur={onSaveDelivery}
@@ -1783,16 +1857,16 @@ function DesktopOrderCells(props: CellProps) {
           ) : (
             <QuantityEditor
               label={`Cantidad real entregada de ${line.productName}`}
-              value={actualQuantity}
+              value={line.deliveredQuantity}
+              unitLabel={line.sourceLabel}
               disabled={deliveryDisabled}
               attention={!deliveryReady || needsDeliveryReview}
-              onChange={(value) => {
-                if (value === null) return;
+              onChange={(value) =>
                 onChange({
-                  deliveredQuantity: value,
-                  deliveryCheck: true,
-                });
-              }}
+                  deliveredQuantity: value ?? 0,
+                  deliveryCheck: false,
+                })
+              }
               onBlur={onSaveDelivery}
             />
           )}
@@ -1860,10 +1934,7 @@ function DesktopOrderCells(props: CellProps) {
         style={cellStyle}
         className={`${cellClass} min-w-36 whitespace-pre-wrap break-words text-left`}
       >
-        {line.deliveryNote ||
-          line.preparationNote ||
-          line.requestedNote ||
-          "—"}
+        {line.deliveryNote || line.preparationNote || line.requestedNote || "—"}
       </td>
     </>
   );
