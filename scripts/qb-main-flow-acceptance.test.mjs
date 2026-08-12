@@ -66,6 +66,11 @@ const [
   ),
 ]);
 
+const [appSidebar, navigation] = await Promise.all([
+  read("src/components/layout/app-sidebar.tsx"),
+  read("src/lib/navigation.ts"),
+]);
+
 // Sugerencia de pedido: promedio editable de hasta ocho pedidos.
 assert.match(creator, /Promedio de los últimos 8 pedidos/);
 assert.match(creator, /Historial cargado autom/);
@@ -246,7 +251,22 @@ assert.match(matrix, /disabled=\{!editable\}/);
 assert.match(matrix, /preparationCheck/);
 assert.match(matrix, /deliveryCheck/);
 assert.doesNotMatch(matrix, /<Card/);
-assert.match(matrix, /"CHECK INV\.\/ENT\.", "PESO\/CANT\. REAL"/);
+assert.match(
+  matrix,
+  /"CHECK INV\.\/ENT\.",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
+);
+assert.match(matrix, /function PreparedMeasurementDisplay/);
+assert.match(
+  matrix,
+  /"CANT\. REAL ENTREGADA",\s+"PESO REAL ENTREGADO"/,
+);
+assert.match(matrix, /formatQuantity\(line\.deliveredQuantity\)/);
+assert.match(
+  appSidebar,
+  /"\/matriz-operativa",\s+"\/clientes",\s+"\/recibos"/,
+);
+assert.match(navigation, /title: "Abrir preparación y entregas"/);
+assert.match(navigation, /href: "\/matriz-operativa"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
 assert.match(matrix, /Cantidad real entregada de/);

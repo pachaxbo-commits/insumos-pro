@@ -24,17 +24,75 @@ test("la entrada acepta teclado numérico, punto y coma decimal", () => {
   assert.doesNotMatch(matrix, /step="0\.5"/);
 });
 
-test("editar cantidades nunca activa automáticamente los checks", () => {
+test("el selector usa todas las unidades activas de peso parametrizadas", () => {
+  assert.match(data, /row\.code === "peso"/);
+  assert.match(data, /conversion_factor_to_base/);
+  assert.match(matrix, /weightUnits\.map\(\(option\) =>/);
+  assert.doesNotMatch(matrix, /const WEIGHT_UNITS =/);
+});
+
+test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
+  assert.match(matrix, /for \(const label of labels\)/);
+  assert.match(data, /for \(const label of labels\)/);
+  assert.doesNotMatch(matrix, /const candidates = new Set/);
+  assert.doesNotMatch(data, /const candidates = new Set/);
   assert.match(
     matrix,
-    /preparedQuantity: value \?\? 0,\s+preparationCheck: false/,
+    /line\.sourceLabel,\s+line\.baseUnitSymbol/,
   );
-  assert.match(
-    matrix,
-    /deliveredQuantity: value \?\? 0,\s+deliveryCheck: false/,
-  );
+});
+
+test("editar cantidades conserva el estado actual de los checks", () => {
+  assert.doesNotMatch(matrix, /preparationCheck: false/);
+  assert.doesNotMatch(matrix, /deliveryCheck: false/);
   assert.doesNotMatch(matrix, /preparationCheck: value !== null/);
   assert.doesNotMatch(matrix, /deliveryCheck: value !== null/);
+});
+
+test("cantidad comercial y peso real permanecen visibles y editables", () => {
+  assert.match(matrix, />\s*Cantidad real\s*</);
+  assert.match(matrix, />\s*Peso real\s*</);
+  assert.match(matrix, /value=\{quantityValue\}/);
+  assert.match(matrix, /value=\{displayWeight\}/);
+});
+
+test("entrega compara lo preparado con el valor final editable", () => {
+  assert.match(
+    matrix,
+    /"CHECK INV\.\/ENT\.",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
+  );
+  assert.match(matrix, /function PreparedMeasurementDisplay/);
+  assert.match(matrix, /line\.preparationActualWeightKg/);
+  assert.match(matrix, /actualWeightKg=\{line\.deliveryActualWeightKg\}/);
+});
+
+test("resumen separa cantidad y peso reales entregados", () => {
+  assert.match(
+    matrix,
+    /"SOLICITADO",\s+"CHECK",\s+"CANT\. REAL ENTREGADA",\s+"PESO REAL ENTREGADO"/,
+  );
+  assert.match(matrix, /formatQuantity\(line\.deliveredQuantity\)/);
+  assert.match(matrix, /formatQuantity\(line\.deliveryActualWeightKg\)/);
+});
+
+test("las observaciones conservan los espacios escritos", () => {
+  assert.match(matrix, /const comparisonKey = value\.trim\(\)/);
+  assert.match(matrix, /result\.push\(value\)/);
+  assert.doesNotMatch(
+    matrix,
+    /new Set\(values\.map\(\(value\) => value\.trim\(\)\)/,
+  );
+});
+
+test("editar solamente el peso conserva la cantidad y el check", () => {
+  assert.match(
+    matrix,
+    /onWeightChange=\{\(value\) =>\s+onChange\(\{\s+preparationActualWeightKg: value,\s+\}\)/,
+  );
+  assert.match(
+    matrix,
+    /onWeightChange=\{\(value\) =>\s+onChange\(\{\s+deliveryActualWeightKg: value,\s+\}\)/,
+  );
 });
 
 test("la cantidad preparada agrupada se distribuye entre pedidos", () => {
@@ -58,7 +116,8 @@ test("un check manual sin cantidad toma por defecto lo solicitado", () => {
     matrix,
     /checked && line\.deliveredQuantity <= 0\.000001[\s\S]*line\.requestedQuantity/,
   );
-  assert.match(matrix, /line\.requestedBaseQuantity/);
+  assert.match(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
+  assert.match(matrix, /weightToKilograms\(line\.requestedQuantity, unit\)/);
 });
 
 test("los checks ya guardados con cero se normalizan para el resumen", () => {

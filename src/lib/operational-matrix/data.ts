@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   MatrixLine,
   MatrixOrder,
+  MatrixWeightUnit,
   OperationalMatrixData,
 } from "@/types/operational-matrix";
 import type { UserRole } from "@/types/auth";
@@ -21,13 +22,40 @@ function snapshotText(snapshot: unknown, key: string) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function normalizedUnitLabel(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@]+/g, " ")
+    .trim();
+}
+
+function findWeightUnit(
+  units: MatrixWeightUnit[],
+  ...labels: unknown[]
+) {
+  for (const label of labels) {
+    const candidate = normalizedUnitLabel(label);
+    if (!candidate) continue;
+    const unit = units.find((option) =>
+      [option.code, option.name, option.symbol]
+        .map(normalizedUnitLabel)
+        .includes(candidate),
+    );
+    if (unit) return unit;
+  }
+  return undefined;
+}
+
 export async function getOperationalMatrixData(
   operationalDate: string,
   role: UserRole,
 ): Promise<OperationalMatrixData> {
   noStore();
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { operationalDate, role, orders: [], lines: [] };
+  if (!supabase)
+    return { operationalDate, role, weightUnits: [], orders: [], lines: [] };
 
   const { data: orderData, error: orderError } = await supabase
     .from("qb_orders")
@@ -42,7 +70,8 @@ export async function getOperationalMatrixData(
 
   const rawOrders = orderData ?? [];
   const orderIds = rawOrders.map((order) => String(order.id));
-  if (!orderIds.length) return { operationalDate, role, orders: [], lines: [] };
+  if (!orderIds.length)
+    return { operationalDate, role, weightUnits: [], orders: [], lines: [] };
 
   const [dayResult, itemsResult, preparationsResult, confirmationsResult] =
     await Promise.all([
@@ -81,7 +110,14 @@ export async function getOperationalMatrixData(
   const preparationIds = (preparationsResult.data ?? []).map((item) =>
     String(item.id),
   );
-  const [preparationItemsResult, deliveryItemsResult] = await Promise.all([
+  const productIds = [...new Set(itemRows.map((item) => String(item.product_id)))];
+  const [
+    preparationItemsResult,
+    deliveryItemsResult,
+    productSettingsResult,
+    unitsResult,
+    unitDimensionsResult,
+  ] = await Promise.all([
     preparationIds.length
       ? supabase
           .from("qb_order_preparation_items")
@@ -98,12 +134,33 @@ export async function getOperationalMatrixData(
           )
           .in("order_item_id", itemIds)
       : Promise.resolve({ data: [], error: null }),
+    productIds.length
+      ? supabase
+          .from("qb_product_unit_settings")
+          .select("product_id, base_price_unit_id, base_sale_price")
+          .in("product_id", productIds)
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("qb_units")
+      .select(
+        "id, dimension_id, code, name, symbol, conversion_factor_to_base, is_active, sort_order",
+      ),
+    supabase.from("qb_unit_dimensions").select("id, code, is_active"),
   ]);
-  if (preparationItemsResult.error || deliveryItemsResult.error) {
+  if (
+    preparationItemsResult.error ||
+    deliveryItemsResult.error ||
+    productSettingsResult.error ||
+    unitsResult.error ||
+    unitDimensionsResult.error
+  ) {
     throw new Error(
       `No se pudo cargar el detalle: ${
         preparationItemsResult.error?.message ??
-        deliveryItemsResult.error?.message
+        deliveryItemsResult.error?.message ??
+        productSettingsResult.error?.message ??
+        unitsResult.error?.message ??
+        unitDimensionsResult.error?.message
       }`,
     );
   }
@@ -129,6 +186,36 @@ export async function getOperationalMatrixData(
       row,
     ]),
   );
+  const productSettings = new Map(
+    (productSettingsResult.data ?? []).map((row) => [
+      String(row.product_id),
+      row,
+    ]),
+  );
+  const units = new Map(
+    (unitsResult.data ?? []).map((row) => [String(row.id), row]),
+  );
+  const weightDimensionIds = new Set(
+    (unitDimensionsResult.data ?? [])
+      .filter((row) => row.code === "peso" && row.is_active)
+      .map((row) => String(row.id)),
+  );
+  const weightUnits: MatrixWeightUnit[] = (unitsResult.data ?? [])
+    .filter(
+      (row) =>
+        row.is_active && weightDimensionIds.has(String(row.dimension_id)),
+    )
+    .sort(
+      (left, right) => numberOr(left.sort_order) - numberOr(right.sort_order),
+    )
+    .map((row) => ({
+      id: String(row.id),
+      code: String(row.code),
+      name: String(row.name),
+      symbol: String(row.symbol),
+      kilograms: numberOr(row.conversion_factor_to_base),
+    }))
+    .filter((unit) => unit.kilograms > 0);
 
   const orders: MatrixOrder[] = rawOrders
     .map((order, index) => {
@@ -191,8 +278,31 @@ export async function getOperationalMatrixData(
       (product as { controls_actual_weight?: unknown } | null)
         ?.controls_actual_weight,
     );
+    const productSetting = productSettings.get(String(item.product_id));
+    const priceUnit = productSetting?.base_price_unit_id
+      ? units.get(String(productSetting.base_price_unit_id))
+      : undefined;
+    const weightPriceUnit = findWeightUnit(
+      weightUnits,
+      priceUnit?.code,
+      priceUnit?.name,
+      priceUnit?.symbol,
+    );
+    const priceUnitSymbol = priceUnit
+      ? String(priceUnit.symbol ?? priceUnit.name ?? priceUnit.code ?? "") || null
+      : null;
+    const hasWeightBasedPrice = Boolean(
+      priceUnitSymbol &&
+        weightPriceUnit &&
+        Number(productSetting?.base_sale_price) > 0,
+    );
     const requestedQuantity = numberOr(item.requested_quantity);
     const requestedBaseQuantity = numberOr(item.base_quantity);
+    const requestedWeightUnit = findWeightUnit(
+      weightUnits,
+      item.source_label,
+      item.base_unit_symbol,
+    );
     const preparationCheck = Boolean(prep?.preparation_check);
     const rawPreparedQuantity = numberOr(prep?.actual_quantity);
     const preparedQuantity =
@@ -207,8 +317,11 @@ export async function getOperationalMatrixData(
     const preparationActualWeightKg =
       preparationCheck &&
       controlsActualWeight &&
+      requestedWeightUnit &&
       (rawPreparationWeight === null || rawPreparationWeight <= 0.000001)
-        ? requestedBaseQuantity
+        ? Number(
+            (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
+          )
         : rawPreparationWeight;
     const deliveryCheck = Boolean(delivery?.delivery_check);
     const rawDeliveredQuantity = numberOr(delivery?.delivered_quantity);
@@ -224,10 +337,13 @@ export async function getOperationalMatrixData(
     const deliveryActualWeightKg =
       deliveryCheck &&
       controlsActualWeight &&
+      requestedWeightUnit &&
       (rawDeliveryWeight === null || rawDeliveryWeight <= 0.000001)
         ? preparationActualWeightKg && preparationActualWeightKg > 0.000001
           ? preparationActualWeightKg
-          : requestedBaseQuantity
+          : Number(
+              (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
+            )
         : rawDeliveryWeight;
     return {
       orderItemId: String(item.id),
@@ -246,6 +362,8 @@ export async function getOperationalMatrixData(
       ),
       sourceLabel: String(item.source_label),
       baseUnitSymbol: String(item.base_unit_symbol),
+      priceUnitSymbol,
+      hasWeightBasedPrice,
       requestedQuantity,
       requestedBaseQuantity,
       requestedNote: String(item.customer_notes ?? ""),
@@ -277,5 +395,5 @@ export async function getOperationalMatrixData(
         : null,
     };
   });
-  return { operationalDate, role, orders, lines };
+  return { operationalDate, role, weightUnits, orders, lines };
 }

@@ -138,12 +138,18 @@ Este contrato debe preservarse hasta que el cliente apruebe por escrito una modi
 
 El cliente aclaró que `CANT` siempre representa lo solicitado al crear el pedido y debe llenarse automáticamente. `CHECK` confirma esa cantidad en la etapa correspondiente. Se añade `PESO REAL` porque antes el personal lo escribía dentro de observaciones.
 
-- `CANT` no es editable en Preparación ni Entrega.
+- `CANT` conserva lo solicitado y no es editable en Preparación ni Entrega; la `Cantidad real` dentro de `PESO/CANT. REAL` sí puede modificarse.
 - Al marcar CHECK, preparado o entregado se registra internamente igual a solicitado.
 - `PESO REAL` se guarda en kg, admite decimales y tiene auditoría propia.
 - Las flechas de PESO REAL avanzan de `0,5 kg`; la entrada manual admite valores más precisos.
 - El producto debe tener activado `Controlar peso real`; de lo contrario se trabaja solo con CANT y CHECK.
-- `OBSERVACIÓN` queda libre para faltantes, sustituciones, pérdidas u otras notas.
+- Cuando el producto controla peso real, `PESO/CANT. REAL` permite conservar la unidad comercial solicitada o elegir cualquier unidad activa de la dimensión `peso` (kg, gramo, libra, onza, cuartilla, arroba, quintal y futuras unidades configuradas); cambiar al peso no sobrescribe la cantidad confirmada.
+- Cantidad real y peso real se muestran simultáneamente, se editan por separado en Preparación y Entrega y conservan el estado actual del check.
+- En Entrega, la columna `PREPARADO` muestra como referencia no editable la cantidad y el peso registrados por Inventario; `ENTREGADO REAL` permanece al lado y es editable por el Entregador.
+- En Resumen se comparan en columnas separadas solicitado, cantidad real entregada y peso real entregado.
+- El menú lateral del Administrador ofrece acceso directo a `Abrir preparación y entregas` (`/matriz-operativa`) sin pasar por Crear pedidos.
+- El peso real participa en el total únicamente cuando la unidad de precio configurada también es de peso. Sin una tarifa por peso, se conserva el costeo por la unidad comercial y se muestra una advertencia.
+- `OBSERVACIÓN` conserva espacios y queda libre para aumentos de último momento, faltantes, sustituciones, pérdidas u otras notas.
 - Solicitado, preparado, externo, entregado, conversión calculada y peso real siguen siendo datos distintos.
 
 ### “Clonar” la tabla
@@ -294,6 +300,11 @@ La anotación “cebolla blanca cuesta 100/25 libras + 1,42” está en bolivian
 | 24/07/2026 | Limitar el recibo del cliente a logo, cliente, fecha de entrega, productos, cantidad, precio final y total. | Decisión confirmada |
 | 24/07/2026 | Precargar CANT con lo solicitado, usar CHECK para confirmar e incorporar PESO REAL en kg como columna independiente. | Decisión confirmada |
 | 24/07/2026 | Habilitar PESO REAL por producto; usar paso de 0,5 kg con entrada manual libre y dejar productos cerrados solo por unidad. | Decisión confirmada |
+| 12/08/2026 | En productos pesables, conservar la cantidad comercial y permitir elegir la unidad del peso real; costear por peso solo con una tarifa de peso configurada. | Decisión confirmada |
+| 12/08/2026 | El selector de peso real debe listar dinámicamente todas las unidades activas de peso, incluidas cuartilla y arroba. | Decisión confirmada |
+| 12/08/2026 | Preparación y Entrega muestran cantidad real y peso real por separado; ambos son editables sin desmarcar el check y Observación conserva espacios. | Decisión confirmada |
+| 12/08/2026 | Entrega debe comparar en columnas contiguas el valor preparado por Inventario y el valor final editable del Entregador. | Decisión confirmada |
+| 12/08/2026 | Resumen debe mostrar cantidad y peso reales entregados; el menú lateral debe enlazar directamente a Preparación y Entregas. | Decisión confirmada |
 | Pendiente | Aprobar visualmente la matriz con datos reales en escritorio y 390 px. | Requiere cliente |
 | Pendiente | Validar la fórmula específica de cebolla blanca. | Requiere cliente |
 | Pendiente | Definir carga masiva tipo Excel. | Próxima fase |

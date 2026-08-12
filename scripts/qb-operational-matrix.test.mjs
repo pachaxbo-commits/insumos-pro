@@ -26,6 +26,7 @@ const [
   deliveryUnlock,
   receiptDeliveryTruth,
   preparationWeightBaseline,
+  actualWeightPricing,
 ] = await Promise.all([
   read(
     "supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql",
@@ -63,6 +64,9 @@ const [
   ),
   read(
     "supabase/migrations/20260804010000_qb_preparation_actual_weight_baseline.sql",
+  ),
+  read(
+    "supabase/migrations/20260812010000_qb_actual_weight_unit_and_pricing.sql",
   ),
 ]);
 
@@ -159,7 +163,10 @@ assert.doesNotMatch(
   /Hay cambios de este cliente guardándose/,
 );
 assert.match(matrix, /moveCustomer/);
-assert.match(matrix, /"CHECK INV\.\/ENT\.", "PESO\/CANT\. REAL"/);
+assert.match(
+  matrix,
+  /"CHECK INV\.\/ENT\.",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
+);
 assert.match(matrix, /"CHECK", "PESO\/CANT\. REAL"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
@@ -192,15 +199,33 @@ assert.match(matrix, /placeholder="Escribe una observación"/);
 assert.match(matrix, /whitespace-pre-wrap/);
 assert.match(matrix, /onKeyDown=\{\(event\) => event\.stopPropagation\(\)\}/);
 assert.match(matrix, /preparationActualWeightKg/);
+assert.match(matrix, /function PreparedMeasurementDisplay/);
+assert.match(matrix, /Preparado por Inventario para/);
+assert.match(matrix, /Peso preparado/);
+assert.match(
+  matrix,
+  /<PreparedMeasurementDisplay\s+line=\{line\}\s+weightUnits=\{weightUnits\}/,
+);
 assert.match(matrix, /deliveryActualWeightKg/);
 assert.doesNotMatch(matrix, /Peso real bodega/);
 assert.match(matrix, /function DecimalInput/);
 assert.match(matrix, /inputMode="decimal"/);
 assert.match(matrix, /pattern="\[0-9\]\*\[\.,\]\?\[0-9\]\*"/);
-assert.match(matrix, /const WEIGHT_UNITS =/);
-assert.match(matrix, /kilograms: 0\.001/);
-assert.match(matrix, /kilograms: 0\.45359237/);
+assert.match(matrixData, /row\.code === "peso"/);
+assert.match(matrixData, /conversion_factor_to_base/);
+assert.match(matrix, /weightUnits\.map\(\(option\) =>/);
+assert.match(matrix, /option\.symbol \|\| option\.name/);
 assert.match(matrix, /Peso real preparado de/);
+assert.match(matrix, /function MeasuredQuantityEditor/);
+assert.match(matrix, />\s*Cantidad real\s*</);
+assert.match(matrix, />\s*Peso real\s*</);
+assert.doesNotMatch(matrix, /<option value="source">/);
+assert.match(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
+assert.match(matrix, /Peso real informativo/);
+assert.doesNotMatch(
+  matrix,
+  /const canMarkPreparationComplete = line\.controlsActualWeight/,
+);
 assert.match(
   matrix,
   /actualWeightKg: line\.controlsActualWeight[\s\S]*line\.preparationActualWeightKg/,
@@ -208,6 +233,34 @@ assert.match(
 assert.match(
   preparationWeightBaseline,
   /v_prepared_weight_kg := coalesce\([\s\S]*v_preparation_item\.actual_weight_kg/,
+);
+assert.match(
+  actualWeightPricing,
+  /upper\(trim\(name\)\) = 'AJO EN DIENTE'/,
+);
+assert.match(
+  actualWeightPricing,
+  /v_effective_weight \/ v_price_unit_kg_factor/,
+);
+assert.match(
+  actualWeightPricing,
+  /dimension\.code = 'peso'/,
+);
+assert.match(
+  actualWeightPricing,
+  /unit\.conversion_factor_to_base/,
+);
+assert.match(
+  actualWeightPricing,
+  /'oz',\s*'Onza',\s*'OZ',\s*0\.028349523::numeric/s,
+);
+assert.match(
+  actualWeightPricing,
+  /before insert on public\.qb_receipt_lines/,
+);
+assert.match(
+  actualWeightPricing,
+  /weight_pricing_applied', false/,
 );
 assert.match(
   preparationWeightBaseline,

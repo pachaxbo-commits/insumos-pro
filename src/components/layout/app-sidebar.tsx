@@ -24,7 +24,11 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const workspace = getFocusedWorkspace(user.role);
-  const adminAvailablePaths = new Set(["/clientes", "/recibos"]);
+  const adminAvailablePaths = new Set([
+    "/matriz-operativa",
+    "/clientes",
+    "/recibos",
+  ]);
   const availableItems = mainNavigation.filter(
     (item) =>
       item.href === workspace.href ||

@@ -39,10 +39,10 @@ export const mainNavigation: NavItem[] = [
     description: "Creación, historial y detalle.",
   },
   {
-    title: "Matriz operativa",
+    title: "Abrir preparación y entregas",
     href: "/matriz-operativa",
     icon: TableProperties,
-    description: "Preparación y entrega por fecha.",
+    description: "Matriz operativa por fecha.",
   },
   {
     title: "Recibos",

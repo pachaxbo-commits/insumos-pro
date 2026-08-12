@@ -2,6 +2,14 @@ import type { UserRole } from "@/types/auth";
 
 export type MatrixStage = "pedido" | "preparacion" | "entrega" | "resumen";
 
+export type MatrixWeightUnit = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  kilograms: number;
+};
+
 export type MatrixOrder = {
   id: string;
   customerKey: string;
@@ -27,6 +35,8 @@ export type MatrixLine = {
   categoryName: string;
   sourceLabel: string;
   baseUnitSymbol: string;
+  priceUnitSymbol: string | null;
+  hasWeightBasedPrice: boolean;
   requestedQuantity: number;
   requestedBaseQuantity: number;
   requestedNote: string;
@@ -53,6 +63,7 @@ export type MatrixLine = {
 export type OperationalMatrixData = {
   operationalDate: string;
   role: UserRole;
+  weightUnits: MatrixWeightUnit[];
   orders: MatrixOrder[];
   lines: MatrixLine[];
 };
