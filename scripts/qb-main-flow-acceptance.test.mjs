@@ -263,8 +263,12 @@ assert.match(
 assert.match(matrix, /formatQuantity\(line\.deliveredQuantity\)/);
 assert.match(
   appSidebar,
-  /"\/matriz-operativa",\s+"\/clientes",\s+"\/recibos"/,
+  /adminAvailablePaths[\s\S]*"\/matriz-operativa"/,
 );
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/productos"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/parametrizacion"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/clientes"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/recibos"/);
 assert.match(navigation, /title: "Abrir preparación y entregas"/);
 assert.match(navigation, /href: "\/matriz-operativa"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);

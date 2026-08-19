@@ -142,3 +142,31 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(management, /Costos de compra y utilidad · solo administración/);
   assert.match(management, /Último costo compra/);
 });
+
+test("actual-weight receipt lines keep their pricing unit without becoming amount orders", async () => {
+  const [amountContract, weightPricing, compatibilityFix] = await Promise.all([
+    read("supabase/migrations/20260712093100_qb_pilot_stock_amount_contract.sql"),
+    read("supabase/migrations/20260812010000_qb_actual_weight_unit_and_pricing.sql"),
+    read("supabase/migrations/20260819010000_qb_receipt_actual_weight_unit_contract.sql"),
+  ]);
+
+  assert.match(weightPricing, /new\.pricing_unit_id := v_price_unit_id/);
+  assert.match(
+    amountContract,
+    /order_input_mode = 'quantity'[\s\S]*pricing_unit_id is null/,
+  );
+  assert.match(
+    compatibilityFix,
+    /order_input_mode = 'quantity'[\s\S]*requested_amount_bs is null[\s\S]*currency_snapshot is null[\s\S]*estimated_base_quantity is null[\s\S]*fixed_line_amount is null/,
+  );
+  const quantityBranch = compatibilityFix.match(
+    /order_input_mode = 'quantity'[\s\S]*?\)\s*or/,
+  )?.[0];
+  assert.ok(quantityBranch);
+  assert.doesNotMatch(quantityBranch, /pricing_unit_id is null/);
+  assert.match(
+    compatibilityFix,
+    /order_input_mode = 'amount_bs'[\s\S]*pricing_unit_id is not null/,
+  );
+  assert.match(compatibilityFix, /no debe violar el contrato monetario/i);
+});
