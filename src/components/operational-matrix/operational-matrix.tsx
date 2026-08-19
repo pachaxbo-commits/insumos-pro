@@ -103,6 +103,12 @@ function groupStatus(group: MatrixCustomerGroup) {
   return "Pendiente de preparación";
 }
 
+function customerDividerClass(focused = false) {
+  return `border-l-4 ${
+    focused ? "border-l-sky-700" : "border-l-slate-700"
+  }`;
+}
+
 function stageGuidance(stage: MatrixStage) {
   if (stage === "preparacion") {
     return {
@@ -242,20 +248,31 @@ function hasDeliveryCheck(line: MatrixLine) {
 }
 
 function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
-  return lines.map((line) =>
-    hasCompletePreparation(line) &&
-    !line.deliveredAt &&
-    line.deliveryVersion === 0
-      ? {
-          ...line,
-          deliveredQuantity: line.preparedQuantity,
-          deliveryCheck: true,
-          deliveryActualWeightKg: line.controlsActualWeight
-            ? line.preparationActualWeightKg
-            : null,
-        }
-      : line,
-  );
+  return lines.map((line) => {
+    if (!hasCompletePreparation(line) || line.deliveredAt) return line;
+
+    const shouldCopyQuantity = line.deliveryVersion === 0;
+    const shouldCopyWeight =
+      line.controlsActualWeight &&
+      line.preparationActualWeightKg !== null &&
+      line.preparationActualWeightKg > 0.000001 &&
+      (line.deliveryActualWeightKg === null ||
+        line.deliveryActualWeightKg <= 0.000001);
+
+    if (!shouldCopyQuantity && !shouldCopyWeight) return line;
+    return {
+      ...line,
+      ...(shouldCopyQuantity
+        ? {
+            deliveredQuantity: line.preparedQuantity,
+            deliveryCheck: true,
+          }
+        : {}),
+      ...(shouldCopyWeight
+        ? { deliveryActualWeightKg: line.preparationActualWeightKg }
+        : {}),
+    };
+  });
 }
 
 function mergeServerLines(
@@ -1080,9 +1097,9 @@ export function OperationalMatrix({
                       key={group.id}
                       data-customer-group={groupDomId(group.id)}
                       colSpan={headers.length}
-                      className={`sticky top-0 z-40 h-[86px] border-b border-l-2 border-r px-2 py-1.5 text-left ${
+                      className={`sticky top-0 z-40 h-[86px] border-b border-r px-2 py-1.5 text-left ${customerDividerClass(focused)} ${
                         focused
-                          ? "border-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
+                          ? "border-b-sky-500 border-r-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
                           : "bg-slate-100"
                       }`}
                     >
@@ -1175,7 +1192,7 @@ export function OperationalMatrix({
                 })}
                 <th
                   rowSpan={2}
-                  className="sticky top-0 z-40 min-w-40 border-b border-l-2 bg-emerald-100 px-3 py-2 text-left"
+                  className={`sticky top-0 z-40 min-w-40 border-b bg-emerald-100 px-3 py-2 text-left ${customerDividerClass()}`}
                 >
                   TOTALES
                 </th>
@@ -1186,10 +1203,10 @@ export function OperationalMatrix({
                     <th
                       key={`${group.id}:${header}`}
                       className={`sticky top-[86px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
-                        index === 0 ? "border-l-2" : ""
+                        index === 0 ? customerDividerClass(group.id === focusedCustomerId) : ""
                       } ${
                         group.id === focusedCustomerId
-                          ? "border-sky-400 bg-sky-50"
+                          ? "border-b-sky-400 border-r-sky-400 bg-sky-50"
                           : "bg-slate-50"
                       } ${
                         header === "OBSERVACIÓN"
@@ -1328,7 +1345,7 @@ export function OperationalMatrix({
                             style={{
                               backgroundColor: row.productColor ?? "#FFFFFF",
                             }}
-                            className={`border-b border-l-2 border-r px-2 py-1.5 text-center text-muted-foreground ${
+                            className={`border-b border-r px-2 py-1.5 text-center text-muted-foreground ${customerDividerClass(focused)} ${
                               focused ? "ring-1 ring-inset ring-sky-400" : ""
                             }`}
                           >
@@ -1379,7 +1396,7 @@ export function OperationalMatrix({
                     <th
                       key={group.id}
                       colSpan={headers.length}
-                      className={`sticky bottom-0 z-30 border-l-2 border-t border-r px-3 py-2 text-left ${
+                      className={`sticky bottom-0 z-30 border-t border-r px-3 py-2 text-left ${customerDividerClass(group.id === focusedCustomerId)} ${
                         group.id === focusedCustomerId
                           ? "bg-sky-100"
                           : "bg-slate-100"
@@ -1389,7 +1406,7 @@ export function OperationalMatrix({
                     </th>
                   );
                 })}
-                <th className="sticky bottom-0 z-30 border-l-2 border-t bg-emerald-100 px-3 py-2">
+                <th className={`sticky bottom-0 z-30 border-t bg-emerald-100 px-3 py-2 ${customerDividerClass()}`}>
                   {rows.length} líneas
                 </th>
               </tr>
@@ -1748,14 +1765,18 @@ function PreparedMeasurementDisplay({
       <span className="block font-semibold">
         {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
       </span>
-      <span className="mt-1 block text-[9px] font-medium text-muted-foreground">
-        Peso preparado
-      </span>
-      <span className="block font-semibold">
-        {displayWeight === null || !displayUnit
-          ? "Sin registrar"
-          : `${formatQuantity(displayWeight)} ${displayUnit.symbol || displayUnit.name}`}
-      </span>
+      {line.controlsActualWeight ? (
+        <>
+          <span className="mt-1 block text-[9px] font-medium text-muted-foreground">
+            Peso preparado
+          </span>
+          <span className="block font-semibold">
+            {displayWeight === null || !displayUnit
+              ? "Sin registrar"
+              : `${formatQuantity(displayWeight)} ${displayUnit.symbol || displayUnit.name}`}
+          </span>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1838,7 +1859,7 @@ function DesktopOrderCells(props: CellProps) {
       <>
         <td
           style={cellStyle}
-          className={`${cellClass} border-l-2 font-semibold`}
+          className={`${cellClass} ${customerDividerClass(focused)} font-semibold`}
         >
           {formatQuantity(line.requestedQuantity)}
         </td>
@@ -1876,7 +1897,7 @@ function DesktopOrderCells(props: CellProps) {
       Math.abs(line.preparedQuantity - line.requestedQuantity) < 0.000001;
     return (
       <>
-        <td style={cellStyle} className={`${cellClass} border-l-2`}>
+        <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
           <span className="font-semibold">
             {formatQuantity(line.requestedQuantity)}
           </span>
@@ -1987,7 +2008,7 @@ function DesktopOrderCells(props: CellProps) {
     const deliveryDisabled = !editable;
     return (
       <>
-        <td style={cellStyle} className={`${cellClass} border-l-2`}>
+        <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
           <span className="font-semibold">
             {formatQuantity(line.requestedQuantity)}
           </span>
@@ -2100,7 +2121,7 @@ function DesktopOrderCells(props: CellProps) {
     Math.abs(line.requestedQuantity - line.deliveredQuantity) > 0.000001;
   return (
     <>
-      <td style={cellStyle} className={`${cellClass} border-l-2`}>
+      <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
         {formatQuantity(line.requestedQuantity)}
       </td>
       <td
@@ -2153,7 +2174,7 @@ function RowTotals({
   return (
     <td
       style={{ backgroundColor: productColor ?? "#FFFFFF" }}
-      className="border-b border-l-2 px-3 py-1.5 align-top text-[11px]"
+      className={`border-b px-3 py-1.5 align-top text-[11px] ${customerDividerClass()}`}
     >
       <p>Solicitado: {formatQuantity(total("requestedQuantity"))}</p>
       {stage !== "pedido" ? (

@@ -27,6 +27,7 @@ import {
 import { ProductFiltersBar } from "@/components/products/product-filters-bar";
 import { LazyProductClassificationConfiguration } from "@/components/products/lazy-product-classification-configuration";
 import { ProductAmountModeControl } from "@/components/products/product-amount-mode-control";
+import { ProductPricingEditor } from "@/components/products/product-pricing-editor";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
@@ -322,9 +323,9 @@ function ProductForm({
             <option value="true">Controlar también peso real en kg</option>
           </NativeSelect>
           <p className="text-xs text-muted-foreground">
-            Actívalo únicamente cuando el personal necesite registrar el peso
-            medido. En productos cerrados por unidad, la matriz mostrará un
-            guion en PESO REAL.
+            Se recomienda para frutas, verduras y otros productos variables. El
+            recibo usará el peso solo si también existe un precio por kg, libra
+            u otra unidad de peso; no lo actives para envases cerrados.
           </p>
         </div>
 
@@ -433,17 +434,24 @@ function ProductForm({
           </NativeSelect>
         </div>
 
-        <div className="space-y-2">
-          <Label>Unidad de precio</Label>
-          <NativeSelect name="price_unit_id" defaultValue={priceUnitId}>
-            <option value="">Seleccionar</option>
-            {availableQbUnits.map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.name} ({unit.symbol})
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
+        {mode === "create" ? (
+          <div className="space-y-2">
+            <Label>Unidad de precio inicial</Label>
+            <NativeSelect name="price_unit_id" defaultValue={priceUnitId}>
+              <option value="">Seleccionar</option>
+              {availableQbUnits.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name} ({unit.symbol})
+                </option>
+              ))}
+            </NativeSelect>
+            <p className="text-xs text-muted-foreground">
+              Después de crear el producto podrás registrar el monto exacto.
+            </p>
+          </div>
+        ) : (
+          <input type="hidden" name="price_unit_id" value={priceUnitId} />
+        )}
 
         <div className="space-y-2">
           <Label htmlFor={`${mode}-stock-min`}>Stock minimo</Label>
@@ -1046,6 +1054,12 @@ export function ProductManagement({
                                   unitLocked={productsWithMovements.has(
                                     product.id,
                                   )}
+                                />
+                                <ProductPricingEditor
+                                  product={product}
+                                  settings={qbSettingsByProduct.get(product.id)}
+                                  units={qbUnits}
+                                  canManage={canManagePrice}
                                 />
                                 <ProductAmountModeControl
                                   productId={product.id}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ClipboardList } from "lucide-react";
 
 import { PrintReceiptButton } from "@/components/qb-receipts/print-receipt-button";
 import { ReceiptDocument } from "@/components/qb-receipts/receipt-document";
@@ -57,6 +57,14 @@ export default async function ReceiptDetailPage({
           </Link>
         </Button>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {receipt.status !== "anulado" ? (
+            <Button asChild variant="outline">
+              <Link href={`/recibos/${receipt.id}/nota-entrega`}>
+                <ClipboardList className="size-4" />
+                Nota sin precios
+              </Link>
+            </Button>
+          ) : null}
           {receipt.status === "emitido" ? (
             <ReceiptImageActions
               receiptNumber={receipt.number}

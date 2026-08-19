@@ -19,6 +19,8 @@ const roleRouteAccess: Record<UserRole, string[]> = {
     "/",
     "/pedidos",
     "/matriz-operativa",
+    "/productos",
+    "/parametrizacion",
     "/clientes",
     "/recibos",
   ],

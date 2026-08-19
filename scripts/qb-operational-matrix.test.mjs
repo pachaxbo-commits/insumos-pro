@@ -149,6 +149,12 @@ assert.match(matrix, /scrollIntoView/);
 assert.match(matrixData, /customer_account_id/);
 assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
+assert.match(matrix, /const shouldCopyWeight/);
+assert.match(matrix, /line\.preparationActualWeightKg > 0\.000001/);
+assert.match(
+  matrixData,
+  /rawDeliveryWeight === null \|\| rawDeliveryWeight <= 0\.000001[\s\S]*?preparationActualWeightKg/,
+);
 assert.match(matrix, /groupLineMap/);
 assert.match(matrix, /saveGroupedPreparation/);
 assert.match(matrix, /saveGroupedDelivery/);
@@ -267,6 +273,18 @@ assert.match(
   /delivery_item\.actual_weight_kg[\s\S]*< coalesce\([\s\S]*preparation_item\.actual_weight_kg/,
 );
 assert.match(matrix, /line\.controlsActualWeight \? \(/);
+assert.match(
+  matrix,
+  /function customerDividerClass[\s\S]*border-l-4[\s\S]*border-l-slate-700/,
+);
+assert.match(
+  matrix,
+  /customerGroups\.map[\s\S]*customerDividerClass\(focused\)/,
+);
+assert.match(
+  matrix,
+  /TOTALES POR CLIENTE[\s\S]*customerDividerClass\(group\.id === focusedCustomerId\)/,
+);
 assert.match(matrix, /Valor inicial de Inventario · editable/);
 assert.match(matrix, /mergeServerLines/);
 assert.match(matrix, /const deliveryDisabled = !editable/);
@@ -339,21 +357,21 @@ assert.doesNotMatch(
 assert.match(factors, /old\.status <> 'borrador'/);
 assert.match(
   receiptDocument,
-  /isCustomerExport \? "Comprobante de entrega" : receipt\.number/,
+  /isDeliveryNote[\s\S]*?"Nota de entrega"[\s\S]*?isCustomerExport[\s\S]*?"Comprobante de entrega"[\s\S]*?receipt\.number/,
 );
 assert.match(
   receiptDocument,
-  /!isCustomerExport \? <div className="border-b py-5">/,
+  /!isExternalDocument \? <div className="border-b py-5">/,
 );
 assert.match(
   receiptDocument,
-  /isCustomerExport \? "Fecha de entrega" : "Periodo"/,
+  /isExternalDocument \? "Fecha de entrega" : "Periodo"/,
 );
 assert.match(
   receiptDocument,
-  /isCustomerExport \? "justify-self-end text-right" : undefined/,
+  /isExternalDocument \? "justify-self-end text-right" : undefined/,
 );
-assert.match(receiptDocument, /!isCustomerExport && receipt\.visibleNote/);
+assert.match(receiptDocument, /!isExternalDocument && receipt\.visibleNote/);
 
 const scenarios = [
   {

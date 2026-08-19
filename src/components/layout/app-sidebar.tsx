@@ -26,6 +26,8 @@ export function AppSidebar({
   const workspace = getFocusedWorkspace(user.role);
   const adminAvailablePaths = new Set([
     "/matriz-operativa",
+    "/productos",
+    "/parametrizacion",
     "/clientes",
     "/recibos",
   ]);

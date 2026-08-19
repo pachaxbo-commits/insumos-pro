@@ -2,7 +2,7 @@ import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { formatBoliviaDate } from "@/lib/date-time";
 import type { QbReceipt } from "@/types/qb-receipts";
 
-type ReceiptDocumentVariant = "admin" | "customer-export";
+type ReceiptDocumentVariant = "admin" | "customer-export" | "delivery-note";
 
 function money(value: number | null) {
   if (value === null || value <= 0) return "Precio pendiente";
@@ -29,24 +29,35 @@ export function ReceiptDocument({
   variant: ReceiptDocumentVariant;
 }) {
   const isCustomerExport = variant === "customer-export";
+  const isDeliveryNote = variant === "delivery-note";
+  const isExternalDocument = isCustomerExport || isDeliveryNote;
+  const showsPrices = !isDeliveryNote;
 
   return (
     <section
       id={id}
       data-qb-receipt-document={variant}
-      data-qb-receipt-export={isCustomerExport ? true : undefined}
+      data-qb-receipt-export={isExternalDocument ? true : undefined}
       className="qb-receipt-export-surface rounded-lg border bg-background p-6 print:border-none"
     >
       <div className="flex flex-wrap items-start justify-between gap-6 border-b pb-5">
         <QbInsumosBrand variant="compact" showSubtitle />
         <div className="text-right">
           <p className="text-sm text-muted-foreground">
-            {isCustomerExport ? "Recibo" : "Recibo no fiscal"}
+            {isDeliveryNote
+              ? "Documento de recepción"
+              : isCustomerExport
+                ? "Recibo"
+                : "Recibo no fiscal"}
           </p>
           <h1 className="font-mono text-2xl font-semibold">
-            {isCustomerExport ? "Comprobante de entrega" : receipt.number}
+            {isDeliveryNote
+              ? "Nota de entrega"
+              : isCustomerExport
+                ? "Comprobante de entrega"
+                : receipt.number}
           </h1>
-          {!isCustomerExport ? (
+          {!isExternalDocument ? (
             <p className="text-sm text-muted-foreground">
               Estado: {receipt.status}
             </p>
@@ -56,7 +67,7 @@ export function ReceiptDocument({
 
       <div
         className={`grid gap-4 border-b py-5 ${
-          isCustomerExport ? "md:grid-cols-2" : "md:grid-cols-3"
+          isExternalDocument ? "md:grid-cols-2" : "md:grid-cols-3"
         }`}
       >
         <div>
@@ -64,7 +75,7 @@ export function ReceiptDocument({
             Cliente
           </p>
           <p className="mt-1 font-semibold">{receipt.customerName}</p>
-          {!isCustomerExport ? (
+          {!isExternalDocument ? (
             <>
               <p className="text-sm text-muted-foreground">
                 {receipt.customerEmail}
@@ -79,14 +90,14 @@ export function ReceiptDocument({
         </div>
         <div
           className={
-            isCustomerExport ? "justify-self-end text-right" : undefined
+            isExternalDocument ? "justify-self-end text-right" : undefined
           }
         >
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {isCustomerExport ? "Fecha de entrega" : "Periodo"}
+            {isExternalDocument ? "Fecha de entrega" : "Periodo"}
           </p>
           <p className="mt-1 text-sm">
-            {isCustomerExport ? (
+            {isExternalDocument ? (
               formatBoliviaDate(receipt.periodEnd ?? receipt.periodStart)
             ) : (
               <>
@@ -96,7 +107,7 @@ export function ReceiptDocument({
             )}
           </p>
         </div>
-        {!isCustomerExport ? (
+        {!isExternalDocument ? (
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
               Emision
@@ -108,7 +119,7 @@ export function ReceiptDocument({
         ) : null}
       </div>
 
-      {!isCustomerExport ? <div className="border-b py-5">
+      {!isExternalDocument ? <div className="border-b py-5">
         <p className="text-xs font-medium uppercase text-muted-foreground">
           Pedidos incluidos
         </p>
@@ -126,18 +137,22 @@ export function ReceiptDocument({
 
       <div data-qb-receipt-table className="overflow-x-auto py-5">
         <table
-          className={`w-full text-sm ${isCustomerExport ? "min-w-[620px]" : "min-w-[760px]"}`}
+          className={`w-full text-sm ${isExternalDocument ? "min-w-[480px]" : "min-w-[760px]"}`}
         >
           <thead>
             <tr className="border-b text-left text-xs uppercase text-muted-foreground">
               <th className="py-2 pr-3">Producto</th>
-              {!isCustomerExport ? <th className="py-2 pr-3">Pedido</th> : null}
+              {!isExternalDocument ? <th className="py-2 pr-3">Pedido</th> : null}
               <th className="py-2 pr-3 text-right">Cantidad</th>
-              {!isCustomerExport ? (
+              {!isExternalDocument ? (
                 <th className="py-2 pr-3 text-right">Precio base</th>
               ) : null}
-              <th className="py-2 pr-3 text-right">Precio final</th>
-              <th className="py-2 text-right">Total</th>
+              {showsPrices ? (
+                <>
+                  <th className="py-2 pr-3 text-right">Precio final</th>
+                  <th className="py-2 text-right">Total</th>
+                </>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -146,7 +161,7 @@ export function ReceiptDocument({
                 <td className="py-3 pr-3 font-medium">
                   {index + 1}. {line.productName}
                 </td>
-                {!isCustomerExport ? (
+                {!isExternalDocument ? (
                   <td className="py-3 pr-3 font-mono text-xs text-muted-foreground">
                     {line.orderReference}
                   </td>
@@ -154,33 +169,37 @@ export function ReceiptDocument({
                 <td className="py-3 pr-3 text-right">
                   {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
                 </td>
-                {!isCustomerExport ? (
+                {!isExternalDocument ? (
                   <td className="py-3 pr-3 text-right">
                     {line.inputMode === "amount_bs"
                       ? `${money(line.originalBasePrice)} (referencia)`
                       : money(line.basePriceUsed)}
                   </td>
                 ) : null}
-                <td className="py-3 pr-3 text-right">
-                  {line.inputMode === "amount_bs"
-                    ? `Importe fijo ${money(line.requestedAmountBs)}`
-                    : money(line.finalUnitPrice)}
-                </td>
-                <td className="py-3 text-right font-semibold">
-                  {money(line.lineTotal)}
-                </td>
+                {showsPrices ? (
+                  <>
+                    <td className="py-3 pr-3 text-right">
+                      {line.inputMode === "amount_bs"
+                        ? `Importe fijo ${money(line.requestedAmountBs)}`
+                        : money(line.finalUnitPrice)}
+                    </td>
+                    <td className="py-3 text-right font-semibold">
+                      {money(line.lineTotal)}
+                    </td>
+                  </>
+                ) : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div
+      {showsPrices ? <div
         className={`grid gap-4 border-t py-5 ${
           isCustomerExport ? "justify-end" : "md:grid-cols-[1fr_280px]"
         }`}
       >
-        {!isCustomerExport ? (
+        {!isExternalDocument ? (
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
               Factores aplicados
@@ -194,7 +213,7 @@ export function ReceiptDocument({
           </div>
         ) : null}
         <div className="w-[280px] space-y-2 rounded-lg border p-4">
-          {!isCustomerExport ? (
+          {!isExternalDocument ? (
             <div className="flex justify-between text-sm">
               <span>Subtotal</span>
               <span>
@@ -213,16 +232,20 @@ export function ReceiptDocument({
             </span>
           </div>
         </div>
-      </div>
+      </div> : (
+        <div className="border-t py-5 text-sm text-muted-foreground">
+          Documento sin precios para verificar las cantidades realmente entregadas.
+        </div>
+      )}
 
-      {!isCustomerExport && receipt.visibleNote ? (
+      {!isExternalDocument && receipt.visibleNote ? (
         <div className="mb-5 rounded-md bg-muted p-3 text-sm">
           <p className="font-medium">Nota</p>
           <p className="mt-1 text-muted-foreground">{receipt.visibleNote}</p>
         </div>
       ) : null}
 
-      {!isCustomerExport ? (
+      {!isExternalDocument ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-center text-sm font-medium text-amber-800">
           No constituye factura fiscal ni comprobante de pago. No registra
           cobro, caja ni metodo de pago.

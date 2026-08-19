@@ -1,0 +1,111 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { redirect } from "next/navigation";
+
+import { PrintReceiptButton } from "@/components/qb-receipts/print-receipt-button";
+import { Button } from "@/components/ui/button";
+import { requireRoleAccess } from "@/lib/auth/session";
+import { buildMarketSheetModel } from "@/lib/market-sheet/model";
+import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
+
+function validDate(value: string | undefined) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function quantity(value: number) {
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
+    value,
+  );
+}
+
+export default async function MarketPrintPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  const auth = await requireRoleAccess("/matriz-operativa");
+  if (auth.user.role !== "administrador") redirect("/matriz-operativa");
+  const { date: rawDate } = await searchParams;
+  const date = validDate(rawDate);
+  if (!date) redirect("/matriz-operativa");
+
+  const data = await getOperationalMatrixData(date, auth.user.role);
+  const model = buildMarketSheetModel(data);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 print:hidden">
+        <Button asChild variant="outline">
+          <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
+            <ArrowLeft className="size-4" />
+            Volver
+          </Link>
+        </Button>
+        <PrintReceiptButton />
+      </div>
+
+      <section className="bg-white p-4 text-slate-950 print:p-0">
+        <div className="border-b-2 border-emerald-900 pb-3 text-center">
+          <h1 className="text-xl font-bold">QB INSUMOS · HOJA DE COMPRAS DE MERCADO</h1>
+          <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
+          <p className="text-xs text-slate-600">
+            Cantidades solicitadas por los clientes antes de preparación
+          </p>
+        </div>
+
+        {!model.rows.length ? (
+          <p className="p-8 text-center text-sm text-slate-500">
+            No hay pedidos solicitados para esta fecha.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto print:overflow-visible">
+            <table className="w-full min-w-max border-collapse text-[10px]">
+              <thead>
+                <tr className="bg-slate-200">
+                  <th className="border border-slate-500 px-2 py-2">N°</th>
+                  <th className="min-w-52 border border-slate-500 px-2 py-2 text-left">DESCRIPCIÓN</th>
+                  <th className="border border-slate-500 px-2 py-2">UD</th>
+                  {model.customers.map((customer) => (
+                    <th key={customer.key} className="max-w-28 border border-slate-500 px-2 py-2">
+                      {customer.name}
+                    </th>
+                  ))}
+                  <th className="border border-slate-500 bg-emerald-100 px-2 py-2">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {model.rows.map((row, index) => (
+                  <tr key={row.key} style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}>
+                    <td className="border-b border-r border-slate-300 px-2 py-1 text-center">{index + 1}</td>
+                    <td className="border-b border-r border-slate-300 px-2 py-1 font-medium">{row.productName}</td>
+                    <td className="border-b border-r border-slate-300 px-2 py-1 text-center">{row.unit}</td>
+                    {row.quantities.map((value, customerIndex) => (
+                      <td key={model.customers[customerIndex]?.key} className="border-b border-r border-slate-300 px-2 py-1 text-center">
+                        {value > 0 ? quantity(value) : ""}
+                      </td>
+                    ))}
+                    <td className="border-b border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold">{quantity(row.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-emerald-100 font-bold">
+                  <th colSpan={3} className="border-y-2 border-emerald-800 px-2 py-2 text-left">TOTALES</th>
+                  {model.customers.map((customer, customerIndex) => (
+                    <th key={customer.key} className="border-y-2 border-emerald-800 px-2 py-2">
+                      {quantity(model.rows.reduce((sum, row) => sum + row.quantities[customerIndex], 0))}
+                    </th>
+                  ))}
+                  <th className="border-y-2 border-emerald-800 px-2 py-2">
+                    {quantity(model.rows.reduce((sum, row) => sum + row.total, 0))}
+                  </th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+

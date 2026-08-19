@@ -80,6 +80,47 @@ const updateDraftSchema = z.object({
   lines: z.array(receiptLineUpdateSchema).optional().default([]),
 });
 
+const manualTrackingSchema = z.object({
+  receiptId: z.string().uuid(),
+  receiptSent: z.enum(["true", "false"]).transform((value) => value === "true"),
+  paymentStatus: z.enum(["pendiente", "pagado"]),
+});
+
+const nullablePurchaseCostSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return Number(trimmed);
+  }
+  return value;
+}, z.number().finite().nonnegative().max(999999999999.99).nullable());
+
+const purchaseCostLineSchema = z
+  .object({
+    lineId: z.string().uuid(),
+    purchaseCostTotal: nullablePurchaseCostSchema,
+    referenceUnitId: z.preprocess(
+      (value) => (typeof value === "string" && !value.trim() ? null : value),
+      z.string().uuid().nullable(),
+    ),
+    referenceValue: nullablePurchaseCostSchema,
+  })
+  .superRefine((line, context) => {
+    if ((line.referenceUnitId === null) !== (line.referenceValue === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["referenceValue"],
+        message: "Elige la unidad e ingresa su costo de comparación.",
+      });
+    }
+  });
+
+const purchaseCostsSchema = z.object({
+  receiptId: z.string().uuid(),
+  lines: z.array(purchaseCostLineSchema),
+});
+
 function errorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error) {
     const message = String((error as { message?: unknown }).message ?? "").trim();
@@ -262,4 +303,87 @@ export async function voidQbReceiptAction(
   revalidatePath("/recibos");
   revalidatePath(`/recibos/${receiptId.data}`);
   return { success: true, message: "Recibo QB anulado." };
+}
+
+export async function setQbReceiptManualTrackingAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  await requireRoleAccess("/recibos");
+
+  const parsed = manualTrackingSchema.safeParse({
+    receiptId: formData.get("receipt_id"),
+    receiptSent: formData.get("receipt_sent"),
+    paymentStatus: formData.get("payment_status"),
+  });
+  if (!parsed.success) {
+    return initialFailure("Control manual del recibo inválido.");
+  }
+
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+
+  const { error } = await supabase.rpc("set_qb_receipt_manual_tracking", {
+    p_receipt_id: parsed.data.receiptId,
+    p_receipt_sent: parsed.data.receiptSent,
+    p_payment_status: parsed.data.paymentStatus,
+  });
+  if (error) {
+    return initialFailure(
+      errorMessage(error, "No se pudo actualizar el control manual del recibo."),
+    );
+  }
+
+  revalidatePath("/recibos");
+  revalidatePath(`/recibos/${parsed.data.receiptId}`);
+  return { success: true, message: "Control manual actualizado." };
+}
+
+export async function setQbReceiptPurchaseCostsAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  await requireRoleAccess("/recibos");
+
+  let lines: unknown;
+  try {
+    lines = JSON.parse(String(formData.get("lines") ?? "[]"));
+  } catch {
+    return initialFailure("Los costos de compra no tienen un formato válido.");
+  }
+
+  const parsed = purchaseCostsSchema.safeParse({
+    receiptId: formData.get("receipt_id"),
+    lines,
+  });
+  if (!parsed.success) {
+    return initialFailure(
+      "Revisa los costos. La unidad de comparación y su valor deben completarse juntos.",
+    );
+  }
+
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+
+  const { error } = await supabase.rpc("set_qb_receipt_purchase_costs", {
+    p_receipt_id: parsed.data.receiptId,
+    p_lines: parsed.data.lines.map((line) => ({
+      line_id: line.lineId,
+      purchase_cost_total: line.purchaseCostTotal,
+      reference_unit_id: line.referenceUnitId,
+      reference_value: line.referenceValue,
+    })),
+  });
+  if (error) {
+    return initialFailure(
+      errorMessage(error, "No se pudieron guardar los costos de compra."),
+    );
+  }
+
+  revalidatePath("/recibos");
+  revalidatePath(`/recibos/${parsed.data.receiptId}`);
+  return {
+    success: true,
+    message: "Costos de compra guardados para administración.",
+  };
 }

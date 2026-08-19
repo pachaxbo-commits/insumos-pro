@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header";
+import { MarketSheetActions } from "@/components/operational-matrix/market-sheet-actions";
 import { OperationalMatrix } from "@/components/operational-matrix/operational-matrix";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
@@ -83,6 +84,7 @@ export default async function MatrizOperativaPage({
           Ver fecha
         </button>
       </form>
+      {isAdmin ? <MarketSheetActions date={date} /> : null}
       <OperationalMatrix
         key={date}
         data={data}

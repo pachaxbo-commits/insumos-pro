@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { PackagePlus, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionToast } from "@/hooks/use-action-toast";
 import { createProductAction } from "@/lib/products/actions";
+import { usesActualWeightByDefault } from "@/lib/products/weight-control";
 import { cn } from "@/lib/utils";
 import type { ProductCategory, QbUnit } from "@/types/products";
 
@@ -41,6 +42,16 @@ export function NewProductDialog({
   useActionToast(state);
   const activeCategories = categories.filter((category) => category.is_active);
   const activeUnits = qbUnits.filter((unit) => unit.is_active);
+  const [categoryId, setCategoryId] = useState("");
+  const [controlsActualWeight, setControlsActualWeight] = useState("false");
+
+  function selectCategory(value: string) {
+    setCategoryId(value);
+    const category = activeCategories.find((item) => item.id === value);
+    setControlsActualWeight(
+      category && usesActualWeightByDefault(category.name) ? "true" : "false",
+    );
+  }
 
   return (
     <Dialog>
@@ -114,16 +125,19 @@ export function NewProductDialog({
               <Label>Control de peso real</Label>
               <select
                 name="controls_actual_weight"
-                defaultValue="false"
+                value={controlsActualWeight}
+                onChange={(event) =>
+                  setControlsActualWeight(event.target.value)
+                }
                 className={selectClassName}
               >
                 <option value="false">Solo controlar cantidad / unidad</option>
                 <option value="true">Controlar también peso real en kg</option>
               </select>
               <p className="text-xs text-muted-foreground">
-                Actívalo para frutas, verduras u otros productos que deban
-                pesarse. Déjalo desactivado para botellas, latas y unidades
-                cerradas.
+                Se activa automáticamente para frutas y verduras frescas. Puede
+                cambiarse manualmente para excepciones; botellas, latas y
+                unidades cerradas deben permanecer desactivadas.
               </p>
             </div>
 
@@ -132,7 +146,8 @@ export function NewProductDialog({
               <select
                 name="category_id"
                 required
-                defaultValue=""
+                value={categoryId}
+                onChange={(event) => selectCategory(event.target.value)}
                 className={selectClassName}
               >
                 <option value="" disabled>

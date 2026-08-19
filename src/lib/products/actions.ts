@@ -260,6 +260,11 @@ const qbProductBasePriceSchema = z.object({
   ),
 });
 
+const qbProductPricingSchema = qbProductBasePriceSchema.extend({
+  price_unit_id: z.uuid("Selecciona una unidad de precio."),
+  expected_price_unit_id: optionalUuid,
+});
+
 const qbProductPresentationSchema = z
   .object({
     product_id: z.uuid("Selecciona un producto."),
@@ -1046,6 +1051,99 @@ export async function updateQbProductBasePriceAction(
       result?.status === "removed"
         ? "Precio retirado correctamente."
         : "Precio actualizado correctamente.",
+  };
+}
+
+export async function updateQbProductPricingAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanManageBasePrices();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = qbProductPricingSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return {
+      success: false,
+      message:
+        parsed.error.issues[0]?.message ??
+        "Revisa la unidad y el precio base.",
+    };
+  }
+
+  const input = parsed.data;
+  if (!input.remove_price && input.new_price === null) {
+    return { success: false, message: "Ingresa un precio positivo." };
+  }
+  if (
+    input.new_price !== null &&
+    Math.abs(input.new_price * 100 - Math.round(input.new_price * 100)) >
+      0.00000001
+  ) {
+    return {
+      success: false,
+      message: "El precio admite como máximo dos decimales.",
+    };
+  }
+  if (
+    !input.remove_price &&
+    input.expected_price !== null &&
+    !input.confirm_replacement
+  ) {
+    return {
+      success: false,
+      message: "Confirma el reemplazo del precio actual.",
+    };
+  }
+
+  const { data, error } = await access.supabase.rpc(
+    "update_qb_product_pricing_v2",
+    {
+      p_product_id: input.product_id,
+      p_price_unit_id: input.price_unit_id,
+      p_new_price: input.remove_price ? null : input.new_price,
+      p_expected_price: input.expected_price,
+      p_expected_price_unit_id: input.expected_price_unit_id,
+      p_remove_price: input.remove_price,
+    },
+  );
+
+  if (error) {
+    const messages: Record<string, string> = {
+      QB_PRICE_CONCURRENT_CHANGE:
+        "El precio o su unidad cambió mientras editabas. Actualiza la página y revísalo nuevamente.",
+      QB_PRICE_INVALID:
+        "El precio debe ser positivo y tener como máximo dos decimales.",
+      QB_PRICE_PRODUCT_INACTIVE:
+        "No se puede actualizar el precio de un producto inactivo.",
+      QB_PRICE_SETTINGS_NOT_FOUND:
+        "Guarda primero las unidades del producto.",
+      QB_PRICE_UNIT_INVALID:
+        "La unidad de precio no es válida para este producto.",
+      QB_WEIGHT_PRICE_REQUIRES_CONTROL:
+        "Activa el control de peso real antes de usar una unidad de peso diferente a la unidad comercial.",
+      QB_PRICE_ADMIN_REQUIRED:
+        "Solo un administrador puede cambiar precios base.",
+    };
+    const code = Object.keys(messages).find((candidate) =>
+      error.message.includes(candidate),
+    );
+    return {
+      success: false,
+      message: code ? messages[code] : "No se pudo actualizar el precio base.",
+    };
+  }
+
+  const result = data as { status?: string } | null;
+  revalidateProducts();
+  revalidatePath("/pedidos");
+  revalidatePath("/recibos");
+  return {
+    success: true,
+    message:
+      result?.status === "removed"
+        ? "Precio retirado correctamente."
+        : "Unidad y precio actualizados correctamente.",
   };
 }
 

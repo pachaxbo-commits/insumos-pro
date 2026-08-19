@@ -34,6 +34,9 @@ test("administrator retains the complete internal surface", () => {
     "/",
     "/pedidos",
     "/matriz-operativa",
+    "/productos",
+    "/productos/uno",
+    "/parametrizacion",
     "/clientes",
     "/recibos",
   ]) {
@@ -41,8 +44,6 @@ test("administrator retains the complete internal surface", () => {
   }
 
   for (const path of [
-    "/productos",
-    "/parametrizacion",
     "/configuracion",
     "/ingresos",
     "/inventario",
@@ -50,6 +51,13 @@ test("administrator retains the complete internal surface", () => {
   ]) {
     assert.equal(canAccessPath("administrador", path), false, path);
   }
+});
+
+test("administrator sees product pricing and parametrization in the active menu", () => {
+  const sidebar = readFileSync("src/components/layout/app-sidebar.tsx", "utf8");
+
+  assert.match(sidebar, /adminAvailablePaths[\s\S]*"\/productos"/);
+  assert.match(sidebar, /adminAvailablePaths[\s\S]*"\/parametrizacion"/);
 });
 
 test("final documentation and both meeting gates exist", () => {

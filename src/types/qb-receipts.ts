@@ -1,4 +1,11 @@
 export type QbReceiptStatus = "borrador" | "emitido" | "anulado";
+export type QbReceiptPaymentStatus = "pendiente" | "pagado";
+
+export type QbReceiptComparisonUnit = {
+  id: string;
+  name: string;
+  symbol: string;
+};
 
 export type QbReceiptOrderStatus = "borrador" | "emitido" | "anulado";
 
@@ -25,6 +32,15 @@ export type QbReceiptLine = {
   saveAsNewBasePrice: boolean;
   finalUnitPrice: number | null;
   lineTotal: number | null;
+  basePricePerArroba: number | null;
+  previousBasePrice: number | null;
+  previousBasePricePerArroba: number | null;
+  purchaseCostTotal: number | null;
+  purchaseCostReferenceUnitId: string | null;
+  purchaseCostReferenceUnitSymbol: string | null;
+  purchaseCostReferenceValue: number | null;
+  previousPurchaseCostReferenceUnitSymbol: string | null;
+  previousPurchaseCostReferenceValue: number | null;
   notes: string | null;
 };
 
@@ -61,6 +77,11 @@ export type QbReceipt = {
   visibleNote: string | null;
   internalNotes: string | null;
   issuedAt: string | null;
+  receiptSentAt: string | null;
+  receiptSentBy: string | null;
+  paymentStatus: QbReceiptPaymentStatus;
+  paidAt: string | null;
+  paidBy: string | null;
   voidedAt: string | null;
   voidReason: string | null;
   createdAt: string;
@@ -93,6 +114,7 @@ export type QbReceiptCustomerGroup = {
 export type QbReceiptsData = {
   receipts: QbReceipt[];
   pendingGroups: QbReceiptCustomerGroup[];
+  comparisonUnits: QbReceiptComparisonUnit[];
   error?: string;
 };
 

@@ -335,15 +335,15 @@ export async function getOperationalMatrixData(
         ? null
         : numberOr(delivery.actual_weight_kg);
     const deliveryActualWeightKg =
-      deliveryCheck &&
       controlsActualWeight &&
-      requestedWeightUnit &&
       (rawDeliveryWeight === null || rawDeliveryWeight <= 0.000001)
         ? preparationActualWeightKg && preparationActualWeightKg > 0.000001
           ? preparationActualWeightKg
-          : Number(
-              (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
-            )
+          : deliveryCheck && requestedWeightUnit
+            ? Number(
+                (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
+              )
+            : rawDeliveryWeight
         : rawDeliveryWeight;
     return {
       orderItemId: String(item.id),
