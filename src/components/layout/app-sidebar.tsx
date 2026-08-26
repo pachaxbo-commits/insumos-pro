@@ -1,6 +1,5 @@
 "use client";
 
-import { LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -36,12 +35,6 @@ export function AppSidebar({
       item.href === workspace.href ||
       (user.role === "administrador" && adminAvailablePaths.has(item.href)),
   );
-  const lockedItems = mainNavigation.filter(
-    (item) =>
-      !availableItems.some((available) => available.href === item.href) &&
-      item.href !== "/",
-  );
-
   return (
     <aside
       className={cn(
@@ -112,39 +105,14 @@ export function AppSidebar({
             {workspace.description}
           </div>
         )}
-
-        <Separator className="my-4 bg-white/10" />
-        <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/45">
-          Próximas etapas
-        </p>
-        <div className="mt-2 space-y-1">
-          {lockedItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={item.href}
-                title="Módulo bloqueado durante la implementación del flujo básico"
-                className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2 text-sidebar-foreground/40"
-                aria-disabled="true"
-              >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-white/5">
-                  <Icon className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {item.title}
-                </span>
-                <LockKeyhole className="size-3.5 shrink-0" />
-              </div>
-            );
-          })}
-        </div>
       </nav>
 
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-sm font-medium">Flujo básico activo</p>
+        <p className="text-sm font-medium">Flujo diario</p>
         <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
-          Los demás módulos se habilitarán cuando terminemos y validemos cada
-          etapa.
+          1. Crear pedido<br />
+          2. Preparar y entregar<br />
+          3. Generar recibo
         </p>
       </div>
     </aside>

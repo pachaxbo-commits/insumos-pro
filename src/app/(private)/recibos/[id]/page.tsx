@@ -76,6 +76,11 @@ export default async function ReceiptDetailPage({
         </div>
       </div>
 
+      <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 print:hidden">
+        Esta es la vista administrativa. Los códigos internos y precios base no aparecen en la
+        imagen que se entrega al cliente. La descarga para el cliente se habilita al emitir.
+      </div>
+
       <ReceiptDocument receipt={receipt} variant="admin" />
 
       <div

@@ -90,5 +90,8 @@ test("14. advanced templates remain available and explain their intended use", (
 test("15. receipt base price advances in half-unit steps", () => {
   assert.match(receiptUi, /min="0\.5"/);
   assert.match(receiptUi, /step="0\.5"/);
-  assert.doesNotMatch(receiptUi, /step="0\.0001"/);
+  assert.match(
+    receiptUi,
+    /aria-label=\{`Precio aplicado para \$\{line\.productName\}`\}[\s\S]{0,180}step="0\.5"/,
+  );
 });

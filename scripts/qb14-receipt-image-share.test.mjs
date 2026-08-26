@@ -172,15 +172,15 @@ test("PNG and WhatsApp capture only the customer-export receipt", () => {
 test("customer export hides internal factors, base price and fiscal notice", () => {
   assert.match(
     documentSource,
-    /!isCustomerExport \? \(\s*<th[^>]*>Precio base<\/th>/,
+    /!isExternalDocument \? \(\s*<th[^>]*>Precio base<\/th>/,
   );
   assert.match(
     documentSource,
-    /!isCustomerExport \? \(\s*<div>\s*<p[^>]*>\s*Factores aplicados/,
+    /!isExternalDocument \? \(\s*<div>\s*<p[^>]*>\s*Factores aplicados/,
   );
   assert.match(
     documentSource,
-    /!isCustomerExport \? \(\s*<p[^>]*>\s*No constituye factura fiscal/,
+    /!isExternalDocument \? \(\s*<p[^>]*>\s*No constituye factura fiscal/,
   );
 });
 
@@ -188,7 +188,7 @@ test("customer export keeps the required customer-facing receipt fields", () => 
   for (const label of [
     "Cliente",
     "Periodo",
-    "Emision",
+    "Emisión",
     "Pedidos incluidos",
     "Producto",
     "Cantidad",
@@ -204,7 +204,7 @@ test("customer export keeps the required customer-facing receipt fields", () => 
 test("admin keeps subtotal while customer export exposes only the final total", () => {
   assert.match(
     documentSource,
-    /!isCustomerExport \? \(\s*<div[^>]*>\s*<span>Subtotal<\/span>[\s\S]*receipt\.subtotalAmount/,
+    /!isExternalDocument \? \(\s*<div[^>]*>\s*<span>Subtotal<\/span>[\s\S]*receipt\.subtotalAmount/,
   );
   assert.match(documentSource, /<span>Total<\/span>[\s\S]*receipt\.totalAmount/);
   assert.equal((documentSource.match(/receipt\.subtotalAmount/g) ?? []).length, 1);
@@ -214,7 +214,7 @@ test("visibleNote is rendered only in the administrative receipt", () => {
   assert.equal((documentSource.match(/receipt\.visibleNote/g) ?? []).length, 2);
   assert.match(
     documentSource,
-    /\{!isCustomerExport && receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
+    /\{!isExternalDocument && receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
   );
 });
 

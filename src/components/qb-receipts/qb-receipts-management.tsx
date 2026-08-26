@@ -6,11 +6,14 @@ import {
   Ban,
   CheckCircle2,
   ClipboardList,
+  CircleDollarSign,
   FileText,
-  Percent,
+  History,
+  ListChecks,
   Printer,
   ReceiptText,
   Save,
+  Settings2,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,6 +30,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   createQbReceiptDraftAction,
   emitQbReceiptAction,
@@ -65,6 +74,22 @@ function quantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
     value,
   );
+}
+
+function isCurrencyLikeUnit(symbol: string) {
+  return ["BS", "BOB"].includes(symbol.trim().toUpperCase().replaceAll(".", ""));
+}
+
+function deliveredQuantityLabel(line: QbReceiptLine) {
+  if (line.inputMode === "amount_bs") {
+    return `Pedido por ${money(line.requestedAmountBs ?? line.fixedLineAmount ?? 0)}`;
+  }
+
+  if (isCurrencyLikeUnit(line.baseUnitSymbol)) {
+    return `${quantity(line.deliveredBaseQuantity)} · unidad por corregir`;
+  }
+
+  return `${quantity(line.deliveredBaseQuantity)} ${line.baseUnitSymbol}`;
 }
 
 function statusClass(status: QbReceiptStatus) {
@@ -607,8 +632,12 @@ function DraftEditor({
     }));
   }
 
+  const linesWithInvalidPhysicalUnit = receipt.lines.filter(
+    (line) => line.inputMode === "quantity" && isCurrencyLikeUnit(line.baseUnitSymbol),
+  );
+
   return (
-    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+    <div className="space-y-4">
       {receipt.hasPendingPrices ||
       hasPendingDraftLines ||
       hasInvalidDraftLines ||
@@ -628,296 +657,278 @@ function DraftEditor({
           </AlertDescription>
         </Alert>
       ) : null}
-      <form action={updateAction} className="space-y-4">
-        <input type="hidden" name="receipt_id" value={receipt.id} />
-        <input type="hidden" name="lines" value={linesPayload} />
+      {linesWithInvalidPhysicalUnit.length ? (
+        <Alert variant="destructive">
+          <AlertTitle>Hay una unidad que debe revisarse</AlertTitle>
+          <AlertDescription>
+            {linesWithInvalidPhysicalUnit.map((line) => line.productName).join(", ")} aparece con
+            “BS” como unidad de cantidad. Corrige el producto y vuelve a generar el borrador para
+            que el recibo no confunda bolivianos con una unidad física.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <ReceiptFactorInput
-            receiptId={receipt.id}
-            label="Distancia"
-            name="distance_factor_percent"
-            defaultValue={receipt.distanceFactorPercent}
-          />
-          <ReceiptFactorInput
-            receiptId={receipt.id}
-            label="Exigencia"
-            name="exigency_factor_percent"
-            defaultValue={receipt.exigencyFactorPercent}
-          />
-          <ReceiptFactorInput
-            receiptId={receipt.id}
-            label="Clima"
-            name="weather_factor_percent"
-            defaultValue={receipt.weatherFactorPercent}
-          />
-          <ReceiptFactorInput
-            receiptId={receipt.id}
-            label="Extraordinario"
-            name="extraordinary_factor_percent"
-            defaultValue={receipt.extraordinaryFactorPercent}
-          />
-        </div>
+      <Tabs defaultValue="venta" className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1">
+          <TabsTrigger value="venta" className="min-h-10 flex-none px-4">
+            <CircleDollarSign className="size-4" />
+            1. Precios de venta
+          </TabsTrigger>
+          <TabsTrigger value="costos" className="min-h-10 flex-none px-4">
+            <ClipboardList className="size-4" />
+            2. Costos y utilidad
+          </TabsTrigger>
+          <TabsTrigger value="emitir" className="min-h-10 flex-none px-4">
+            <CheckCircle2 className="size-4" />
+            3. Revisar y emitir
+          </TabsTrigger>
+        </TabsList>
 
-        <p className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-          El precio base es el precio de venta antes de aplicar los factores del
-          recibo. El costo de compra se manejará por separado para no mezclar
-          costo, venta y utilidad.
-        </p>
+        <TabsContent value="venta">
+          <form action={updateAction} className="space-y-4 rounded-xl border bg-muted/15 p-4">
+            <input type="hidden" name="receipt_id" value={receipt.id} />
+            <input type="hidden" name="lines" value={linesPayload} />
 
-        <div className="rounded-md border bg-background">
-          <div className="grid gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground xl:grid-cols-[1.2fr_120px_130px_130px_130px_170px_1.2fr_110px]">
-            <span>Producto</span>
-            <span>Cantidad entregada</span>
-            <span>Precio base actual</span>
-            <span>Precio base equivalente</span>
-            <span>Precio base anterior</span>
-            <span>Precio base aplicado</span>
-            <span>Uso futuro</span>
-            <span>Subtotal final</span>
-          </div>
-          <div className="divide-y">
-            {receipt.lines.map((line) => {
-              const draft = lines[line.id] ?? buildLineDraft(line);
-              const priceState = getDraftPriceState(draft.basePriceUsed);
-              const matchesCurrentPrice = pricesMatch(
-                line.currentBasePrice,
-                draft.basePriceUsed,
-              );
-              const savedPriceMatchesDraft =
-                line.basePriceUsed !== null &&
-                pricesMatch(line.basePriceUsed, draft.basePriceUsed);
-              return (
-                <div
-                  key={line.id}
-                  className="grid gap-3 px-3 py-4 text-sm xl:grid-cols-[1.2fr_120px_130px_130px_130px_170px_1.2fr_110px]"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium">{line.productName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {line.orderReference}
-                    </p>
-                  </div>
-                  <p className="text-muted-foreground">
-                    {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
-                  </p>
-                  <div className="text-xs">
-                    {line.inputMode === "amount_bs" ? (
-                      <>
-                        <p className="font-medium">
-                          {money(line.originalBasePrice ?? 0)}
-                        </p>
-                        <p className="text-muted-foreground">
-                          referencia congelada por{" "}
-                          {line.pricingUnitSymbol ?? line.baseUnitSymbol}
-                        </p>
-                      </>
-                    ) : line.currentBasePrice === null ? (
-                      <p className="font-medium text-amber-700">
-                        Este producto todavía no tiene precio base.
-                      </p>
-                    ) : (
-                      <>
-                        <p className="font-medium">
-                          {money(line.currentBasePrice)}
-                        </p>
-                        <p className="text-muted-foreground">
-                          por{" "}
-                          {line.currentBasePriceUnitSymbol ??
-                            line.baseUnitSymbol}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                  <div className="text-xs">
-                    {line.basePricePerArroba === null ? (
-                      <p className="text-muted-foreground">No aplica</p>
-                    ) : (
-                      <>
-                        <p className="font-medium">{money(line.basePricePerArroba)}</p>
-                        <p className="text-muted-foreground">por arroba (venta)</p>
-                      </>
-                    )}
-                  </div>
-                  <div className="text-xs">
-                    {line.previousBasePricePerArroba !== null ? (
-                      <>
-                        <p className="font-medium">{money(line.previousBasePricePerArroba)}</p>
-                        <p className="text-muted-foreground">por arroba (venta)</p>
-                      </>
-                    ) : line.previousBasePrice !== null ? (
-                      <p className="font-medium">{money(line.previousBasePrice)}</p>
-                    ) : (
-                      <p className="text-muted-foreground">Sin anterior</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    {line.inputMode === "amount_bs" ? (
-                      <div className="rounded-xl border bg-muted/35 px-3 py-2">
-                        <p className="font-medium">
-                          Pedido por Bs {money(line.requestedAmountBs ?? 0)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Importe fijo; la cantidad real solo afecta inventario.
-                        </p>
-                      </div>
-                    ) : (
-                      <Input
-                        aria-label={`Precio aplicado para ${line.productName}`}
-                        type="number"
-                        min="0.5"
-                        step="0.5"
-                        placeholder="Ingresa el precio"
-                        value={draft.basePriceUsed}
-                        onChange={(event) => {
-                          const basePriceUsed = event.target.value;
-                          const wasValid =
-                            getDraftPriceState(draft.basePriceUsed) === "valid";
-                          const isValid =
-                            getDraftPriceState(basePriceUsed) === "valid";
-                          updateLine(line.id, {
-                            basePriceUsed,
-                            ...(isValid
-                              ? line.currentBasePrice === null && !wasValid
-                                ? { saveAsNewBasePrice: true }
-                                : {}
-                              : { saveAsNewBasePrice: false }),
-                          });
-                        }}
-                      />
-                    )}
-                    {line.inputMode === "quantity" ? (
-                      <p className="text-xs text-muted-foreground">
-                        Bs por{" "}
-                        {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    {line.inputMode === "amount_bs" ? (
-                      <p className="font-medium text-emerald-700">
-                        El precio y el importe quedan conservados por snapshot.
-                      </p>
-                    ) : matchesCurrentPrice ? (
-                      <p className="font-medium text-emerald-700">
-                        El precio aplicado ya coincide con el precio base.
-                      </p>
-                    ) : (
-                      <>
-                        <label className="flex items-start gap-2 text-muted-foreground">
-                          <input
-                            type="checkbox"
-                            checked={draft.saveAsNewBasePrice}
-                            disabled={priceState !== "valid"}
-                            onChange={(event) =>
-                              updateLine(line.id, {
-                                saveAsNewBasePrice: event.target.checked,
-                              })
-                            }
-                            className="mt-0.5 size-4"
-                          />
-                          <span>
-                            Guardar este precio como base para próximos recibos.
-                          </span>
-                        </label>
-                        {line.currentBasePrice !== null &&
-                        priceState === "valid" ? (
-                          <p
-                            className={
-                              draft.saveAsNewBasePrice
-                                ? "font-medium text-amber-700"
-                                : "text-muted-foreground"
-                            }
-                          >
-                            {draft.saveAsNewBasePrice
-                              ? `Confirmas reemplazar ${money(line.currentBasePrice)} por ${money(Number(draft.basePriceUsed))}.`
-                              : "Precio excepcional: se usará solo en este recibo."}
-                          </p>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                  <p className="font-medium">
-                    {line.inputMode === "amount_bs"
+            <div>
+              <h3 className="font-semibold">Define cuánto se cobrará</h3>
+              <p className="text-sm text-muted-foreground">
+                La cantidad ya viene de la entrega. Escribe únicamente el precio de venta por unidad.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border bg-background">
+              <div className="hidden grid-cols-[minmax(0,1.4fr)_170px_190px_130px] gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground md:grid">
+                <span>Producto</span>
+                <span>Cantidad real</span>
+                <span>Precio de venta</span>
+                <span className="text-right">Total</span>
+              </div>
+              <div className="divide-y">
+                {receipt.lines.map((line) => {
+                  const draft = lines[line.id] ?? buildLineDraft(line);
+                  const priceState = getDraftPriceState(draft.basePriceUsed);
+                  const matchesCurrentPrice = pricesMatch(line.currentBasePrice, draft.basePriceUsed);
+                  const savedPriceMatchesDraft =
+                    line.basePriceUsed !== null && pricesMatch(line.basePriceUsed, draft.basePriceUsed);
+                  const totalLabel =
+                    line.inputMode === "amount_bs"
                       ? money(line.fixedLineAmount ?? 0)
                       : priceState === "invalid"
                         ? "Precio inválido"
                         : priceState === "pending"
                           ? "Precio pendiente"
-                          : savedPriceMatchesDraft &&
-                              line.lineTotal !== null &&
-                              line.lineTotal > 0
+                          : savedPriceMatchesDraft && line.lineTotal !== null && line.lineTotal > 0
                             ? money(line.lineTotal)
-                            : "Se calcula al guardar"}
-                  </p>
+                            : "Se calcula al guardar";
+
+                  return (
+                    <div key={line.id} className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.4fr)_170px_190px_130px] md:items-start">
+                      <div className="min-w-0">
+                        <p className="font-medium">{line.productName}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground md:hidden">Cantidad real</p>
+                        <p className={isCurrencyLikeUnit(line.baseUnitSymbol) ? "font-medium text-red-700" : "text-muted-foreground"}>
+                          {deliveredQuantityLabel(line)}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground md:hidden">Precio de venta</p>
+                        {line.inputMode === "amount_bs" ? (
+                          <div className="rounded-md border bg-muted/30 px-3 py-2">
+                            <p className="font-medium">Importe fijo</p>
+                            <p className="text-xs text-muted-foreground">{money(line.requestedAmountBs ?? 0)}</p>
+                            <p className="text-xs text-muted-foreground">Importe fijo; la cantidad real solo afecta inventario.</p>
+                            <p className="text-xs text-muted-foreground">El precio y el importe quedan conservados por snapshot.</p>
+                          </div>
+                        ) : (
+                          <Input
+                            aria-label={`Precio aplicado para ${line.productName}`}
+                            type="number"
+                            min="0.5"
+                            step="0.5"
+                            placeholder="Ej. 25"
+                            value={draft.basePriceUsed}
+                            onChange={(event) => {
+                              const basePriceUsed = event.target.value;
+                              const wasValid = getDraftPriceState(draft.basePriceUsed) === "valid";
+                              const isValid = getDraftPriceState(basePriceUsed) === "valid";
+                              updateLine(line.id, {
+                                basePriceUsed,
+                                ...(isValid
+                                  ? line.currentBasePrice === null && !wasValid
+                                    ? { saveAsNewBasePrice: true }
+                                    : {}
+                                  : { saveAsNewBasePrice: false }),
+                              });
+                            }}
+                          />
+                        )}
+                        {line.inputMode === "quantity" ? (
+                          <p className="text-xs text-muted-foreground">Bs por {line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}</p>
+                        ) : null}
+                      </div>
+                      <div className="md:text-right">
+                        <p className="text-xs font-medium text-muted-foreground md:hidden">Total</p>
+                        <p className="font-semibold">{totalLabel}</p>
+                      </div>
+                      <details className="text-xs text-muted-foreground md:col-span-4">
+                        <summary className="cursor-pointer select-none font-medium text-slate-600">
+                          Ver precio anterior y opciones avanzadas
+                        </summary>
+                        <div className="mt-3 grid gap-3 rounded-lg bg-muted/35 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <div>
+                            <p className="font-medium text-foreground">Precio actual del producto</p>
+                            <p>{line.currentBasePrice === null ? "Este producto todavía no tiene precio base." : `${money(line.currentBasePrice)} por ${line.currentBasePriceUnitSymbol ?? line.baseUnitSymbol}`}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">Precio base equivalente</p>
+                            <p>{line.basePricePerArroba === null ? "No se usa para este producto" : `${money(line.basePricePerArroba)} por arroba`}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">Precio base anterior</p>
+                            <p>{line.previousBasePricePerArroba !== null ? `${money(line.previousBasePricePerArroba)} por arroba` : line.previousBasePrice !== null ? money(line.previousBasePrice) : "Sin precio anterior"}</p>
+                          </div>
+                          {line.inputMode === "quantity" && matchesCurrentPrice ? (
+                            <p className="font-medium text-emerald-700 sm:col-span-2 lg:col-span-3">
+                              El precio aplicado ya coincide con el precio base.
+                            </p>
+                          ) : null}
+                          {line.inputMode === "quantity" && !matchesCurrentPrice ? (
+                            <label className="flex items-start gap-2 sm:col-span-2 lg:col-span-3">
+                              <input
+                                type="checkbox"
+                                checked={draft.saveAsNewBasePrice}
+                                disabled={priceState !== "valid"}
+                                onChange={(event) => updateLine(line.id, { saveAsNewBasePrice: event.target.checked })}
+                                className="mt-0.5 size-4"
+                              />
+                              <span>Guardar este precio como precio base para próximos pedidos.</span>
+                            </label>
+                          ) : null}
+                          {line.inputMode === "quantity" && !matchesCurrentPrice && priceState === "valid" ? (
+                            <p className={draft.saveAsNewBasePrice ? "font-medium text-amber-700 sm:col-span-2 lg:col-span-3" : "sm:col-span-2 lg:col-span-3"}>
+                              {draft.saveAsNewBasePrice && line.currentBasePrice !== null
+                                ? `Confirmas reemplazar ${money(line.currentBasePrice)} por ${money(Number(draft.basePriceUsed))}.`
+                                : "Precio excepcional: se usará solo en este recibo."}
+                            </p>
+                          ) : null}
+                          <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                            <Label htmlFor={`line-note-${line.id}`} className="text-xs">Nota interna de esta línea</Label>
+                            <Input
+                              id={`line-note-${line.id}`}
+                              value={draft.notes}
+                              onChange={(event) => updateLine(line.id, { notes: event.target.value })}
+                              placeholder="Opcional"
+                            />
+                          </div>
+                          <p className="font-mono text-[11px] sm:col-span-2 lg:col-span-3">Pedido: {line.orderReference}</p>
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <details className="rounded-lg border bg-background p-3">
+              <summary className="flex cursor-pointer items-center gap-2 font-medium">
+                <Settings2 className="size-4" />
+                Ajustes porcentuales del recibo (opcional)
+              </summary>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Se suman y se aplican a todo el recibo, no a productos individuales.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                <ReceiptFactorInput receiptId={receipt.id} label="Distancia" name="distance_factor_percent" defaultValue={receipt.distanceFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Exigencia" name="exigency_factor_percent" defaultValue={receipt.exigencyFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Clima" name="weather_factor_percent" defaultValue={receipt.weatherFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Extraordinario" name="extraordinary_factor_percent" defaultValue={receipt.extraordinaryFactorPercent} />
+              </div>
+            </details>
+
+            <details className="rounded-lg border bg-background p-3">
+              <summary className="cursor-pointer font-medium">Agregar notas (opcional)</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nota visible para el cliente</Label>
+                  <Textarea name="visible_note" defaultValue={receipt.visibleNote ?? ""} rows={2} />
                 </div>
-              );
-            })}
+                <div className="space-y-2">
+                  <Label>Nota interna</Label>
+                  <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} />
+                </div>
+              </div>
+            </details>
+
+            <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+              <p className="text-sm text-muted-foreground">Guarda antes de pasar a costos o emitir.</p>
+              <Button type="submit" disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates}>
+                <Save className="size-4" />
+                {updatePending ? "Guardando..." : "Guardar precios"}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
+
+        <TabsContent value="costos">
+          <PurchaseCostEditor receipt={receipt} comparisonUnits={comparisonUnits} />
+        </TabsContent>
+
+        <TabsContent value="emitir">
+          <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
+            <div>
+              <h3 className="font-semibold">Revisión final</h3>
+              <p className="text-sm text-muted-foreground">Comprueba el documento antes de dejarlo cerrado.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Productos</p>
+                <p className="text-xl font-semibold">{receipt.lines.length}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Estado de precios</p>
+                <p className="font-semibold">{receipt.hasPendingPrices ? "Faltan precios" : "Completo"}</p>
+              </div>
+              <div className="rounded-lg border bg-background p-3">
+                <p className="text-xs text-muted-foreground">Total del recibo</p>
+                <p className="text-xl font-semibold">{receipt.hasPendingPrices ? "Pendiente" : money(receipt.totalAmount)}</p>
+              </div>
+            </div>
+            <Button asChild variant="outline">
+              <Link href={`/recibos/${receipt.id}`}>
+                <Printer className="size-4" />
+                Abrir vista previa
+              </Link>
+            </Button>
+            <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+              <form action={emitAction}>
+                <input type="hidden" name="receipt_id" value={receipt.id} />
+                <Button type="submit" disabled={emitPending || !canEmit}>
+                  <CheckCircle2 className="size-4" />
+                  {emitPending ? "Emitiendo..." : "Emitir recibo"}
+                </Button>
+              </form>
+              {!canEmit ? (
+                <p className="text-sm text-muted-foreground">Guarda precios válidos y verifica que el total sea positivo.</p>
+              ) : (
+                <p className="text-sm text-emerald-700">El recibo está listo para emitirse.</p>
+              )}
+            </div>
+            <details className="border-t pt-3">
+              <summary className="cursor-pointer text-sm text-muted-foreground">Opciones del borrador</summary>
+              <form action={voidAction} className="mt-3 flex flex-wrap gap-2">
+                <input type="hidden" name="receipt_id" value={receipt.id} />
+                <Input name="reason" placeholder="Motivo opcional" className="h-9 w-60" />
+                <Button type="submit" variant="outline" disabled={voidPending}>
+                  <Ban className="size-4" />
+                  Anular borrador
+                </Button>
+              </form>
+            </details>
           </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Nota visible</Label>
-            <Textarea
-              name="visible_note"
-              defaultValue={receipt.visibleNote ?? ""}
-              rows={2}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Notas internas</Label>
-            <Textarea
-              name="internal_notes"
-              defaultValue={receipt.internalNotes ?? ""}
-              rows={2}
-            />
-          </div>
-        </div>
-
-        <Button
-          type="submit"
-          disabled={
-            updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates
-          }
-        >
-          <Save className="size-4" />
-          {updatePending ? "Guardando..." : "Guardar borrador"}
-        </Button>
-      </form>
-
-      <PurchaseCostEditor
-        receipt={receipt}
-        comparisonUnits={comparisonUnits}
-      />
-
-      <div className="flex flex-wrap gap-2 border-t pt-3">
-        <form action={emitAction}>
-          <input type="hidden" name="receipt_id" value={receipt.id} />
-          <Button type="submit" disabled={emitPending || !canEmit}>
-            <CheckCircle2 className="size-4" />
-            {emitPending ? "Emitiendo..." : "Emitir recibo"}
-          </Button>
-        </form>
-        {!canEmit ? (
-          <p className="self-center text-sm text-muted-foreground">
-            La emisión se habilitará cuando todas las líneas tengan precios
-            válidos y el total sea positivo.
-          </p>
-        ) : null}
-        <form action={voidAction} className="flex flex-wrap gap-2">
-          <input type="hidden" name="receipt_id" value={receipt.id} />
-          <Input
-            name="reason"
-            placeholder="Motivo opcional en borrador"
-            className="h-9 w-60"
-          />
-          <Button type="submit" variant="outline" disabled={voidPending}>
-            <Ban className="size-4" />
-            Anular
-          </Button>
-        </form>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -945,16 +956,6 @@ function ReceiptCard({
     setQbReceiptManualTrackingAction,
     initialState,
   );
-  const hasCompletePurchaseCosts =
-    receipt.lines.length > 0 &&
-    receipt.lines.every((line) => line.purchaseCostTotal !== null);
-  const purchaseCostTotal = receipt.lines.reduce(
-    (sum, line) => sum + (line.purchaseCostTotal ?? 0),
-    0,
-  );
-  const profitTotal = hasCompletePurchaseCosts
-    ? receipt.totalAmount - purchaseCostTotal
-    : null;
 
   return (
     <Card>
@@ -995,22 +996,14 @@ function ReceiptCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Pedidos</p>
             <p className="text-xl font-semibold">{receipt.orders.length}</p>
           </div>
           <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">Lineas</p>
+            <p className="text-xs text-muted-foreground">Productos entregados</p>
             <p className="text-xl font-semibold">{receipt.lines.length}</p>
-          </div>
-          <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">Subtotal</p>
-            <p className="text-xl font-semibold">
-              {receipt.hasPendingPrices
-                ? "Precio pendiente"
-                : money(receipt.subtotalAmount)}
-            </p>
           </div>
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">Total</p>
@@ -1020,42 +1013,6 @@ function ReceiptCard({
                 : money(receipt.totalAmount)}
             </p>
           </div>
-          <div className="rounded-md border border-indigo-200 bg-indigo-50/40 p-3">
-            <p className="text-xs text-muted-foreground">
-              Costo compra · interno
-            </p>
-            <p className="text-xl font-semibold">
-              {hasCompletePurchaseCosts
-                ? money(purchaseCostTotal)
-                : "Costo pendiente"}
-            </p>
-          </div>
-          <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3">
-            <p className="text-xs text-muted-foreground">
-              Utilidad · interno
-            </p>
-            <p
-              className={`text-xl font-semibold ${profitTotal !== null && profitTotal < 0 ? "text-red-700" : "text-emerald-700"}`}
-            >
-              {profitTotal === null ? "Costo pendiente" : money(profitTotal)}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-1">
-            <Percent className="size-3" />
-            Distancia {receipt.distanceFactorPercent}%
-          </span>
-          <span className="rounded-full border px-2 py-1">
-            Exigencia {receipt.exigencyFactorPercent}%
-          </span>
-          <span className="rounded-full border px-2 py-1">
-            Clima {receipt.weatherFactorPercent}%
-          </span>
-          <span className="rounded-full border px-2 py-1">
-            Extraordinario {receipt.extraordinaryFactorPercent}%
-          </span>
         </div>
 
         {receipt.status === "borrador" ? (
@@ -1271,9 +1228,39 @@ export function QbReceiptsManagement({
   const draftCount = receipts.filter(
     (receipt) => receipt.status === "borrador",
   ).length;
-  const issuedCount = receipts.filter(
-    (receipt) => receipt.status === "emitido",
-  ).length;
+  const issuedReceipts = receipts.filter((receipt) => receipt.status !== "borrador");
+  const issuedCount = receipts.filter((receipt) => receipt.status === "emitido").length;
+  const pendingCount = pendingGroups.reduce(
+    (total, group) => total + group.orders.length,
+    0,
+  );
+  const defaultSection = pendingCount > 0 ? "pendientes" : draftCount > 0 ? "borradores" : "emitidos";
+
+  function receiptCards(items: QbReceipt[], emptyMessage: string) {
+    if (!items.length) {
+      return (
+        <Card>
+          <CardContent className="p-8 text-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return items.map((receipt) => (
+      <ReceiptCard
+        key={receipt.id}
+        receipt={receipt}
+        comparisonUnits={comparisonUnits}
+        updateAction={updateAction}
+        updatePending={updatePending}
+        emitAction={emitAction}
+        emitPending={emitPending}
+        voidAction={voidAction}
+        voidPending={voidPending}
+      />
+    ));
+  }
 
   return (
     <div className="space-y-5">
@@ -1284,44 +1271,6 @@ export function QbReceiptsManagement({
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pendientes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {pendingGroups.reduce(
-              (total, group) => total + group.orders.length,
-              0,
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Borradores
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {draftCount}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Emitidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {issuedCount}
-          </CardContent>
-        </Card>
-      </div>
-
-      <ReceiptHistoryPanel receipts={receipts} pendingGroups={pendingGroups} />
-
       <div className="space-y-2">
         {actionMessage(createState)}
         {actionMessage(updateState)}
@@ -1329,35 +1278,54 @@ export function QbReceiptsManagement({
         {actionMessage(voidState)}
       </div>
 
-      <CreateReceiptPanel
-        groups={pendingGroups}
-        action={createAction}
-        pending={createPending}
-      />
+      <Tabs defaultValue={defaultSection} className="space-y-5">
+        <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1">
+          <TabsTrigger value="pendientes" className="min-h-11 flex-none px-4">
+            <ListChecks className="size-4" />
+            Por crear
+            <Badge variant="secondary" className="ml-1 rounded-full">{pendingCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="borradores" className="min-h-11 flex-none px-4">
+            <FileText className="size-4" />
+            Borradores
+            <Badge variant="secondary" className="ml-1 rounded-full">{draftCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="emitidos" className="min-h-11 flex-none px-4">
+            <CheckCircle2 className="size-4" />
+            Emitidos
+            <Badge variant="secondary" className="ml-1 rounded-full">{issuedCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="min-h-11 flex-none px-4">
+            <History className="size-4" />
+            Historial por cliente
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="space-y-4">
-        {receipts.length ? (
-          receipts.map((receipt) => (
-            <ReceiptCard
-              key={receipt.id}
-              receipt={receipt}
-              comparisonUnits={comparisonUnits}
-              updateAction={updateAction}
-              updatePending={updatePending}
-              emitAction={emitAction}
-              emitPending={emitPending}
-              voidAction={voidAction}
-              voidPending={voidPending}
-            />
-          ))
-        ) : (
-          <Card>
-            <CardContent className="p-8 text-center text-sm text-muted-foreground">
-              No hay recibos creados.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+        <TabsContent value="pendientes" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Elige un cliente y los pedidos entregados que deseas reunir en un recibo.
+          </p>
+          <CreateReceiptPanel groups={pendingGroups} action={createAction} pending={createPending} />
+        </TabsContent>
+
+        <TabsContent value="borradores" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Completa precios y costos, revisa el documento y emítelo cuando esté listo.
+          </p>
+          {receiptCards(receipts.filter((receipt) => receipt.status === "borrador"), "No hay borradores pendientes.")}
+        </TabsContent>
+
+        <TabsContent value="emitidos" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Consulta, imprime y registra manualmente si el recibo fue enviado y pagado.
+          </p>
+          {receiptCards(issuedReceipts, "Todavía no hay recibos emitidos.")}
+        </TabsContent>
+
+        <TabsContent value="historial">
+          <ReceiptHistoryPanel receipts={receipts} pendingGroups={pendingGroups} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

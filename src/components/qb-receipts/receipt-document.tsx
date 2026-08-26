@@ -110,7 +110,7 @@ export function ReceiptDocument({
         {!isExternalDocument ? (
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
-              Emision
+              {receipt.status === "borrador" ? "Creado" : "Emisión"}
             </p>
             <p className="mt-1 text-sm">
               {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
