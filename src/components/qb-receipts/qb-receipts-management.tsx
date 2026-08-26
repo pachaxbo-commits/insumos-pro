@@ -3,17 +3,20 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
+  ArrowRight,
   Ban,
   CheckCircle2,
   ClipboardList,
   CircleDollarSign,
   FileText,
+  FileSpreadsheet,
   History,
   ListChecks,
   Printer,
   ReceiptText,
   Save,
   Settings2,
+  Table2,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -408,15 +411,15 @@ function PurchaseCostEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/40 p-3">
+    <div className="space-y-3 rounded-lg border-2 border-indigo-300 bg-indigo-50/40 p-3">
       <div>
         <p className="font-semibold text-indigo-950">
-          Costos de compra y utilidad · solo administración
+          Tabla solicitada · Costos de compra y utilidad
         </p>
         <p className="text-sm text-indigo-900/75">
-          El costo comparativo es manual: elige la unidad usada en esa compra y
-          escribe el valor calculado con el peso real de bodega. No modifica el
-          pedido ni el precio de venta.
+          Solo administración. Nunca aparece en el recibo del cliente. Elige la
+          unidad usada en esa compra y escribe el valor calculado con el peso real
+          de bodega; esto no modifica el pedido ni el precio de venta.
         </p>
       </div>
       {actionMessage(state)}
@@ -1202,11 +1205,13 @@ export function QbReceiptsManagement({
   receipts,
   pendingGroups,
   comparisonUnits,
+  initialSection,
   error,
 }: {
   receipts: QbReceipt[];
   pendingGroups: QbReceiptCustomerGroup[];
   comparisonUnits: QbReceiptComparisonUnit[];
+  initialSection?: "pendientes" | "borradores" | "emitidos" | "historial";
   error?: string;
 }) {
   const [createState, createAction, createPending] = useActionState(
@@ -1234,7 +1239,9 @@ export function QbReceiptsManagement({
     (total, group) => total + group.orders.length,
     0,
   );
-  const defaultSection = pendingCount > 0 ? "pendientes" : draftCount > 0 ? "borradores" : "emitidos";
+  const defaultSection =
+    initialSection ??
+    (pendingCount > 0 ? "pendientes" : draftCount > 0 ? "borradores" : "emitidos");
 
   function receiptCards(items: QbReceipt[], emptyMessage: string) {
     if (!items.length) {
@@ -1270,6 +1277,38 @@ export function QbReceiptsManagement({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Card className="border-emerald-200 bg-emerald-50/35">
+        <CardHeader>
+          <CardTitle className="text-base">Dónde están las tablas solicitadas</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
+            <Link href="/matriz-operativa#hoja-mercado">
+              <span className="flex items-center gap-3 text-left">
+                <FileSpreadsheet className="size-5 text-emerald-700" />
+                <span>
+                  <span className="block font-semibold">Hoja de compras del mercado</span>
+                  <span className="block text-xs font-normal text-muted-foreground">Productos por cliente, impresión y Excel</span>
+                </span>
+              </span>
+              <ArrowRight className="size-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
+            <Link href="/recibos?section=borradores">
+              <span className="flex items-center gap-3 text-left">
+                <Table2 className="size-5 text-indigo-700" />
+                <span>
+                  <span className="block font-semibold">Costos de compra y utilidad</span>
+                  <span className="block text-xs font-normal text-muted-foreground">Abre un borrador y entra al paso 2 · Solo administración</span>
+                </span>
+              </span>
+              <ArrowRight className="size-4" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="space-y-2">
         {actionMessage(createState)}

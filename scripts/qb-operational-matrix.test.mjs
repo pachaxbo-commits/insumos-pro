@@ -371,7 +371,7 @@ assert.match(
   receiptDocument,
   /isExternalDocument \? "justify-self-end text-right" : undefined/,
 );
-assert.match(receiptDocument, /!isExternalDocument && receipt\.visibleNote/);
+assert.match(receiptDocument, /!isDeliveryNote && receipt\.visibleNote/);
 
 const scenarios = [
   {

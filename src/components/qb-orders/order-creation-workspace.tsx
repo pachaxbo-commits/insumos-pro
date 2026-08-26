@@ -128,28 +128,26 @@ export function OrderCreationWorkspace({
         </Card>
       </section>
 
-      <Card ref={editorRef} className="border-white/70 bg-white/85">
-        <CardHeader>
-          <CardTitle>{editingOrder ? "Editar pedido" : "Nuevo pedido"}</CardTitle>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Selecciona el cliente, su ubicación y los productos solicitados.
-            También elige la fecha de entrega; el pedido aparecerá
-            automáticamente en la planilla de ese día.
+      <section ref={editorRef} className="scroll-mt-6 space-y-3">
+        <div>
+          <h2 className="font-heading text-2xl font-semibold">
+            {editingOrder ? "Editar pedido" : "Crear un pedido"}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Completa cliente, fecha y productos. El formulario ya está abierto y al final encontrarás un único botón para crearlo.
           </p>
-        </CardHeader>
-        <CardContent>
-          <LazyInternalOrderCreator
-            initialData={creation}
-            editingOrder={editingOrder}
-            onCancelEdit={() => setEditingOrderId(null)}
-          />
-          {error ? (
-            <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
-              {error}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+        </div>
+        <LazyInternalOrderCreator
+          initialData={creation}
+          editingOrder={editingOrder}
+          onCancelEdit={() => setEditingOrderId(null)}
+        />
+        {error ? (
+          <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+            {error}
+          </p>
+        ) : null}
+      </section>
 
       <Card className="border-white/70 bg-white/75">
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">

@@ -172,7 +172,7 @@ test("PNG and WhatsApp capture only the customer-export receipt", () => {
 test("customer export hides internal factors, base price and fiscal notice", () => {
   assert.match(
     documentSource,
-    /!isExternalDocument \? \(\s*<th[^>]*>Precio base<\/th>/,
+    /!isExternalDocument \? \(\s*<th[^>]*>Venta antes de ajustes<\/th>/,
   );
   assert.match(
     documentSource,
@@ -182,6 +182,7 @@ test("customer export hides internal factors, base price and fiscal notice", () 
     documentSource,
     /!isExternalDocument \? \(\s*<p[^>]*>\s*No constituye factura fiscal/,
   );
+  assert.doesNotMatch(documentSource, /purchaseCost|Costo de compra|Utilidad/);
 });
 
 test("customer export keeps the required customer-facing receipt fields", () => {
@@ -192,7 +193,7 @@ test("customer export keeps the required customer-facing receipt fields", () => 
     "Pedidos incluidos",
     "Producto",
     "Cantidad",
-    "Precio final",
+    "Precio unitario",
     "Total",
   ]) {
     assert.match(documentSource, new RegExp(label));
@@ -210,11 +211,11 @@ test("admin keeps subtotal while customer export exposes only the final total", 
   assert.equal((documentSource.match(/receipt\.subtotalAmount/g) ?? []).length, 1);
 });
 
-test("visibleNote is rendered only in the administrative receipt", () => {
+test("visibleNote is rendered in the customer and administrative receipt, not the delivery note", () => {
   assert.equal((documentSource.match(/receipt\.visibleNote/g) ?? []).length, 2);
   assert.match(
     documentSource,
-    /\{!isExternalDocument && receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
+    /\{!isDeliveryNote && receipt\.visibleNote \? \([\s\S]*<p[^>]*>Nota<\/p>[\s\S]*\{receipt\.visibleNote\}/,
   );
 });
 

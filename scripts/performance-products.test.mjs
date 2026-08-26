@@ -114,7 +114,7 @@ test("order items and preparations load in parallel", () => {
   );
 });
 
-test("the internal order catalog loads only when Nuevo pedido is requested", () => {
+test("the internal order catalog stays out of the initial payload and opens automatically", () => {
   assert.match(sources.ordersPage, /getQbInternalOrdersData\(false\)/);
   assert.match(sources.ordersManagement, /<LazyInternalOrderCreator/);
   assert.match(
@@ -126,7 +126,8 @@ test("the internal order catalog loads only when Nuevo pedido is requested", () 
     sources.lazyOrderCreator,
     /import\("@\/components\/qb-orders\/internal-order-creator"\)/,
   );
-  assert.match(sources.lazyOrderCreator, /Cargando opciones…/);
+  assert.match(sources.lazyOrderCreator, /Cargando formulario…/);
+  assert.match(sources.lazyOrderCreator, /if \(data \|\| error\) return/);
   assert.match(sources.orderCreationAction, /requireRoleAccess\("\/pedidos"\)/);
   assert.match(sources.orderCreationAction, /role !== "administrador"/);
   assert.match(sources.internalOrderCreator, /initiallyOpen = false/);

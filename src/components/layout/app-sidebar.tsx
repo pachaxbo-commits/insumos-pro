@@ -1,5 +1,6 @@
 "use client";
 
+import { FileSpreadsheet, Table2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -105,15 +106,51 @@ export function AppSidebar({
             {workspace.description}
           </div>
         )}
+
+        {user.role === "administrador" ? (
+          <div className="mt-6">
+            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/45">
+              Tablas solicitadas
+            </p>
+            <div className="mt-2 space-y-1">
+              <Link
+                href="/matriz-operativa#hoja-mercado"
+                onClick={onNavigate}
+                className="flex items-center gap-3 rounded-xl bg-emerald-950/35 px-3 py-3 text-sidebar-foreground hover:bg-emerald-950/50"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-900">
+                  <FileSpreadsheet className="size-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">Hoja de compras</span>
+                  <span className="block text-xs text-sidebar-foreground/65">Vista para imprimir y Excel</span>
+                </span>
+              </Link>
+              <Link
+                href="/recibos?section=borradores"
+                onClick={onNavigate}
+                className="flex items-center gap-3 rounded-xl bg-indigo-950/30 px-3 py-3 text-sidebar-foreground hover:bg-indigo-950/45"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-900">
+                  <Table2 className="size-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">Costos y utilidad</span>
+                  <span className="block text-xs text-sidebar-foreground/65">Solo administración</span>
+                </span>
+              </Link>
+            </div>
+          </div>
+        ) : null}
       </nav>
 
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
         <p className="text-sm font-medium">Flujo diario</p>
-        <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
-          1. Crear pedido<br />
-          2. Preparar y entregar<br />
-          3. Generar recibo
-        </p>
+        <div className="mt-2 space-y-1 text-xs text-sidebar-foreground/75">
+          <Link href="/pedidos" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">1. Crear pedido</Link>
+          <Link href="/matriz-operativa" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">2. Preparar y entregar</Link>
+          <Link href="/recibos" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">3. Generar recibo</Link>
+        </div>
       </div>
     </aside>
   );

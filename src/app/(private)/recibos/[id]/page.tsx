@@ -5,6 +5,7 @@ import { PrintReceiptButton } from "@/components/qb-receipts/print-receipt-butto
 import { ReceiptDocument } from "@/components/qb-receipts/receipt-document";
 import { ReceiptImageActions } from "@/components/qb-receipts/receipt-image-actions";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getQbReceiptDetailData } from "@/lib/qb-receipts/data";
 
@@ -76,12 +77,32 @@ export default async function ReceiptDetailPage({
         </div>
       </div>
 
-      <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 print:hidden">
-        Esta es la vista administrativa. Los códigos internos y precios base no aparecen en la
-        imagen que se entrega al cliente. La descarga para el cliente se habilita al emitir.
-      </div>
+      <Tabs defaultValue="cliente" className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1 print:hidden">
+          <TabsTrigger value="cliente" className="min-h-10 flex-none px-4">
+            Vista del cliente
+          </TabsTrigger>
+          <TabsTrigger value="administracion" className="min-h-10 flex-none px-4">
+            Información interna
+          </TabsTrigger>
+        </TabsList>
 
-      <ReceiptDocument receipt={receipt} variant="admin" />
+        <TabsContent value="cliente" className="space-y-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 print:hidden">
+            Este es el documento que recibe el cliente. Solo muestra productos, cantidades,
+            precio unitario de venta y total. Nunca incluye costo de compra ni utilidad.
+          </div>
+          <ReceiptDocument receipt={receipt} variant="customer-export" />
+        </TabsContent>
+
+        <TabsContent value="administracion" className="space-y-3">
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900 print:hidden">
+            Información interna · No entregar al cliente. Esta vista contiene referencias de
+            pedidos, precio de venta antes de factores y ajustes administrativos.
+          </div>
+          <ReceiptDocument receipt={receipt} variant="admin" />
+        </TabsContent>
+      </Tabs>
 
       <div
         aria-hidden="true"

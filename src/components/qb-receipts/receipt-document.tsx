@@ -57,6 +57,11 @@ export function ReceiptDocument({
                 ? "Comprobante de entrega"
                 : receipt.number}
           </h1>
+          {isCustomerExport ? (
+            <p className="mt-1 font-mono text-sm text-muted-foreground">
+              {receipt.number}
+            </p>
+          ) : null}
           {!isExternalDocument ? (
             <p className="text-sm text-muted-foreground">
               Estado: {receipt.status}
@@ -145,11 +150,11 @@ export function ReceiptDocument({
               {!isExternalDocument ? <th className="py-2 pr-3">Pedido</th> : null}
               <th className="py-2 pr-3 text-right">Cantidad</th>
               {!isExternalDocument ? (
-                <th className="py-2 pr-3 text-right">Precio base</th>
+                <th className="py-2 pr-3 text-right">Venta antes de ajustes</th>
               ) : null}
               {showsPrices ? (
                 <>
-                  <th className="py-2 pr-3 text-right">Precio final</th>
+                  <th className="py-2 pr-3 text-right">Precio unitario</th>
                   <th className="py-2 text-right">Total</th>
                 </>
               ) : null}
@@ -238,7 +243,7 @@ export function ReceiptDocument({
         </div>
       )}
 
-      {!isExternalDocument && receipt.visibleNote ? (
+      {!isDeliveryNote && receipt.visibleNote ? (
         <div className="mb-5 rounded-md bg-muted p-3 text-sm">
           <p className="font-medium">Nota</p>
           <p className="mt-1 text-muted-foreground">{receipt.visibleNote}</p>

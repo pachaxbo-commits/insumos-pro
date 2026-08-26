@@ -139,7 +139,7 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(management, /Historial mensual por cliente/);
   assert.match(management, /Precio base equivalente/);
   assert.match(management, /Precio base anterior/);
-  assert.match(management, /Costos de compra y utilidad · solo administración/);
+  assert.match(management, /Tabla solicitada · Costos de compra y utilidad/);
   assert.match(management, /Último costo compra/);
 });
 

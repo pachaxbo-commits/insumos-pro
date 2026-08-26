@@ -8,6 +8,7 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
@@ -451,6 +452,31 @@ export function InternalOrderCreator({
     });
   }
 
+  if (!customers.length || !products.length) {
+    return (
+      <Card className="border-amber-200 bg-amber-50/70">
+        <CardHeader>
+          <CardTitle>Falta una configuración para crear pedidos</CardTitle>
+          <p className="text-sm text-amber-900/80">
+            El pedido necesita al menos un cliente con ubicación y un producto con unidad habilitada.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {!customers.length ? (
+            <Button asChild variant="outline">
+              <Link href="/clientes">Crear o revisar clientes</Link>
+            </Button>
+          ) : null}
+          {!products.length ? (
+            <Button asChild variant="outline">
+              <Link href="/productos">Configurar productos y unidades</Link>
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!open) {
     return (
       <Button type="button" onClick={openForm}>
@@ -508,6 +534,21 @@ export function InternalOrderCreator({
               />
             </>
           ) : null}
+
+          <div className="grid gap-2 rounded-xl border bg-slate-50 p-3 sm:grid-cols-3">
+            <div className={customerId && locationId ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
+              <p className="text-xs font-semibold uppercase">1. Cliente</p>
+              <p className="mt-1 text-sm font-medium">{customerId && locationId ? "Completo" : "Selecciona cliente y ubicación"}</p>
+            </div>
+            <div className={operationalDate ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
+              <p className="text-xs font-semibold uppercase">2. Entrega</p>
+              <p className="mt-1 text-sm font-medium">{operationalDate ? "Fecha seleccionada" : "Selecciona una fecha"}</p>
+            </div>
+            <div className={lines.length ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
+              <p className="text-xs font-semibold uppercase">3. Productos</p>
+              <p className="mt-1 text-sm font-medium">{lines.length ? `${lines.length} seleccionado${lines.length === 1 ? "" : "s"}` : "Marca al menos uno"}</p>
+            </div>
+          </div>
 
           <div className="space-y-4">
             <div className="grid gap-4 lg:grid-cols-3">
@@ -574,6 +615,12 @@ export function InternalOrderCreator({
                 </p>
               </div>
             </div>
+
+            {customerId && selectedCustomer && selectedCustomer.locations.length === 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Este cliente no tiene una ubicación de entrega. <Link href="/clientes" className="font-semibold underline">Agrégala en Clientes</Link> para continuar.
+              </div>
+            ) : null}
 
             {customerId && locationId ? (
               <section
@@ -793,7 +840,12 @@ export function InternalOrderCreator({
           <Button
             type="submit"
             disabled={
-              pending || (!editing && !idempotencyKey) || lines.length === 0
+              pending ||
+              (!editing && !idempotencyKey) ||
+              !customerId ||
+              !locationId ||
+              !operationalDate ||
+              lines.length === 0
             }
           >
             <Send className="size-4" />
@@ -803,7 +855,9 @@ export function InternalOrderCreator({
                 : "Creando..."
               : editing
                 ? "Guardar cambios"
-                : "Crear pedido"}
+                : customerId && locationId && operationalDate && lines.length
+                  ? "Crear pedido"
+                  : "Completa los 3 pasos"}
           </Button>
         </form>
       </CardContent>

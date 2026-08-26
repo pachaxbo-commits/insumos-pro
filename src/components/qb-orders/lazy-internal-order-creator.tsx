@@ -51,7 +51,7 @@ export function LazyInternalOrderCreator({
   }
 
   useEffect(() => {
-    if (!editingOrder || data || error) return;
+    if (data || error) return;
     let cancelled = false;
     void getInternalOrderCreationDataAction().then((result) => {
       if (cancelled) return;
@@ -61,14 +61,14 @@ export function LazyInternalOrderCreator({
     return () => {
       cancelled = true;
     };
-  }, [data, editingOrder, error]);
+  }, [data, error]);
 
   if (data)
     return (
       <InternalOrderCreator
         key={editingOrder?.id ?? "new-order"}
         {...data}
-        initiallyOpen={Boolean(editingOrder) || !initialData}
+        initiallyOpen
         editingOrder={editingOrder}
         onCancelEdit={onCancelEdit}
       />
@@ -76,18 +76,21 @@ export function LazyInternalOrderCreator({
 
   return (
     <div className="space-y-3">
-      <Button
-        type="button"
-        disabled={pending || Boolean(editingOrder)}
-        onClick={loadData}
-      >
-        <Plus className="size-4" />
-        {pending || editingOrder ? "Cargando opciones…" : "Nuevo pedido"}
-      </Button>
+      {!error ? (
+        <Button type="button" disabled>
+          <Plus className="size-4" />
+          Cargando formulario…
+        </Button>
+      ) : null}
       {error ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudieron cargar las opciones</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="space-y-3">
+            <p>{error}</p>
+            <Button type="button" variant="outline" disabled={pending} onClick={loadData}>
+              {pending ? "Reintentando…" : "Reintentar"}
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : null}
     </div>
