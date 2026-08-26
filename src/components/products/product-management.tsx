@@ -1027,7 +1027,12 @@ export function ProductManagement({
                       <div className="flex justify-end gap-2">
                         {canManage ? (
                           <>
-                            <Dialog>
+                            <Dialog
+                              defaultOpen={
+                                filters.q?.trim().toLocaleLowerCase("es") ===
+                                product.name.toLocaleLowerCase("es")
+                              }
+                            >
                               <DialogTrigger asChild>
                                 <Button variant="outline" size="icon-sm">
                                   <Edit3 className="size-4" />

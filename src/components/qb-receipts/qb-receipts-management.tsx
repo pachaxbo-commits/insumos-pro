@@ -572,6 +572,7 @@ function DraftEditor({
   voidPending: boolean;
   comparisonUnits: QbReceiptComparisonUnit[];
 }) {
+  const [draftStep, setDraftStep] = useState("venta");
   const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
     Object.fromEntries(
       receipt.lines.map((line) => [line.id, buildLineDraft(line)]),
@@ -616,10 +617,16 @@ function DraftEditor({
       !hasAtMostTwoDecimals(draft.basePriceUsed)
     );
   });
+  const linesWithInvalidPhysicalUnit = receipt.lines.filter(
+    (line) =>
+      line.inputMode === "quantity" &&
+      isCurrencyLikeUnit(line.baseUnitSymbol),
+  );
   const canEmit =
     !receipt.hasPendingPrices &&
     !hasPendingDraftLines &&
     !hasInvalidDraftLines &&
+    linesWithInvalidPhysicalUnit.length === 0 &&
     receipt.lines.length > 0 &&
     receipt.subtotalAmount > 0 &&
     receipt.totalAmount > 0;
@@ -635,12 +642,42 @@ function DraftEditor({
     }));
   }
 
-  const linesWithInvalidPhysicalUnit = receipt.lines.filter(
-    (line) => line.inputMode === "quantity" && isCurrencyLikeUnit(line.baseUnitSymbol),
-  );
-
   return (
     <div className="space-y-4">
+      <div className="grid gap-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/45 p-3 md:grid-cols-2">
+        <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
+          <Link href="/matriz-operativa#hoja-mercado">
+            <span className="flex items-center gap-3 text-left">
+              <FileSpreadsheet className="size-5 text-emerald-700" />
+              <span>
+                <span className="block font-semibold">Tabla 1 · Hoja de compras del mercado</span>
+                <span className="block text-xs font-normal text-muted-foreground">
+                  Todos los clientes · imprimir o descargar Excel
+                </span>
+              </span>
+            </span>
+            <ArrowRight className="size-4" />
+          </Link>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto justify-between bg-white p-4"
+          onClick={() => setDraftStep("costos")}
+        >
+          <span className="flex items-center gap-3 text-left">
+            <Table2 className="size-5 text-indigo-700" />
+            <span>
+              <span className="block font-semibold">Tabla 2 · Costos y utilidad del cliente</span>
+              <span className="block text-xs font-normal text-muted-foreground">
+                Solo administración · nunca sale en el recibo
+              </span>
+            </span>
+          </span>
+          <ArrowRight className="size-4" />
+        </Button>
+      </div>
+
       {receipt.hasPendingPrices ||
       hasPendingDraftLines ||
       hasInvalidDraftLines ||
@@ -662,16 +699,44 @@ function DraftEditor({
       ) : null}
       {linesWithInvalidPhysicalUnit.length ? (
         <Alert variant="destructive">
-          <AlertTitle>Hay una unidad que debe revisarse</AlertTitle>
-          <AlertDescription>
-            {linesWithInvalidPhysicalUnit.map((line) => line.productName).join(", ")} aparece con
-            “BS” como unidad de cantidad. Corrige el producto y vuelve a generar el borrador para
-            que el recibo no confunda bolivianos con una unidad física.
+          <AlertTitle>No es un error de precio: falta definir la unidad</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              En el pedido de {linesWithInvalidPhysicalUnit.map((line) => line.productName).join(", ")}
+              {" "}se guardó “BS” como si fuera una cantidad. “BS” significa bolivianos; el sistema
+              no puede adivinar si 0,5 corresponde a kg, libra, unidad u otra medida.
+            </p>
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>Abre cada producto y elige su unidad física correcta.</li>
+              <li>Regresa y anula este borrador.</li>
+              <li>Créalo nuevamente para que tome la unidad corregida.</li>
+            </ol>
+            <div className="flex flex-wrap gap-2">
+              {linesWithInvalidPhysicalUnit.map((line) => (
+                <Button key={line.id} asChild size="sm" variant="outline">
+                  <Link href={`/productos?q=${encodeURIComponent(line.productName)}`}>
+                    Corregir {line.productName}
+                  </Link>
+                </Button>
+              ))}
+              <form action={voidAction}>
+                <input type="hidden" name="receipt_id" value={receipt.id} />
+                <input
+                  type="hidden"
+                  name="reason"
+                  value="Regenerar después de corregir la unidad de cantidad"
+                />
+                <Button type="submit" size="sm" variant="outline" disabled={voidPending}>
+                  <Ban className="size-4" />
+                  {voidPending ? "Anulando..." : "Después de corregir: anular borrador"}
+                </Button>
+              </form>
+            </div>
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <Tabs defaultValue="venta" className="space-y-4">
+      <Tabs value={draftStep} onValueChange={setDraftStep} className="space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1">
           <TabsTrigger value="venta" className="min-h-10 flex-none px-4">
             <CircleDollarSign className="size-4" />
@@ -691,6 +756,22 @@ function DraftEditor({
           <form action={updateAction} className="space-y-4 rounded-xl border bg-muted/15 p-4">
             <input type="hidden" name="receipt_id" value={receipt.id} />
             <input type="hidden" name="lines" value={linesPayload} />
+
+            <section className="rounded-lg border bg-background p-3">
+              <div className="flex items-center gap-2 font-medium">
+                <Settings2 className="size-4" />
+                Ajustes porcentuales del recibo (opcional)
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Se suman y se aplican a todo el recibo, no a productos individuales.
+              </p>
+              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                <ReceiptFactorInput receiptId={receipt.id} label="Distancia" name="distance_factor_percent" defaultValue={receipt.distanceFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Exigencia" name="exigency_factor_percent" defaultValue={receipt.exigencyFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Clima" name="weather_factor_percent" defaultValue={receipt.weatherFactorPercent} />
+                <ReceiptFactorInput receiptId={receipt.id} label="Extraordinario" name="extraordinary_factor_percent" defaultValue={receipt.extraordinaryFactorPercent} />
+              </div>
+            </section>
 
             <div>
               <h3 className="font-semibold">Define cuánto se cobrará</h3>
@@ -737,7 +818,11 @@ function DraftEditor({
                       </div>
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-muted-foreground md:hidden">Precio de venta</p>
-                        {line.inputMode === "amount_bs" ? (
+                        {line.inputMode === "quantity" && isCurrencyLikeUnit(line.baseUnitSymbol) ? (
+                          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                            Primero corrige la unidad del producto.
+                          </div>
+                        ) : line.inputMode === "amount_bs" ? (
                           <div className="rounded-md border bg-muted/30 px-3 py-2">
                             <p className="font-medium">Importe fijo</p>
                             <p className="text-xs text-muted-foreground">{money(line.requestedAmountBs ?? 0)}</p>
@@ -834,39 +919,29 @@ function DraftEditor({
               </div>
             </div>
 
-            <details className="rounded-lg border bg-background p-3">
-              <summary className="flex cursor-pointer items-center gap-2 font-medium">
-                <Settings2 className="size-4" />
-                Ajustes porcentuales del recibo (opcional)
-              </summary>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Se suman y se aplican a todo el recibo, no a productos individuales.
-              </p>
-              <div className="mt-3 grid gap-3 md:grid-cols-4">
-                <ReceiptFactorInput receiptId={receipt.id} label="Distancia" name="distance_factor_percent" defaultValue={receipt.distanceFactorPercent} />
-                <ReceiptFactorInput receiptId={receipt.id} label="Exigencia" name="exigency_factor_percent" defaultValue={receipt.exigencyFactorPercent} />
-                <ReceiptFactorInput receiptId={receipt.id} label="Clima" name="weather_factor_percent" defaultValue={receipt.weatherFactorPercent} />
-                <ReceiptFactorInput receiptId={receipt.id} label="Extraordinario" name="extraordinary_factor_percent" defaultValue={receipt.extraordinaryFactorPercent} />
-              </div>
-            </details>
-
-            <details className="rounded-lg border bg-background p-3">
-              <summary className="cursor-pointer font-medium">Agregar notas (opcional)</summary>
+            <section className="rounded-lg border bg-background p-3">
+              <p className="font-medium">Notas del recibo (opcional)</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Nota visible para el cliente</Label>
                   <Textarea name="visible_note" defaultValue={receipt.visibleNote ?? ""} rows={2} />
+                  <p className="text-xs text-muted-foreground">Aparece en el documento que se entrega al cliente.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Nota interna</Label>
                   <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} />
+                  <p className="text-xs text-muted-foreground">Solo la ve administración.</p>
                 </div>
               </div>
-            </details>
+            </section>
 
             <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur">
-              <p className="text-sm text-muted-foreground">Guarda antes de pasar a costos o emitir.</p>
-              <Button type="submit" disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates}>
+              <p className="text-sm text-muted-foreground">
+                {linesWithInvalidPhysicalUnit.length
+                  ? "Corrige las unidades y regenera el borrador antes de continuar."
+                  : "Guarda antes de pasar a costos o emitir."}
+              </p>
+              <Button type="submit" disabled={updatePending || hasInvalidDraftLines || hasInvalidBasePriceUpdates || linesWithInvalidPhysicalUnit.length > 0}>
                 <Save className="size-4" />
                 {updatePending ? "Guardando..." : "Guardar precios"}
               </Button>
@@ -1278,9 +1353,12 @@ export function QbReceiptsManagement({
         </Alert>
       ) : null}
 
-      <Card className="border-emerald-200 bg-emerald-50/35">
+      <Card className="border-2 border-emerald-300 bg-emerald-50/45">
         <CardHeader>
-          <CardTitle className="text-base">Dónde están las tablas solicitadas</CardTitle>
+          <CardTitle className="text-base">Las 2 tablas solicitadas por el cliente</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Estos accesos son para administración y no modifican el flujo aprobado de pedidos.
+          </p>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
           <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
@@ -1288,7 +1366,7 @@ export function QbReceiptsManagement({
               <span className="flex items-center gap-3 text-left">
                 <FileSpreadsheet className="size-5 text-emerald-700" />
                 <span>
-                  <span className="block font-semibold">Hoja de compras del mercado</span>
+                  <span className="block font-semibold">Tabla 1 · Hoja de compras del mercado</span>
                   <span className="block text-xs font-normal text-muted-foreground">Productos por cliente, impresión y Excel</span>
                 </span>
               </span>
@@ -1296,12 +1374,12 @@ export function QbReceiptsManagement({
             </Link>
           </Button>
           <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
-            <Link href="/recibos?section=borradores">
+            <Link href="/recibos?section=borradores#borradores">
               <span className="flex items-center gap-3 text-left">
                 <Table2 className="size-5 text-indigo-700" />
                 <span>
-                  <span className="block font-semibold">Costos de compra y utilidad</span>
-                  <span className="block text-xs font-normal text-muted-foreground">Abre un borrador y entra al paso 2 · Solo administración</span>
+                  <span className="block font-semibold">Tabla 2 · Planilla por cliente</span>
+                  <span className="block text-xs font-normal text-muted-foreground">En cada borrador pulsa “Costos y utilidad” · Solo administración</span>
                 </span>
               </span>
               <ArrowRight className="size-4" />
@@ -1347,7 +1425,7 @@ export function QbReceiptsManagement({
           <CreateReceiptPanel groups={pendingGroups} action={createAction} pending={createPending} />
         </TabsContent>
 
-        <TabsContent value="borradores" className="space-y-4">
+        <TabsContent id="borradores" value="borradores" className="scroll-mt-28 space-y-4">
           <p className="text-sm text-muted-foreground">
             Completa precios y costos, revisa el documento y emítelo cuando esté listo.
           </p>

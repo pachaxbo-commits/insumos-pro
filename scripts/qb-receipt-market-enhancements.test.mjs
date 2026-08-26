@@ -141,6 +141,20 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(management, /Precio base anterior/);
   assert.match(management, /Tabla solicitada · Costos de compra y utilidad/);
   assert.match(management, /Último costo compra/);
+  assert.match(management, /Tabla 1 · Hoja de compras del mercado/);
+  assert.match(management, /Tabla 2 · Costos y utilidad del cliente/);
+  assert.match(management, /No es un error de precio: falta definir la unidad/);
+  assert.match(management, /Primero corrige la unidad del producto/);
+  assert.doesNotMatch(management, /<summary[^>]*>Agregar notas/);
+  assert.doesNotMatch(management, /<summary[^>]*>[\s\S]*Ajustes porcentuales del recibo/);
+  assert.ok(
+    management.indexOf("Ajustes porcentuales del recibo") <
+      management.indexOf("Define cuánto se cobrará"),
+  );
+  assert.ok(
+    management.indexOf("Define cuánto se cobrará") <
+      management.indexOf("Notas del recibo"),
+  );
 });
 
 test("actual-weight receipt lines keep their pricing unit without becoming amount orders", async () => {
