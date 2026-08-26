@@ -98,6 +98,36 @@ function productMutationError(message: string) {
   return "No se pudo guardar el producto. Revisa los datos e inténtalo nuevamente.";
 }
 
+function isCurrencyQuantitySymbol(symbol: string) {
+  return ["BS", "BOB"].includes(
+    symbol.trim().toUpperCase().replaceAll(".", ""),
+  );
+}
+
+async function validatePhysicalProductUnits(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+  unitIds: string[],
+) {
+  const uniqueIds = [...new Set(unitIds.filter(Boolean))];
+  const { data, error } = await supabase
+    .from("qb_units")
+    .select("id, symbol, is_active")
+    .in("id", uniqueIds);
+
+  if (error) return "No se pudieron validar las unidades seleccionadas.";
+  if ((data ?? []).length !== uniqueIds.length) {
+    return "Selecciona unidades operativas válidas.";
+  }
+
+  const invalid = (data ?? []).find(
+    (unit) => !unit.is_active || isCurrencyQuantitySymbol(unit.symbol),
+  );
+
+  return invalid
+    ? "BS representa dinero, no una cantidad física. Elige KG, LIBRA, CUARTILLA, UNIDAD u otra unidad real."
+    : null;
+}
+
 function detectProductImage(bytes: Uint8Array) {
   if (
     bytes.length >= 3 &&
@@ -461,6 +491,18 @@ export async function createProductAction(
     };
   }
 
+  const unitValidationError = await validatePhysicalProductUnits(
+    access.supabase,
+    [
+      parsed.data.base_unit_id,
+      parsed.data.inventory_unit_id,
+      parsed.data.price_unit_id,
+    ],
+  );
+  if (unitValidationError) {
+    return { success: false, message: unitValidationError };
+  }
+
   const productId = crypto.randomUUID();
   let uploaded: Awaited<ReturnType<typeof uploadProductImage>> = {
     path: null,
@@ -538,6 +580,18 @@ export async function updateProductAction(
       message:
         parsed.error.issues[0]?.message ?? "Revisa los datos del producto.",
     };
+  }
+
+  const unitValidationError = await validatePhysicalProductUnits(
+    access.supabase,
+    [
+      parsed.data.base_unit_id,
+      parsed.data.inventory_unit_id,
+      parsed.data.price_unit_id,
+    ],
+  );
+  if (unitValidationError) {
+    return { success: false, message: unitValidationError };
   }
 
   const existingProductResult = await access.supabase
@@ -1010,6 +1064,42 @@ export async function updateQbProductBasePriceAction(
     };
   }
 
+  if (!input.remove_price) {
+    const { data: settings, error: settingsError } = await access.supabase
+      .from("qb_product_unit_settings")
+      .select(
+        "base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id",
+      )
+      .eq("product_id", input.product_id)
+      .maybeSingle<{
+        base_unit_id: string;
+        inventory_unit_id: string | null;
+        base_inventory_unit_id: string | null;
+        base_price_unit_id: string | null;
+      }>();
+
+    if (settingsError || !settings) {
+      return {
+        success: false,
+        message: "Guarda primero las unidades físicas del producto.",
+      };
+    }
+
+    const unitValidationError = await validatePhysicalProductUnits(
+      access.supabase,
+      [
+        settings.base_unit_id,
+        settings.base_inventory_unit_id ??
+          settings.inventory_unit_id ??
+          settings.base_unit_id,
+        settings.base_price_unit_id ?? settings.base_unit_id,
+      ],
+    );
+    if (unitValidationError) {
+      return { success: false, message: unitValidationError };
+    }
+  }
+
   const { data, error } = await access.supabase.rpc(
     "update_qb_product_base_price",
     {
@@ -1094,6 +1184,39 @@ export async function updateQbProductPricingAction(
       success: false,
       message: "Confirma el reemplazo del precio actual.",
     };
+  }
+
+  if (!input.remove_price) {
+    const { data: settings, error: settingsError } = await access.supabase
+      .from("qb_product_unit_settings")
+      .select("base_unit_id, inventory_unit_id, base_inventory_unit_id")
+      .eq("product_id", input.product_id)
+      .maybeSingle<{
+        base_unit_id: string;
+        inventory_unit_id: string | null;
+        base_inventory_unit_id: string | null;
+      }>();
+
+    if (settingsError || !settings) {
+      return {
+        success: false,
+        message: "Guarda primero las unidades físicas del producto.",
+      };
+    }
+
+    const unitValidationError = await validatePhysicalProductUnits(
+      access.supabase,
+      [
+        settings.base_unit_id,
+        settings.base_inventory_unit_id ??
+          settings.inventory_unit_id ??
+          settings.base_unit_id,
+        input.price_unit_id,
+      ],
+    );
+    if (unitValidationError) {
+      return { success: false, message: unitValidationError };
+    }
   }
 
   const { data, error } = await access.supabase.rpc(

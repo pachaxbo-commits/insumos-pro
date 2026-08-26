@@ -19,6 +19,13 @@ type ActionState = { success: boolean; message?: string };
 
 const initialState: ActionState = { success: false };
 
+function isCurrencyQuantityUnit(symbol?: string | null) {
+  if (!symbol) return false;
+  return ["BS", "BOB"].includes(
+    symbol.trim().toUpperCase().replaceAll(".", ""),
+  );
+}
+
 export function ProductPricingEditor({
   product,
   settings,
@@ -50,8 +57,21 @@ export function ProductPricingEditor({
   const currentPriceUnit = units.find(
     (unit) => unit.id === currentPriceUnitId,
   );
+  const baseUnit = units.find((unit) => unit.id === settings.base_unit_id);
+  const inventoryUnitId =
+    settings.base_inventory_unit_id ??
+    settings.inventory_unit_id ??
+    settings.base_unit_id;
+  const inventoryUnit = units.find((unit) => unit.id === inventoryUnitId);
+  const hasInvalidPhysicalUnit =
+    !baseUnit ||
+    !inventoryUnit ||
+    isCurrencyQuantityUnit(baseUnit.symbol) ||
+    isCurrencyQuantityUnit(inventoryUnit.symbol);
   const activeUnits = units.filter(
-    (unit) => unit.is_active || unit.id === currentPriceUnitId,
+    (unit) =>
+      (unit.is_active || unit.id === currentPriceUnitId) &&
+      !isCurrencyQuantityUnit(unit.symbol),
   );
 
   return (
@@ -75,6 +95,17 @@ export function ProductPricingEditor({
         </div>
       </div>
 
+      {hasInvalidPhysicalUnit ? (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">Primero corrige la unidad física</p>
+          <p className="mt-1">
+            Este producto todavía usa “BS” o no tiene una unidad física completa.
+            En el formulario superior selecciona KG, LIBRA, CUARTILLA, UNIDAD u
+            otra medida real y guarda el producto. Después registra el precio.
+          </p>
+        </div>
+      ) : null}
+
       {canManage ? (
         <form action={action} className="mt-4 grid gap-3 md:grid-cols-2">
           <input type="hidden" name="product_id" value={product.id} />
@@ -91,7 +122,9 @@ export function ProductPricingEditor({
           <input type="hidden" name="remove_price" value="false" />
 
           <div className="space-y-2">
-            <Label htmlFor={`price-unit-${product.id}`}>Unidad de precio</Label>
+            <Label htmlFor={`price-unit-${product.id}`}>
+              1. ¿En qué unidad se entrega y cobra?
+            </Label>
             <select
               id={`price-unit-${product.id}`}
               name="price_unit_id"
@@ -108,7 +141,9 @@ export function ProductPricingEditor({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={`base-price-${product.id}`}>Precio base (Bs)</Label>
+            <Label htmlFor={`base-price-${product.id}`}>
+              2. ¿Cuál es el precio base por esa unidad?
+            </Label>
             <Input
               id={`base-price-${product.id}`}
               name="new_price"
@@ -119,7 +154,11 @@ export function ProductPricingEditor({
               placeholder="0,00"
               required
               className="rounded-xl bg-white"
+              disabled={hasInvalidPhysicalUnit}
             />
+            <p className="text-xs text-muted-foreground">
+              Ejemplo: LIBRA + 25 significa Bs 25 por libra.
+            </p>
           </div>
 
           {currentPrice !== null ? (
@@ -142,7 +181,11 @@ export function ProductPricingEditor({
           )}
 
           <div className="flex flex-wrap gap-2 md:col-span-2">
-            <Button type="submit" disabled={pending} className="rounded-xl">
+            <Button
+              type="submit"
+              disabled={pending || hasInvalidPhysicalUnit}
+              className="rounded-xl"
+            >
               <Save className="size-4" />
               {pending ? "Guardando…" : "Guardar precio"}
             </Button>

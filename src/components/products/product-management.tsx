@@ -95,6 +95,12 @@ type ProductManagementProps = {
 
 const initialState: ActionState = { success: false };
 
+function isCurrencyQuantityUnit(symbol: string) {
+  return ["BS", "BOB"].includes(
+    symbol.trim().toUpperCase().replaceAll(".", ""),
+  );
+}
+
 function productPageHref(filters: ProductFilters, page: number) {
   const params = new URLSearchParams();
   if (filters.q?.trim()) params.set("q", filters.q.trim());
@@ -391,8 +397,15 @@ function ProductForm({
           >
             <option value="">Seleccionar</option>
             {availableQbUnits.map((unit) => (
-              <option key={unit.id} value={unit.id}>
+              <option
+                key={unit.id}
+                value={unit.id}
+                disabled={isCurrencyQuantityUnit(unit.symbol)}
+              >
                 {unit.name} ({unit.symbol})
+                {isCurrencyQuantityUnit(unit.symbol)
+                  ? " · no usar como cantidad"
+                  : ""}
               </option>
             ))}
           </NativeSelect>
@@ -427,31 +440,42 @@ function ProductForm({
           >
             <option value="">Seleccionar</option>
             {availableQbUnits.map((unit) => (
-              <option key={unit.id} value={unit.id}>
+              <option
+                key={unit.id}
+                value={unit.id}
+                disabled={isCurrencyQuantityUnit(unit.symbol)}
+              >
                 {unit.name} ({unit.symbol})
+                {isCurrencyQuantityUnit(unit.symbol)
+                  ? " · no usar como cantidad"
+                  : ""}
               </option>
             ))}
           </NativeSelect>
         </div>
 
-        {mode === "create" ? (
-          <div className="space-y-2">
-            <Label>Unidad de precio inicial</Label>
-            <NativeSelect name="price_unit_id" defaultValue={priceUnitId}>
-              <option value="">Seleccionar</option>
-              {availableQbUnits.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name} ({unit.symbol})
-                </option>
-              ))}
-            </NativeSelect>
-            <p className="text-xs text-muted-foreground">
-              Después de crear el producto podrás registrar el monto exacto.
-            </p>
-          </div>
-        ) : (
-          <input type="hidden" name="price_unit_id" value={priceUnitId} />
-        )}
+        <div className="space-y-2 md:col-span-2">
+          <Label>¿En qué unidad se entrega y cobra?</Label>
+          <NativeSelect name="price_unit_id" defaultValue={priceUnitId}>
+            <option value="">Seleccionar unidad física</option>
+            {availableQbUnits.map((unit) => (
+              <option
+                key={unit.id}
+                value={unit.id}
+                disabled={isCurrencyQuantityUnit(unit.symbol)}
+              >
+                {unit.name} ({unit.symbol})
+                {isCurrencyQuantityUnit(unit.symbol)
+                  ? " · no usar como cantidad"
+                  : ""}
+              </option>
+            ))}
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">
+            Ejemplo: si se entrega y cobra por libra, selecciona LIBRA. El monto
+            exacto se registra en el bloque de precio base.
+          </p>
+        </div>
 
         <div className="space-y-2">
           <Label htmlFor={`${mode}-stock-min`}>Stock minimo</Label>

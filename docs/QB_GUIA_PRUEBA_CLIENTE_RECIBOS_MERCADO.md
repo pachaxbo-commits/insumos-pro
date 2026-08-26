@@ -6,8 +6,8 @@ Esta prueba valida las funciones solicitadas para compras en el mercado y recibo
 
 - Usar una cuenta de administrador de prueba, nunca compartir la contraseña por chat.
 - Elegir un cliente y entre 5 y 8 productos conocidos por el cliente.
-- Revisar en **Productos** que cada producto tenga una unidad física correcta. `BS` o `BOB` no deben usarse como unidad de cantidad.
-- Registrar precios de venta reales para la muestra. No es obligatorio cargar todo el catálogo para comenzar la prueba.
+- Revisar en **Productos** únicamente los productos elegidos para la prueba. En cada uno responder primero **¿En qué unidad se entrega y cobra?** con una unidad física como KG, LIBRA, CUARTILLA o UNIDAD. `BS` o `BOB` expresan dinero y no deben usarse como cantidad.
+- Después registrar **¿Cuál es el precio base por esa unidad?**. Ejemplo: LIBRA + 25 significa Bs 25 por libra. No es obligatorio cargar todo el catálogo para comenzar la prueba.
 - Mantener el control de stock en el modo acordado para el piloto.
 - Avisar que el recibo es un documento no fiscal y que el estado de pago es un control manual.
 
@@ -54,11 +54,12 @@ Resultado esperado: ambos pedidos quedan incluidos y no vuelven a aparecer como 
 1. En **1. Precios de venta**, revisar cantidad real, precio y total.
 2. Ingresar o corregir el precio de venta.
 3. Si el precio debe quedar para futuros recibos, marcar la opción correspondiente.
-4. Abrir los ajustes porcentuales solo si se necesitan; los porcentajes se suman y se aplican a todo el recibo.
-5. Guardar precios.
-6. En **2. Costos y utilidad**, ingresar el costo total de compra.
-7. Elegir arroba, cuartilla o libra únicamente cuando se quiera registrar la comparación manual.
-8. Registrar el costo comparativo calculado con el peso real de bodega y guardar.
+4. Revisar los ajustes porcentuales visibles en la parte superior; si se usan, los porcentajes se suman y se aplican a todo el recibo.
+5. Escribir, si corresponde, la nota para el cliente o la nota interna visibles debajo de los ajustes.
+6. Guardar precios.
+7. En **2. Costos y utilidad**, ingresar el costo total de compra.
+8. Elegir arroba, cuartilla o libra únicamente cuando se quiera registrar la comparación manual.
+9. Registrar el costo comparativo calculado con el peso real de bodega y guardar.
 
 Resultado esperado: costo y utilidad se ven únicamente en administración y no modifican el precio de venta.
 

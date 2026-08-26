@@ -17,9 +17,12 @@ test("Productos muestra unidad y precio base dentro de Editar producto", () => {
   assert.match(management, /<ProductPricingEditor/);
   assert.match(
     management,
-    /mode === "create"[\s\S]*Unidad de precio inicial[\s\S]*type="hidden" name="price_unit_id"/,
+    /¿En qué unidad se entrega y cobra\?[\s\S]*name="price_unit_id"/,
   );
   assert.match(editor, /Precio base para recibos/);
+  assert.match(editor, /1\. ¿En qué unidad se entrega y cobra\?/);
+  assert.match(editor, /2\. ¿Cuál es el precio base por esa unidad\?/);
+  assert.match(editor, /Primero corrige la unidad física/);
   assert.match(editor, /name="price_unit_id"/);
   assert.match(editor, /name="new_price"/);
   assert.match(editor, /Guardar precio/);
@@ -31,6 +34,8 @@ test("el guardado de unidad y precio sigue protegido para administrador", () => 
   assert.match(actions, /update_qb_product_pricing_v2/);
   assert.match(migration, /v_role not in \('admin', 'administrador'\)/);
   assert.match(migration, /QB_PRICE_CONCURRENT_CHANGE/);
+  assert.match(actions, /validatePhysicalProductUnits/);
+  assert.match(actions, /BS representa dinero, no una cantidad física/);
 });
 
 test("solo productos con peso real pueden cobrar en una dimensión de peso distinta", () => {
