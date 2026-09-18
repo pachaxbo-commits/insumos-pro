@@ -3,6 +3,7 @@ import "server-only";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { quantityUnitOptions } from "@/lib/operational-matrix/quantity-units";
 import type {
   MatrixLine,
   MatrixOrder,
@@ -82,7 +83,7 @@ export async function getOperationalMatrixData(
       supabase
         .from("qb_order_items")
         .select(
-          "id, order_id, product_id, source_label, base_unit_symbol, requested_quantity, base_quantity, customer_notes, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
+          "id, order_id, product_id, source_unit_id, product_presentation_id, base_unit_id, conversion_factor_to_base, source_label, base_unit_symbol, requested_quantity, base_quantity, customer_notes, row_version, product:products(name, matrix_color, controls_actual_weight, category:product_categories(name))",
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true }),
@@ -117,6 +118,7 @@ export async function getOperationalMatrixData(
     productSettingsResult,
     unitsResult,
     unitDimensionsResult,
+    presentationsResult,
   ] = await Promise.all([
     preparationIds.length
       ? supabase
@@ -146,13 +148,18 @@ export async function getOperationalMatrixData(
         "id, dimension_id, code, name, symbol, conversion_factor_to_base, is_active, sort_order",
       ),
     supabase.from("qb_unit_dimensions").select("id, code, is_active"),
+    productIds.length
+      ? supabase.from("qb_product_presentations")
+          .select("id, product_id, base_unit_id, symbol, name, conversion_factor_to_base, is_active")
+          .in("product_id", productIds).eq("is_active", true).order("sort_order")
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (
     preparationItemsResult.error ||
     deliveryItemsResult.error ||
     productSettingsResult.error ||
     unitsResult.error ||
-    unitDimensionsResult.error
+    unitDimensionsResult.error || presentationsResult.error
   ) {
     throw new Error(
       `No se pudo cargar el detalle: ${
@@ -160,7 +167,7 @@ export async function getOperationalMatrixData(
         deliveryItemsResult.error?.message ??
         productSettingsResult.error?.message ??
         unitsResult.error?.message ??
-        unitDimensionsResult.error?.message
+        unitDimensionsResult.error?.message ?? presentationsResult.error?.message
       }`,
     );
   }
@@ -361,6 +368,12 @@ export async function getOperationalMatrixData(
         (category as { name?: unknown } | null)?.name ?? "Sin categoría",
       ),
       sourceLabel: String(item.source_label),
+      quantityUnits: quantityUnitOptions(
+        item, unitsResult.data ?? [], presentationsResult.data ?? [],
+        (unitDimensionsResult.data ?? [])
+          .filter((dimension) => dimension.is_active && dimension.code !== "legacy_dump")
+          .map((dimension) => String(dimension.id)),
+      ),
       baseUnitSymbol: String(item.base_unit_symbol),
       priceUnitSymbol,
       hasWeightBasedPrice,

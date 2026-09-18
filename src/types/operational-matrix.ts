@@ -10,6 +10,13 @@ export type MatrixWeightUnit = {
   kilograms: number;
 };
 
+export type MatrixQuantityUnit = {
+  id: string;
+  label: string;
+  /** One selected unit expressed in the order's original unit. */
+  sourceQuantity: number;
+};
+
 export type MatrixOrder = {
   id: string;
   customerKey: string;
@@ -34,6 +41,7 @@ export type MatrixLine = {
   controlsActualWeight: boolean;
   categoryName: string;
   sourceLabel: string;
+  quantityUnits: MatrixQuantityUnit[];
   baseUnitSymbol: string;
   priceUnitSymbol: string | null;
   hasWeightBasedPrice: boolean;

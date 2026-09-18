@@ -15,6 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
+  quantityInOriginalUnit,
+  quantityInSelectedUnit,
+} from "@/lib/operational-matrix/quantity-units";
+import {
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
   reopenMatrixDeliveryAction,
@@ -25,6 +29,7 @@ import {
 import type {
   MatrixLine,
   MatrixOrder,
+  MatrixQuantityUnit,
   MatrixStage,
   MatrixWeightUnit,
   OperationalMatrixData,
@@ -1637,6 +1642,7 @@ function MeasuredQuantityEditor({
   sourceLabel,
   sourceUnitHint,
   weightUnits,
+  quantityUnits,
   onQuantityChange,
   onWeightChange,
   onBlur,
@@ -1649,6 +1655,7 @@ function MeasuredQuantityEditor({
   sourceLabel: string;
   sourceUnitHint: string;
   weightUnits: MatrixWeightUnit[];
+  quantityUnits: MatrixQuantityUnit[];
   onQuantityChange: (value: number | null) => void;
   onWeightChange: (value: number | null) => void;
   onBlur: () => void;
@@ -1680,19 +1687,16 @@ function MeasuredQuantityEditor({
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
           Cantidad real
         </span>
-        <div className="flex items-center gap-1">
-          <DecimalInput
-            label={`Cantidad comercial de ${label.toLowerCase()}`}
-            value={quantityValue}
-            disabled={disabled}
-            attention={attention}
-            onChange={onQuantityChange}
-            onBlur={onBlur}
-          />
-          <span className="min-w-12 text-left text-[10px] font-semibold uppercase">
-            {sourceLabel}
-          </span>
-        </div>
+        <QuantityEditor
+          label={`Cantidad comercial de ${label.toLowerCase()}`}
+          value={quantityValue}
+          unitLabel={sourceLabel}
+          quantityUnits={quantityUnits}
+          disabled={disabled}
+          attention={attention}
+          onChange={onQuantityChange}
+          onBlur={onBlur}
+        />
       </div>
       <div>
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
@@ -1799,6 +1803,7 @@ function QuantityEditor({
   label,
   value,
   unitLabel,
+  quantityUnits,
   onChange,
   onBlur,
   disabled = false,
@@ -1807,27 +1812,50 @@ function QuantityEditor({
   label: string;
   value: number | null;
   unitLabel: string;
+  quantityUnits: MatrixQuantityUnit[];
   onChange: (value: number | null) => void;
   onBlur: () => void;
   disabled?: boolean;
   attention?: boolean;
 }) {
+  const [selectedUnitId, setSelectedUnitId] = useState("original");
+  const selectedUnit = quantityUnits.find((unit) => unit.id === selectedUnitId) ?? {
+    id: "original", label: unitLabel, sourceQuantity: 1,
+  };
   return (
-    <div className="flex min-w-36 items-center gap-1">
-      <DecimalInput
-        label={label}
-        value={value}
-        disabled={disabled}
-        attention={attention}
-        onChange={onChange}
-        onBlur={onBlur}
-      />
-      <span
-        title={unitLabel}
-        className="flex h-7 max-w-24 items-center truncate rounded-md border border-input bg-background px-2 text-[10px] font-semibold uppercase"
-      >
-        {unitLabel}
-      </span>
+    <div className="min-w-36">
+      <div className="flex items-center gap-1">
+        <DecimalInput
+          label={label}
+          value={quantityInSelectedUnit(value, selectedUnit)}
+          disabled={disabled}
+          attention={attention}
+          onChange={(nextValue) => onChange(quantityInOriginalUnit(nextValue, selectedUnit))}
+          onBlur={onBlur}
+        />
+        <select
+          aria-label={`Unidad de ${label.toLowerCase()}`}
+          title="La cantidad se guarda en la unidad original del pedido."
+          className="h-7 max-w-28 rounded-md border border-input bg-background px-1 text-[11px] font-semibold uppercase"
+          value={selectedUnit.id}
+          disabled={disabled}
+          onChange={(event) => setSelectedUnitId(event.target.value)}
+        >
+          {quantityUnits.map((unit) => (
+            <option key={unit.id} value={unit.id}>{unit.label}</option>
+          ))}
+        </select>
+      </div>
+      {selectedUnit.id !== "original" ? (
+        <span className="mt-1 block text-[9px] text-muted-foreground">
+          Equivale a {formatQuantity(value ?? 0)} {unitLabel} del pedido
+        </span>
+      ) : null}
+      {quantityUnits.length < 2 ? (
+        <span className="mt-1 block text-[9px] text-muted-foreground">
+          Sin otras equivalencias configuradas para este producto.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1940,6 +1968,7 @@ function DesktopOrderCells(props: CellProps) {
             <MeasuredQuantityEditor
               label={`Peso real preparado de ${line.productName}`}
               quantityValue={line.preparedQuantity}
+              quantityUnits={line.quantityUnits}
               actualWeightKg={line.preparationActualWeightKg}
               sourceLabel={line.sourceLabel}
               sourceUnitHint={line.baseUnitSymbol}
@@ -1963,6 +1992,7 @@ function DesktopOrderCells(props: CellProps) {
               label={`Cantidad real preparada de ${line.productName}`}
               value={line.preparedQuantity}
               unitLabel={line.sourceLabel}
+              quantityUnits={line.quantityUnits}
               disabled={!editable}
               attention={!line.preparedAt}
               onChange={(value) =>
@@ -2049,6 +2079,7 @@ function DesktopOrderCells(props: CellProps) {
             <MeasuredQuantityEditor
               label={`Peso real entrega ${line.productName}`}
               quantityValue={line.deliveredQuantity}
+              quantityUnits={line.quantityUnits}
               actualWeightKg={line.deliveryActualWeightKg}
               sourceLabel={line.sourceLabel}
               sourceUnitHint={line.baseUnitSymbol}
@@ -2072,6 +2103,7 @@ function DesktopOrderCells(props: CellProps) {
               label={`Cantidad real entregada de ${line.productName}`}
               value={line.deliveredQuantity}
               unitLabel={line.sourceLabel}
+              quantityUnits={line.quantityUnits}
               disabled={deliveryDisabled}
               attention={!deliveryReady || needsDeliveryReview}
               onChange={(value) =>
