@@ -35,7 +35,11 @@ export function AppHeader({ user }: AppHeaderProps) {
             "Genera el recibo con las cantidades reales entregadas.",
           step: "Cierre de entregas",
         }
-      : primaryWorkspace;
+      : pathname === "/matriz-operativa/mercado"
+        ? { title: "Hoja de compras", step: "Compras por fecha", description: "Consulta productos, imprime la hoja o descarga Excel." }
+        : pathname === "/matriz-operativa"
+          ? { title: "Preparación y entregas", step: "Operación diaria", description: "Confirma las cantidades preparadas y entregadas." }
+          : primaryWorkspace;
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-[1.5rem] border border-white/60 bg-white/78 px-4 py-3 shadow-sm backdrop-blur lg:px-5">

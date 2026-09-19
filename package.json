@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test:matrix": "node scripts/qb-operational-matrix.test.mjs",
     "test:matrix-units": "node --experimental-strip-types scripts/qb-matrix-quantity-units.test.mjs",
+    "test:delivery-polish": "node --experimental-strip-types scripts/qb-delivery-polish.test.mjs",
+    "test:receipt-calculations": "node --experimental-strip-types scripts/qb-receipt-calculations.test.mjs",
     "test:main-flow": "node scripts/qb-main-flow-acceptance.test.mjs",
     "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs"
   },

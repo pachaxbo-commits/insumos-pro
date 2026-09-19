@@ -112,7 +112,12 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.equal(sheet.getCell("E5").value, "RESTAURANTE B");
   assert.equal(sheet.pageSetup.orientation, "landscape");
   assert.equal(sheet.pageSetup.fitToWidth, 1);
-  assert.match(sheet.pageSetup.printArea, /^A1:F\d+$/);
+  assert.match(sheet.pageSetup.printArea, /^A1:G\d+$/);
+  assert.equal(sheet.getCell("G5").value, "PRECIO COMPRA (Bs/UD)");
+  assert.equal(sheet.getCell("G6").value, null);
+  assert.equal(sheet.getCell("D8").value, 1);
+  assert.equal(sheet.getCell("E8").value, 1);
+  assert.equal(sheet.getCell("F8").value, 1);
   assert.equal(sheet.views[0].state, "frozen");
 });
 
@@ -141,8 +146,8 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(management, /Precio base anterior/);
   assert.match(management, /Tabla solicitada · Costos de compra y utilidad/);
   assert.match(management, /Último costo compra/);
-  assert.match(management, /Tabla 1 · Hoja de compras del mercado/);
-  assert.match(management, /Tabla 2 · Costos y utilidad del cliente/);
+  assert.doesNotMatch(management, /Las 2 tablas solicitadas|Tabla 1 ·|Tabla 2 ·/);
+  assert.match(management, /TabsTrigger value="costos"/);
   assert.match(management, /No es un error de precio: falta definir la unidad/);
   assert.match(management, /Primero corrige la unidad del producto/);
   assert.doesNotMatch(management, /<summary[^>]*>Agregar notas/);

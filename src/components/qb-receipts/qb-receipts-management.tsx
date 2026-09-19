@@ -3,20 +3,17 @@
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import {
-  ArrowRight,
   Ban,
   CheckCircle2,
   ClipboardList,
   CircleDollarSign,
   FileText,
-  FileSpreadsheet,
   History,
   ListChecks,
   Printer,
   ReceiptText,
   Save,
   Settings2,
-  Table2,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -644,39 +641,6 @@ function DraftEditor({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/45 p-3 md:grid-cols-2">
-        <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
-          <Link href="/matriz-operativa#hoja-mercado">
-            <span className="flex items-center gap-3 text-left">
-              <FileSpreadsheet className="size-5 text-emerald-700" />
-              <span>
-                <span className="block font-semibold">Tabla 1 · Hoja de compras del mercado</span>
-                <span className="block text-xs font-normal text-muted-foreground">
-                  Todos los clientes · imprimir o descargar Excel
-                </span>
-              </span>
-            </span>
-            <ArrowRight className="size-4" />
-          </Link>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-auto justify-between bg-white p-4"
-          onClick={() => setDraftStep("costos")}
-        >
-          <span className="flex items-center gap-3 text-left">
-            <Table2 className="size-5 text-indigo-700" />
-            <span>
-              <span className="block font-semibold">Tabla 2 · Costos y utilidad del cliente</span>
-              <span className="block text-xs font-normal text-muted-foreground">
-                Solo administración · nunca sale en el recibo
-              </span>
-            </span>
-          </span>
-          <ArrowRight className="size-4" />
-        </Button>
-      </div>
 
       {receipt.hasPendingPrices ||
       hasPendingDraftLines ||
@@ -1353,40 +1317,6 @@ export function QbReceiptsManagement({
         </Alert>
       ) : null}
 
-      <Card className="border-2 border-emerald-300 bg-emerald-50/45">
-        <CardHeader>
-          <CardTitle className="text-base">Las 2 tablas solicitadas por el cliente</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Estos accesos son para administración y no modifican el flujo aprobado de pedidos.
-          </p>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
-            <Link href="/matriz-operativa#hoja-mercado">
-              <span className="flex items-center gap-3 text-left">
-                <FileSpreadsheet className="size-5 text-emerald-700" />
-                <span>
-                  <span className="block font-semibold">Tabla 1 · Hoja de compras del mercado</span>
-                  <span className="block text-xs font-normal text-muted-foreground">Productos por cliente, impresión y Excel</span>
-                </span>
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-          <Button asChild variant="outline" className="h-auto justify-between bg-white p-4">
-            <Link href="/recibos?section=borradores#borradores">
-              <span className="flex items-center gap-3 text-left">
-                <Table2 className="size-5 text-indigo-700" />
-                <span>
-                  <span className="block font-semibold">Tabla 2 · Planilla por cliente</span>
-                  <span className="block text-xs font-normal text-muted-foreground">En cada borrador pulsa “Costos y utilidad” · Solo administración</span>
-                </span>
-              </span>
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
 
       <div className="space-y-2">
         {actionMessage(createState)}

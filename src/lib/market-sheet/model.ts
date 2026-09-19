@@ -13,6 +13,7 @@ export type MarketSheetCustomer = {
 
 export type MarketSheetRow = {
   key: string;
+  productId: string;
   category: string;
   productName: string;
   productColor: string | null;
@@ -25,6 +26,8 @@ export type MarketSheetModel = {
   operationalDate: string;
   customers: MarketSheetCustomer[];
   rows: MarketSheetRow[];
+  productCount: number;
+  customerProductCounts: number[];
 };
 
 function uniqueText(values: Array<string | null>) {
@@ -98,6 +101,7 @@ export function buildMarketSheetModel(
       }
       return {
         key,
+        productId: first.productId,
         category: first.categoryName,
         productName: first.productName,
         productColor: first.productColor,
@@ -115,6 +119,11 @@ export function buildMarketSheetModel(
         left.unit.localeCompare(right.unit, "es"),
     );
 
-  return { operationalDate: data.operationalDate, customers, rows };
+  return {
+    operationalDate: data.operationalDate, customers, rows,
+    productCount: new Set(rows.filter((row) => row.total > 0).map((row) => row.productId)).size,
+    customerProductCounts: customers.map((_, index) =>
+      new Set(rows.filter((row) => row.quantities[index] > 0).map((row) => row.productId)).size,
+    ),
+  };
 }
-

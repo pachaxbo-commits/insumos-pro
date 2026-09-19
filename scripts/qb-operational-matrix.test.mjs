@@ -150,10 +150,11 @@ assert.match(matrixData, /customer_account_id/);
 assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
 assert.match(matrix, /const shouldCopyWeight/);
-assert.match(matrix, /line\.preparationActualWeightKg > 0\.000001/);
+assert.match(matrix, /line\.preparationActualWeightKg !== null/);
+assert.doesNotMatch(matrixData, /rawDeliveryWeight <= 0\.000001/);
 assert.match(
   matrixData,
-  /rawDeliveryWeight === null \|\| rawDeliveryWeight <= 0\.000001[\s\S]*?preparationActualWeightKg/,
+  /rawDeliveryWeight === null[\s\S]*?preparationActualWeightKg/,
 );
 assert.match(matrix, /groupLineMap/);
 assert.match(matrix, /saveGroupedPreparation/);
@@ -186,7 +187,7 @@ assert.match(
   /distributeValue\(groupedLines, patch\.preparedQuantity\)/,
 );
 assert.match(matrix, /function QuantityEditor/);
-assert.match(matrix, /Cantidad real entregada de/);
+assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
 assert.match(matrix, /deliveryCheck: true/);
 assert.match(matrix, /function hasDeliveryCheck/);
 assert.match(
@@ -234,7 +235,7 @@ assert.doesNotMatch(
 );
 assert.match(
   matrix,
-  /actualWeightKg: line\.controlsActualWeight[\s\S]*line\.preparationActualWeightKg/,
+  /actualWeightKg: line\.preparationActualWeightKg/,
 );
 assert.match(
   preparationWeightBaseline,
@@ -272,7 +273,7 @@ assert.match(
   preparationWeightBaseline,
   /delivery_item\.actual_weight_kg[\s\S]*< coalesce\([\s\S]*preparation_item\.actual_weight_kg/,
 );
-assert.match(matrix, /line\.controlsActualWeight \? \(/);
+assert.doesNotMatch(matrix, /line\.controlsActualWeight \? \(\s*<MeasuredQuantityEditor/);
 assert.match(
   matrix,
   /function customerDividerClass[\s\S]*border-l-4[\s\S]*border-l-slate-700/,

@@ -9,7 +9,7 @@ import { buildMarketSheetModel } from "@/lib/market-sheet/model";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
 
 function validDate(value: string | undefined) {
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Intl.DateTimeFormat("en-CA", { timeZone: "America/La_Paz" }).format(new Date());
 }
 
 function quantity(value: number) {
@@ -27,7 +27,6 @@ export default async function MarketPrintPage({
   if (auth.user.role !== "administrador") redirect("/matriz-operativa");
   const { date: rawDate } = await searchParams;
   const date = validDate(rawDate);
-  if (!date) redirect("/matriz-operativa");
 
   const data = await getOperationalMatrixData(date, auth.user.role);
   const model = buildMarketSheetModel(data);
@@ -38,11 +37,21 @@ export default async function MarketPrintPage({
         <Button asChild variant="outline">
           <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
             <ArrowLeft className="size-4" />
-            Volver
+            Preparación y entregas
           </Link>
         </Button>
-        <PrintReceiptButton />
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><a href={`/api/matriz-operativa/mercado.xlsx?date=${encodeURIComponent(date)}`}>Descargar Excel</a></Button>
+          <PrintReceiptButton />
+        </div>
       </div>
+      <form method="get" className="flex flex-wrap items-end gap-3 print:hidden">
+        <label className="text-sm">Fecha de compras
+          <input type="date" name="date" defaultValue={date} className="mt-1 block rounded-md border p-2" />
+        </label>
+        <Button type="submit">Ver fecha</Button>
+        <p className="text-sm text-muted-foreground">Anota el precio de compra al imprimir o en Excel. Esta hoja no registra compras ni cambia precios.</p>
+      </form>
 
       <section className="bg-white p-4 text-slate-950 print:p-0">
         <div className="border-b-2 border-emerald-900 pb-3 text-center">
@@ -71,6 +80,7 @@ export default async function MarketPrintPage({
                     </th>
                   ))}
                   <th className="border border-slate-500 bg-emerald-100 px-2 py-2">TOTAL</th>
+                  <th className="min-w-28 border border-slate-500 px-2 py-2">PRECIO COMPRA (Bs/UD)</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,20 +95,22 @@ export default async function MarketPrintPage({
                       </td>
                     ))}
                     <td className="border-b border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold">{quantity(row.total)}</td>
+                    <td className="border border-slate-300 bg-white px-2 py-1" aria-label={`Precio de compra de ${row.productName} por ${row.unit}`} />
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="bg-emerald-100 font-bold">
-                  <th colSpan={3} className="border-y-2 border-emerald-800 px-2 py-2 text-left">TOTALES</th>
+                  <th colSpan={3} className="border-y-2 border-emerald-800 px-2 py-2 text-left">PRODUCTOS DISTINTOS</th>
                   {model.customers.map((customer, customerIndex) => (
                     <th key={customer.key} className="border-y-2 border-emerald-800 px-2 py-2">
-                      {quantity(model.rows.reduce((sum, row) => sum + row.quantities[customerIndex], 0))}
+                      {model.customerProductCounts[customerIndex]}
                     </th>
                   ))}
                   <th className="border-y-2 border-emerald-800 px-2 py-2">
-                    {quantity(model.rows.reduce((sum, row) => sum + row.total, 0))}
+                    {model.productCount}
                   </th>
+                  <th className="border-y-2 border-emerald-800" />
                 </tr>
               </tfoot>
             </table>
@@ -108,4 +120,3 @@ export default async function MarketPrintPage({
     </div>
   );
 }
-

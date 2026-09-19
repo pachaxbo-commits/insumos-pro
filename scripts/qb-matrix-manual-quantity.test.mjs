@@ -10,9 +10,9 @@ const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
 
 test("todos los productos muestran una cantidad real con su unidad", () => {
   assert.match(matrix, /function QuantityEditor/);
-  assert.equal(matrix.match(/unitLabel=\{line\.sourceLabel\}/g)?.length, 2);
-  assert.match(matrix, /value=\{line\.preparedQuantity\}/);
-  assert.match(matrix, /value=\{line\.deliveredQuantity\}/);
+  assert.equal(matrix.match(/sourceLabel=\{line\.sourceLabel\}/g)?.length, 2);
+  assert.match(matrix, /quantityValue=\{line\.preparedQuantity\}/);
+  assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
 });
 
 test("la entrada acepta teclado numérico, punto y coma decimal", () => {
@@ -38,7 +38,7 @@ test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
   assert.doesNotMatch(data, /const candidates = new Set/);
   assert.match(
     matrix,
-    /line\.sourceLabel,\s+line\.baseUnitSymbol/,
+    /sourceLabel,\s+sourceUnitHint/,
   );
 });
 

@@ -255,7 +255,7 @@ test("20 doble clic queda bloqueado y conserva idempotencia en reintentos", () =
   assert.match(componentSource, /submissionInFlightRef\.current/);
   assert.match(
     componentSource,
-    /pending \|\| \(!editing && !idempotencyKey\) \|\| lines\.length === 0/,
+    /disabled=\{[\s\S]*?pending[\s\S]*?\(!editing && !idempotencyKey\)[\s\S]*?lines\.length === 0[\s\S]*?\}/,
   );
   assert.doesNotMatch(
     componentSource.match(/catch \{[\s\S]*?\} finally/)?.[0] ?? "",

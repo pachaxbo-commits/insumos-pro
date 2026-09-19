@@ -48,7 +48,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   });
   sheet.properties.showGridLines = false;
 
-  const lastColumn = Math.max(4, 4 + model.customers.length);
+  const lastColumn = 5 + model.customers.length;
   const lastColumnLetter = columnLetter(lastColumn);
   sheet.mergeCells(`A1:${lastColumnLetter}1`);
   sheet.getCell("A1").value = "QB INSUMOS · HOJA DE COMPRAS DE MERCADO";
@@ -82,6 +82,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "UD",
     ...model.customers.map((customer) => customer.name.toUpperCase()),
     "TOTAL",
+    "PRECIO COMPRA (Bs/UD)",
   ];
   const headerRow = sheet.getRow(5);
   headerRow.values = headers;
@@ -115,8 +116,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       item.unit,
       ...item.quantities.map((quantity) => (quantity > 0 ? quantity : null)),
       item.total,
+      null,
     ];
     row.height = 21;
+    row.getCell(lastColumn).value = null;
     row.eachCell({ includeEmpty: true }, (cell, column) => {
       cell.fill = {
         type: "pattern",
@@ -140,15 +143,13 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   const totalRowNumber = model.rows.length + 6;
   const totalRow = sheet.getRow(totalRowNumber);
   totalRow.getCell(1).value = "";
-  totalRow.getCell(2).value = "TOTALES";
+  totalRow.getCell(2).value = "PRODUCTOS DISTINTOS";
   totalRow.getCell(3).value = "";
-  for (let column = 4; column <= lastColumn; column += 1) {
-    const letter = columnLetter(column);
-    totalRow.getCell(column).value = {
-      formula: `SUM(${letter}6:${letter}${Math.max(6, totalRowNumber - 1)})`,
-    };
-    totalRow.getCell(column).numFmt = "0.###";
-  }
+  model.customerProductCounts.forEach((count, index) => {
+    totalRow.getCell(index + 4).value = count;
+  });
+  totalRow.getCell(lastColumn - 1).value = model.productCount;
+  totalRow.getCell(lastColumn).value = null;
   totalRow.eachCell({ includeEmpty: true }, (cell) => {
     cell.font = { bold: true, color: { argb: "FF064E3B" } };
     cell.fill = {
@@ -170,7 +171,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   for (let column = 4; column < lastColumn; column += 1) {
     sheet.getColumn(column).width = 13;
   }
-  sheet.getColumn(lastColumn).width = 13;
+  sheet.getColumn(lastColumn).width = 20;
   sheet.autoFilter = {
     from: { row: 5, column: 1 },
     to: { row: totalRowNumber - 1, column: lastColumn },
@@ -181,4 +182,3 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
 
   return workbook.xlsx.writeBuffer();
 }
-

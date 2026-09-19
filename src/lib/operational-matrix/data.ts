@@ -308,7 +308,6 @@ export async function getOperationalMatrixData(
     const requestedWeightUnit = findWeightUnit(
       weightUnits,
       item.source_label,
-      item.base_unit_symbol,
     );
     const preparationCheck = Boolean(prep?.preparation_check);
     const rawPreparedQuantity = numberOr(prep?.actual_quantity);
@@ -325,7 +324,7 @@ export async function getOperationalMatrixData(
       preparationCheck &&
       controlsActualWeight &&
       requestedWeightUnit &&
-      (rawPreparationWeight === null || rawPreparationWeight <= 0.000001)
+      rawPreparationWeight === null
         ? Number(
             (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
           )
@@ -342,9 +341,9 @@ export async function getOperationalMatrixData(
         ? null
         : numberOr(delivery.actual_weight_kg);
     const deliveryActualWeightKg =
-      controlsActualWeight &&
-      (rawDeliveryWeight === null || rawDeliveryWeight <= 0.000001)
-        ? preparationActualWeightKg && preparationActualWeightKg > 0.000001
+      (controlsActualWeight || preparationActualWeightKg !== null) &&
+      rawDeliveryWeight === null
+        ? preparationActualWeightKg !== null
           ? preparationActualWeightKg
           : deliveryCheck && requestedWeightUnit
             ? Number(

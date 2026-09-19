@@ -273,7 +273,7 @@ assert.match(navigation, /title: "Abrir preparación y entregas"/);
 assert.match(navigation, /href: "\/matriz-operativa"/);
 assert.doesNotMatch(matrix, /return \["CANT", "PREP\./);
 assert.match(matrix, /formatQuantity\(line\.requestedQuantity\)/);
-assert.match(matrix, /Cantidad real entregada de/);
+assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
 assert.doesNotMatch(matrix, /Peso real bodega/);
 assert.match(matrix, /Peso real entrega/);
 assert.match(matrix, /applyAutomaticDeliveryValues/);

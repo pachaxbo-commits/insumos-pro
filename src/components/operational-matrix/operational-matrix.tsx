@@ -258,11 +258,8 @@ function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
 
     const shouldCopyQuantity = line.deliveryVersion === 0;
     const shouldCopyWeight =
-      line.controlsActualWeight &&
       line.preparationActualWeightKg !== null &&
-      line.preparationActualWeightKg > 0.000001 &&
-      (line.deliveryActualWeightKg === null ||
-        line.deliveryActualWeightKg <= 0.000001);
+      line.deliveryActualWeightKg === null;
 
     if (!shouldCopyQuantity && !shouldCopyWeight) return line;
     return {
@@ -625,9 +622,7 @@ export function OperationalMatrix({
             : line.deliveredQuantity,
         deliveryActualWeightKg:
           checked &&
-          line.controlsActualWeight &&
-          (line.deliveryActualWeightKg === null ||
-            line.deliveryActualWeightKg <= 0.000001)
+          line.deliveryActualWeightKg === null
             ? line.preparationActualWeightKg
             : line.deliveryActualWeightKg,
       };
@@ -716,9 +711,7 @@ export function OperationalMatrix({
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
-          actualWeightKg: line.controlsActualWeight
-            ? line.preparationActualWeightKg
-            : null,
+          actualWeightKg: line.preparationActualWeightKg,
           note: line.preparationNote,
           idempotencyKey: idempotencyKey("prep"),
         });
@@ -778,9 +771,7 @@ export function OperationalMatrix({
           externalQuantity,
           deliveredQuantity: line.deliveredQuantity,
           deliveryCheck: effectiveDeliveryCheck,
-          actualWeightKg: line.controlsActualWeight
-            ? line.deliveryActualWeightKg
-            : null,
+          actualWeightKg: line.deliveryActualWeightKg,
           note:
             line.deliveryNote ||
             line.preparationNote ||
@@ -914,7 +905,8 @@ export function OperationalMatrix({
       if (
         groupLines.some(
           (line) =>
-            line.controlsActualWeight && line.deliveryActualWeightKg === null,
+            (line.controlsActualWeight || line.preparationActualWeightKg !== null) &&
+            line.deliveryActualWeightKg === null,
         )
       ) {
         setMessage("Completa los pesos reales marcados en rojo.");
@@ -923,10 +915,10 @@ export function OperationalMatrix({
       if (
         groupLines.some(
           (line) =>
-            line.controlsActualWeight &&
+            line.preparationActualWeightKg !== null &&
             line.deliveryActualWeightKg !== null &&
             line.deliveryActualWeightKg <
-              (line.preparationActualWeightKg ?? line.preparedQuantity) &&
+              line.preparationActualWeightKg &&
             (line.deliveryNote || line.preparationNote).trim().length < 3,
         )
       ) {
@@ -1550,7 +1542,6 @@ function requestedWeightInKilograms(
   const unit = findWeightUnit(
     weightUnits,
     line.sourceLabel,
-    line.baseUnitSymbol,
   );
   return unit
     ? weightToKilograms(line.requestedQuantity, unit)
@@ -1702,6 +1693,9 @@ function MeasuredQuantityEditor({
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
           Peso real
         </span>
+        <span className="mb-1 block text-left text-[9px] text-muted-foreground">
+          Registra el peso medido, sin convertir cajas o unidades automáticamente.
+        </span>
         <div className="flex items-center gap-1">
           <DecimalInput
             label={label}
@@ -1769,7 +1763,7 @@ function PreparedMeasurementDisplay({
       <span className="block font-semibold">
         {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
       </span>
-      {line.controlsActualWeight ? (
+      {line.controlsActualWeight || line.preparationActualWeightKg !== null ? (
         <>
           <span className="mt-1 block text-[9px] font-medium text-muted-foreground">
             Peso preparado
@@ -1949,10 +1943,8 @@ function DesktopOrderCells(props: CellProps) {
                 findWeightUnit(
                   weightUnits,
                   line.sourceLabel,
-                  line.baseUnitSymbol,
                 ) !== undefined &&
-                (line.preparationActualWeightKg === null ||
-                  line.preparationActualWeightKg <= 0.000001)
+                line.preparationActualWeightKg === null
                   ? {
                       preparationActualWeightKg:
                         requestedWeightInKilograms(line, weightUnits),
@@ -1964,46 +1956,29 @@ function DesktopOrderCells(props: CellProps) {
           />
         </td>
         <td style={cellStyle} className={cellClass}>
-          {line.controlsActualWeight ? (
-            <MeasuredQuantityEditor
-              label={`Peso real preparado de ${line.productName}`}
-              quantityValue={line.preparedQuantity}
-              quantityUnits={line.quantityUnits}
-              actualWeightKg={line.preparationActualWeightKg}
-              sourceLabel={line.sourceLabel}
-              sourceUnitHint={line.baseUnitSymbol}
-              weightUnits={weightUnits}
-              disabled={!editable}
-              attention={!line.preparedAt}
-              onQuantityChange={(value) =>
-                onChange({
-                  preparedQuantity: value ?? 0,
-                })
-              }
-              onWeightChange={(value) =>
-                onChange({
-                  preparationActualWeightKg: value,
-                })
-              }
-              onBlur={onSavePreparation}
-            />
-          ) : (
-            <QuantityEditor
-              label={`Cantidad real preparada de ${line.productName}`}
-              value={line.preparedQuantity}
-              unitLabel={line.sourceLabel}
-              quantityUnits={line.quantityUnits}
-              disabled={!editable}
-              attention={!line.preparedAt}
-              onChange={(value) =>
-                onChange({
-                  preparedQuantity: value ?? 0,
-                })
-              }
-              onBlur={onSavePreparation}
-            />
-          )}
-          {line.controlsActualWeight ? <WeightPricingHint line={line} /> : null}
+          <MeasuredQuantityEditor
+            label={`Peso real preparado de ${line.productName}`}
+            quantityValue={line.preparedQuantity}
+            quantityUnits={line.quantityUnits}
+            actualWeightKg={line.preparationActualWeightKg}
+            sourceLabel={line.sourceLabel}
+            sourceUnitHint={line.baseUnitSymbol}
+            weightUnits={weightUnits}
+            disabled={!editable}
+            attention={!line.preparedAt}
+            onQuantityChange={(value) =>
+              onChange({
+                preparedQuantity: value ?? 0,
+              })
+            }
+            onWeightChange={(value) =>
+              onChange({
+                preparationActualWeightKg: value,
+              })
+            }
+            onBlur={onSavePreparation}
+          />
+          <WeightPricingHint line={line} />
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (
@@ -2029,10 +2004,10 @@ function DesktopOrderCells(props: CellProps) {
       !line.deliveredAt &&
       line.deliveryVersion === 0;
     const lowerThanPrepared =
-      line.controlsActualWeight &&
+      line.preparationActualWeightKg !== null &&
       line.deliveryActualWeightKg !== null &&
       line.deliveryActualWeightKg <
-        (line.preparationActualWeightKg ?? line.preparedQuantity);
+        line.preparationActualWeightKg;
     const noteMissingForShortfall =
       lowerThanPrepared && line.deliveryNote.trim().length < 3;
     const deliveryDisabled = !editable;
@@ -2075,46 +2050,29 @@ function DesktopOrderCells(props: CellProps) {
               : ""
           }`}
         >
-          {line.controlsActualWeight ? (
-            <MeasuredQuantityEditor
-              label={`Peso real entrega ${line.productName}`}
-              quantityValue={line.deliveredQuantity}
-              quantityUnits={line.quantityUnits}
-              actualWeightKg={line.deliveryActualWeightKg}
-              sourceLabel={line.sourceLabel}
-              sourceUnitHint={line.baseUnitSymbol}
-              weightUnits={weightUnits}
-              disabled={deliveryDisabled}
-              attention={!deliveryReady || needsDeliveryReview}
-              onQuantityChange={(value) =>
-                onChange({
-                  deliveredQuantity: value ?? 0,
-                })
-              }
-              onWeightChange={(value) =>
-                onChange({
-                  deliveryActualWeightKg: value,
-                })
-              }
-              onBlur={onSaveDelivery}
-            />
-          ) : (
-            <QuantityEditor
-              label={`Cantidad real entregada de ${line.productName}`}
-              value={line.deliveredQuantity}
-              unitLabel={line.sourceLabel}
-              quantityUnits={line.quantityUnits}
-              disabled={deliveryDisabled}
-              attention={!deliveryReady || needsDeliveryReview}
-              onChange={(value) =>
-                onChange({
-                  deliveredQuantity: value ?? 0,
-                })
-              }
-              onBlur={onSaveDelivery}
-            />
-          )}
-          {line.controlsActualWeight ? <WeightPricingHint line={line} /> : null}
+          <MeasuredQuantityEditor
+            label={`Peso real entrega ${line.productName}`}
+            quantityValue={line.deliveredQuantity}
+            quantityUnits={line.quantityUnits}
+            actualWeightKg={line.deliveryActualWeightKg}
+            sourceLabel={line.sourceLabel}
+            sourceUnitHint={line.baseUnitSymbol}
+            weightUnits={weightUnits}
+            disabled={deliveryDisabled}
+            attention={!deliveryReady || needsDeliveryReview}
+            onQuantityChange={(value) =>
+              onChange({
+                deliveredQuantity: value ?? 0,
+              })
+            }
+            onWeightChange={(value) =>
+              onChange({
+                deliveryActualWeightKg: value,
+              })
+            }
+            onBlur={onSaveDelivery}
+          />
+          <WeightPricingHint line={line} />
           {deliveryReady && !needsDeliveryReview ? (
             <span className="mt-1 block text-[9px] font-medium text-emerald-800">
               Valor inicial de Inventario · editable
@@ -2173,7 +2131,7 @@ function DesktopOrderCells(props: CellProps) {
         {formatQuantity(line.deliveredQuantity)}
       </td>
       <td style={cellStyle} className={cellClass}>
-        {line.controlsActualWeight && line.deliveryActualWeightKg !== null
+        {line.deliveryActualWeightKg !== null
           ? `${formatQuantity(line.deliveryActualWeightKg)} kg`
           : "—"}
       </td>

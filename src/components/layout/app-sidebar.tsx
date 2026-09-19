@@ -1,6 +1,6 @@
 "use client";
 
-import { FileSpreadsheet, Table2 } from "lucide-react";
+import { FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -110,11 +110,12 @@ export function AppSidebar({
         {user.role === "administrador" ? (
           <div className="mt-6">
             <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/45">
-              Tablas solicitadas
+              Compras
             </p>
             <div className="mt-2 space-y-1">
               <Link
-                href="/matriz-operativa#hoja-mercado"
+                href="/matriz-operativa/mercado"
+                aria-current={pathname === "/matriz-operativa/mercado" ? "page" : undefined}
                 onClick={onNavigate}
                 className="flex items-center gap-3 rounded-xl bg-emerald-950/35 px-3 py-3 text-sidebar-foreground hover:bg-emerald-950/50"
               >
@@ -124,19 +125,6 @@ export function AppSidebar({
                 <span>
                   <span className="block text-sm font-semibold">Hoja de compras</span>
                   <span className="block text-xs text-sidebar-foreground/65">Vista para imprimir y Excel</span>
-                </span>
-              </Link>
-              <Link
-                href="/recibos?section=borradores"
-                onClick={onNavigate}
-                className="flex items-center gap-3 rounded-xl bg-indigo-950/30 px-3 py-3 text-sidebar-foreground hover:bg-indigo-950/45"
-              >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-900">
-                  <Table2 className="size-4" />
-                </span>
-                <span>
-                  <span className="block text-sm font-semibold">Costos y utilidad</span>
-                  <span className="block text-xs text-sidebar-foreground/65">Solo administración</span>
                 </span>
               </Link>
             </div>
