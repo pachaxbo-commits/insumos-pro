@@ -86,16 +86,15 @@ test("ambas etapas usan el selector con y sin control de peso", () => {
 
 test("el selector real cambia la visualización y convierte la edición sin modificar CANT", () => {
   const source = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
+  const helper = source.slice(source.indexOf("function selectedQuantityUnit("), source.indexOf("function aggregateLines("));
   const component = source.slice(source.indexOf("function QuantityEditor("), source.indexOf("function DesktopOrderCells("));
-  const code = ts.transpileModule(`export ${component}`, {
+  const code = ts.transpileModule(`export ${helper}\nexport ${component}`, {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS },
   }).outputText;
-  let selected = "original";
   const exported = {};
   const DecimalInput = () => null;
   runInNewContext(code, {
     exports: exported, require: createRequire(import.meta.url),
-    useState: () => [selected, (value) => { selected = value; }],
     DecimalInput, quantityInOriginalUnit, quantityInSelectedUnit, formatQuantity: String,
   });
   const find = (node, type) => {
@@ -104,18 +103,33 @@ test("el selector real cambia la visualización y convierte la edición sin modi
     return [node.props?.children].flat(Infinity).map(child => find(child, type)).find(Boolean);
   };
   for (const label of ["Cantidad real preparada de Arroz", "Cantidad real entregada de Arroz"]) {
-    selected = "original";
     let saved = 1;
     let changes = 0;
-    const props = { label, value: saved, unitLabel: "CUARTILLA", quantityUnits: quantityUnitOptions(item, units, []), onChange: value => { saved = value; changes++; }, onBlur: () => {}, disabled: false };
+    let selected = "original";
+    const props = { label, value: saved, unitLabel: "CUARTILLA", quantityUnits: quantityUnitOptions(item, units, []), selectedUnitId: selected, onChange: value => { saved = value; changes++; }, onUnitChange: value => { selected = value; }, onBlur: () => {}, disabled: false };
     let tree = exported.QuantityEditor(props);
     find(tree, "select").props.onChange({ target: { value: "unit:kg" } });
     assert.equal(changes, 0, "elegir unidad no altera lo preparado o entregado");
-    tree = exported.QuantityEditor(props);
+    tree = exported.QuantityEditor({ ...props, selectedUnitId: selected });
     assert.equal(find(tree, DecimalInput).props.value, 2.7);
     find(tree, DecimalInput).props.onChange(5.4);
     assert.equal(saved, 2);
     assert.equal(props.value, 1, "la cantidad original no se muta");
-    assert.equal(find(exported.QuantityEditor({ ...props, disabled: true }), "select").props.disabled, true);
+    assert.equal(find(exported.QuantityEditor({ ...props, selectedUnitId: selected, disabled: true }), "select").props.disabled, true);
   }
+});
+
+test("la unidad elegida se envía, persiste y se recupera en ambas etapas", () => {
+  const matrix = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
+  const actions = readFileSync("src/lib/operational-matrix/actions.ts", "utf8");
+  const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
+  const migration = readFileSync("supabase/migrations/20260926010000_qb_client_trial_readiness.sql", "utf8");
+  assert.match(matrix, /displayUnitId: line\.preparationDisplayUnitId/);
+  assert.match(matrix, /displayUnitId: line\.deliveryDisplayUnitId/);
+  assert.match(actions, /save_qb_matrix_preparation_item_with_unit/);
+  assert.match(actions, /save_qb_matrix_delivery_item_with_unit/);
+  assert.match(data, /display_unit_id/);
+  assert.match(migration, /add column if not exists display_unit_id/);
+  assert.match(migration, /'preparacion', 'display_unit_id'/);
+  assert.match(migration, /'entrega', 'display_unit_id'/);
 });

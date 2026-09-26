@@ -6,7 +6,11 @@ import { usePathname } from "next/navigation";
 
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { Separator } from "@/components/ui/separator";
-import { getFocusedWorkspace, getRoleLabel } from "@/lib/auth/roles";
+import {
+  canAccessPath,
+  getFocusedWorkspace,
+  getRoleLabel,
+} from "@/lib/auth/roles";
 import { mainNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types/auth";
@@ -36,6 +40,11 @@ export function AppSidebar({
       item.href === workspace.href ||
       (user.role === "administrador" && adminAvailablePaths.has(item.href)),
   );
+  const dailyFlow = [
+    { href: "/pedidos", label: "1. Crear pedido" },
+    { href: "/matriz-operativa", label: "2. Preparar y entregar" },
+    { href: "/recibos", label: "3. Generar recibo" },
+  ].filter((item) => canAccessPath(user.role, item.href));
   return (
     <aside
       className={cn(
@@ -135,9 +144,16 @@ export function AppSidebar({
       <div className="mx-4 mb-4 rounded-2xl border border-white/10 bg-white/6 p-4">
         <p className="text-sm font-medium">Flujo diario</p>
         <div className="mt-2 space-y-1 text-xs text-sidebar-foreground/75">
-          <Link href="/pedidos" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">1. Crear pedido</Link>
-          <Link href="/matriz-operativa" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">2. Preparar y entregar</Link>
-          <Link href="/recibos" onClick={onNavigate} className="block rounded-md px-2 py-1.5 hover:bg-white/10">3. Generar recibo</Link>
+          {dailyFlow.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className="block rounded-md px-2 py-1.5 hover:bg-white/10"
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </div>
     </aside>

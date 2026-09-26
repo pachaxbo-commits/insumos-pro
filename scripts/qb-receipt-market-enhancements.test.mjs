@@ -97,6 +97,8 @@ test("the market sheet sums repeated active requests by customer without mixing 
   assert.equal(kilograms?.total, 9);
   assert.deepEqual(arrobas?.quantities, [1, 0]);
   assert.equal(arrobas?.total, 1);
+  assert.deepEqual(model.customerLineCounts, [2, 1]);
+  assert.equal(model.totalLineCount, 3);
 });
 
 test("the generated file is a real printable Excel workbook", async () => {
@@ -115,9 +117,9 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.match(sheet.pageSetup.printArea, /^A1:G\d+$/);
   assert.equal(sheet.getCell("G5").value, "PRECIO COMPRA (Bs/UD)");
   assert.equal(sheet.getCell("G6").value, null);
-  assert.equal(sheet.getCell("D8").value, 1);
+  assert.equal(sheet.getCell("D8").value, 2);
   assert.equal(sheet.getCell("E8").value, 1);
-  assert.equal(sheet.getCell("F8").value, 1);
+  assert.equal(sheet.getCell("F8").value, 3);
   assert.equal(sheet.views[0].state, "frozen");
 });
 

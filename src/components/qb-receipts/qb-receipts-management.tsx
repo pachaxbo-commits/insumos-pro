@@ -225,9 +225,17 @@ function CreateReceiptPanel({
       </CardHeader>
       <CardContent>
         {!groups.length ? (
-          <p className="text-sm text-muted-foreground">
-            No hay pedidos entregados pendientes de recibo.
-          </p>
+          <div className="space-y-3 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+            <p className="font-semibold">Todavía no hay entregas listas para generar recibo.</p>
+            <ol className="list-decimal space-y-1 pl-5 text-sky-900">
+              <li>Inventario completa y finaliza la preparación.</li>
+              <li>El entregador registra las cantidades reales y confirma la entrega.</li>
+              <li>El pedido aparecerá aquí, en “Por crear”.</li>
+            </ol>
+            <Button asChild variant="outline" className="bg-white">
+              <Link href="/matriz-operativa">Abrir preparación y entregas</Link>
+            </Button>
+          </div>
         ) : (
           <form action={action} className="space-y-4">
             <p className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">

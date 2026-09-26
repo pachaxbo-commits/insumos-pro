@@ -24,6 +24,7 @@ const [
   bsQuantityMigration,
   serviceRoleReadMigration,
   deliveryConfirmationMigration,
+  clientTrialReadinessMigration,
   forceDeleteCustomerMigration,
   customerDeleteCompatibilityMigration,
   deliveryDateMigration,
@@ -53,6 +54,9 @@ const [
   ),
   read(
     "supabase/migrations/20260725010700_qb_delivery_confirmation_current_version.sql",
+  ),
+  read(
+    "supabase/migrations/20260926010000_qb_client_trial_readiness.sql",
   ),
   read("supabase/migrations/20260725010800_qb_admin_force_delete_customer.sql"),
   read(
@@ -291,22 +295,15 @@ assert.match(matrix, /externalQuantity/);
 assert.match(matrix, /preparedQuantity/);
 assert.match(matrix, /deliveredQuantity/);
 assert.match(
-  deliveryConfirmationMigration,
-  /for update[\s\S]*confirm_qb_matrix_delivery_v2/,
+  clientTrialReadinessMigration,
+  /confirm_qb_matrix_delivery_v2\([\s\S]*p_expected_updated_at/,
 );
-assert.doesNotMatch(
-  deliveryConfirmationMigration,
-  /v_current_updated_at is distinct from p_expected_updated_at/,
-);
+assert.match(deliveryConfirmationMigration, /confirm_qb_matrix_delivery_v2/);
 const matrixActions = await read("src/lib/operational-matrix/actions.ts");
 assert.match(matrixActions, /Number\.isFinite\(Date\.parse\(value\)\)/);
 assert.doesNotMatch(matrixActions, /expectedUpdatedAt: z\.string\(\)\.datetime\(\)/);
-assert.match(matrixActions, /if \(!firstAttempt\.conflict\) return firstAttempt/);
-assert.match(matrixActions, /\.select\("updated_at"\)/);
-assert.match(
-  matrixActions,
-  /p_expected_updated_at: String\(currentOrder\.updated_at\)/,
-);
+assert.doesNotMatch(matrixActions, /firstAttempt|currentOrder/);
+assert.match(matrixActions, /p_expected_updated_at: parsed\.data\.expectedUpdatedAt/);
 
 // Fecha de entrega elegida y sincronizada con la matriz.
 assert.match(creator, /name="operational_date"/);

@@ -17,6 +17,9 @@ export type MatrixActionResult = {
 const id = z.string().uuid();
 const key = z.string().min(8).max(200);
 const quantity = z.number().finite().min(0).max(999999999);
+const displayUnitId = z
+  .string()
+  .regex(/^(original|(unit|presentation):[0-9a-f-]{36})$/i);
 const timestamp = z.string().refine(
   (value) => Number.isFinite(Date.parse(value)),
   "Fecha invalida.",
@@ -59,16 +62,18 @@ export async function saveMatrixPreparationAction(input: unknown) {
     preparedQuantity: quantity,
     preparationCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    displayUnitId,
     note: z.string().max(500),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_item_with_weight", {
+  return rpc("save_qb_matrix_preparation_item_with_unit", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
     p_preparation_check: parsed.data.preparationCheck,
     p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "inventario"], false);
@@ -82,17 +87,19 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     deliveredQuantity: quantity,
     deliveryCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    displayUnitId,
     note: z.string().max(500),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Entrega invalida." };
-  return rpc("save_qb_matrix_delivery_item_with_weight", {
+  return rpc("save_qb_matrix_delivery_item_with_unit", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_externally_sourced_quantity: parsed.data.externalQuantity,
     p_delivered_quantity: parsed.data.deliveredQuantity,
     p_delivery_check: parsed.data.deliveryCheck,
     p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "entregador"], false);
@@ -115,32 +122,12 @@ export async function confirmMatrixDeliveryAction(input: unknown) {
     orderId: id, expectedUpdatedAt: timestamp, idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Pedido invalido." };
-  const payload = {
-    p_order_id: parsed.data.orderId,
-    p_expected_updated_at: parsed.data.expectedUpdatedAt,
-    p_idempotency_key: parsed.data.idempotencyKey,
-  };
-  const firstAttempt = await rpc(
-    "confirm_qb_matrix_delivery",
-    payload,
-    ["administrador", "entregador"],
-  );
-  if (!firstAttempt.conflict) return firstAttempt;
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return firstAttempt;
-  const { data: currentOrder, error } = await supabase
-    .from("qb_orders")
-    .select("updated_at")
-    .eq("id", parsed.data.orderId)
-    .single();
-  if (error || !currentOrder?.updated_at) return firstAttempt;
-
   return rpc(
     "confirm_qb_matrix_delivery",
     {
-      ...payload,
-      p_expected_updated_at: String(currentOrder.updated_at),
+      p_order_id: parsed.data.orderId,
+      p_expected_updated_at: parsed.data.expectedUpdatedAt,
+      p_idempotency_key: parsed.data.idempotencyKey,
     },
     ["administrador", "entregador"],
   );

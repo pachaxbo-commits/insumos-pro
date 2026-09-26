@@ -25,27 +25,33 @@ Resultado esperado: los dos pedidos quedan disponibles para la operación diaria
 
 1. Abrir **Preparación y entregas** para la fecha elegida.
 2. Abrir **Hoja para comprar en el mercado**.
-3. Revisar productos en filas, clientes en columnas y totales.
-4. Confirmar que el producto repetido se suma sin mezclar unidades incompatibles.
-5. Descargar el Excel y abrirlo.
-6. Confirmar que todos los compradores reciben la misma hoja.
+3. Si no se envió una fecha en el enlace, confirmar que el sistema abrió automáticamente la fecha más reciente con pedidos.
+4. Revisar productos en filas, clientes en columnas y totales.
+5. Revisar la fila **LÍNEAS PEDIDAS**: cada cliente muestra la cantidad de filas en las que pidió algo y **TOTAL** es la suma de esas columnas. Ejemplo: 6 + 4 = 10.
+6. Confirmar que el producto repetido se suma sin mezclar unidades incompatibles.
+7. Descargar el Excel y abrirlo.
+8. Confirmar que todos los compradores reciben la misma hoja.
 
 Resultado esperado: la hoja muestra lo solicitado antes de preparar y entregar, y el Excel se puede imprimir.
 
 ### 3. Preparar y entregar
 
 1. Registrar la preparación siguiendo el flujo ya aprobado.
-2. Registrar una cantidad real entregada diferente de la solicitada en al menos un producto.
-3. Confirmar la entrega una sola vez.
+2. En al menos un producto, cambiar la unidad de captura, guardar y recargar la página. Confirmar que la unidad elegida se conserva.
+3. Finalizar la preparación.
+4. Entrar con Entrega, comprobar que ve lo preparado y cambiar su unidad o cantidad final en un producto.
+5. Registrar una cantidad real entregada diferente de la solicitada en al menos un producto.
+6. Confirmar la entrega una sola vez.
 
 Resultado esperado: el recibo utiliza la cantidad real entregada, no la cantidad originalmente solicitada.
 
 ### 4. Crear el recibo acumulativo
 
 1. Abrir **Recibos → Por crear**.
-2. Elegir el cliente.
-3. Seleccionar los dos pedidos y generar el borrador.
-4. Abrir **Borradores**.
+2. Si está vacío, volver a **Preparación y entregas**: el pedido solo aparecerá después de que Entrega haya confirmado la entrega.
+3. Elegir el cliente.
+4. Seleccionar los dos pedidos y generar el borrador.
+5. Abrir **Borradores**.
 
 Resultado esperado: ambos pedidos quedan incluidos y no vuelven a aparecer como pendientes para otro recibo.
 

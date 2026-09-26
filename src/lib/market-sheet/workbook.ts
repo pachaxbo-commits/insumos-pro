@@ -143,12 +143,12 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   const totalRowNumber = model.rows.length + 6;
   const totalRow = sheet.getRow(totalRowNumber);
   totalRow.getCell(1).value = "";
-  totalRow.getCell(2).value = "PRODUCTOS DISTINTOS";
+  totalRow.getCell(2).value = "LÍNEAS PEDIDAS";
   totalRow.getCell(3).value = "";
-  model.customerProductCounts.forEach((count, index) => {
+  model.customerLineCounts.forEach((count, index) => {
     totalRow.getCell(index + 4).value = count;
   });
-  totalRow.getCell(lastColumn - 1).value = model.productCount;
+  totalRow.getCell(lastColumn - 1).value = model.totalLineCount;
   totalRow.getCell(lastColumn).value = null;
   totalRow.eachCell({ includeEmpty: true }, (cell) => {
     cell.font = { bold: true, color: { argb: "FF064E3B" } };

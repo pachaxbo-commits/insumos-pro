@@ -124,7 +124,7 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_order_preparation_items")
           .select(
-            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)",
+            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by:profiles!prepared_by_line(full_name)",
           )
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -132,7 +132,7 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_order_delivery_items")
           .select(
-            "order_item_id, externally_sourced_quantity, delivered_quantity, delivered_base_quantity, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
+            "order_item_id, externally_sourced_quantity, delivered_quantity, delivered_base_quantity, display_unit_id, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
           )
           .in("order_item_id", itemIds)
       : Promise.resolve({ data: [], error: null }),
@@ -382,6 +382,7 @@ export async function getOperationalMatrixData(
       requestedVersion: numberOr(item.row_version),
       preparedQuantity,
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),
+      preparationDisplayUnitId: String(prep?.display_unit_id ?? "original"),
       preparationCheck,
       preparationActualWeightKg,
       preparationNote: String(prep?.notes ?? ""),
@@ -394,6 +395,9 @@ export async function getOperationalMatrixData(
       externalQuantity: numberOr(delivery?.externally_sourced_quantity),
       deliveredQuantity,
       deliveredBaseQuantity: numberOr(delivery?.delivered_base_quantity),
+      deliveryDisplayUnitId: String(
+        delivery?.display_unit_id ?? prep?.display_unit_id ?? "original",
+      ),
       deliveryCheck,
       deliveryActualWeightKg,
       deliveryNote: String(delivery?.delivery_note ?? ""),

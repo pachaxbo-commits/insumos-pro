@@ -51,6 +51,7 @@ export type MatrixLine = {
   requestedVersion: number;
   preparedQuantity: number;
   preparedBaseQuantity: number;
+  preparationDisplayUnitId: string;
   preparationCheck: boolean;
   preparationActualWeightKg: number | null;
   preparationNote: string;
@@ -60,6 +61,7 @@ export type MatrixLine = {
   externalQuantity: number;
   deliveredQuantity: number;
   deliveredBaseQuantity: number;
+  deliveryDisplayUnitId: string;
   deliveryCheck: boolean;
   deliveryActualWeightKg: number | null;
   deliveryNote: string;

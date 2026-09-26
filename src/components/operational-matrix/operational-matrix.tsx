@@ -196,6 +196,20 @@ function sumNullable(
     : null;
 }
 
+function selectedQuantityUnit(
+  quantityUnits: MatrixQuantityUnit[],
+  selectedUnitId: string,
+  fallbackLabel: string,
+) {
+  return (
+    quantityUnits.find((unit) => unit.id === selectedUnitId) ?? {
+      id: "original",
+      label: fallbackLabel,
+      sourceQuantity: 1,
+    }
+  );
+}
+
 function aggregateLines(lines: MatrixLine[]): MatrixLine {
   const first = lines[0];
   return {
@@ -267,6 +281,7 @@ function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
       ...(shouldCopyQuantity
         ? {
             deliveredQuantity: line.preparedQuantity,
+            deliveryDisplayUnitId: line.preparationDisplayUnitId,
             deliveryCheck: true,
           }
         : {}),
@@ -302,6 +317,7 @@ function mergeServerLines(
         ...next,
         preparedQuantity: current.preparedQuantity,
         preparedBaseQuantity: current.preparedBaseQuantity,
+        preparationDisplayUnitId: current.preparationDisplayUnitId,
         preparationCheck: current.preparationCheck,
         preparationActualWeightKg: current.preparationActualWeightKg,
         preparationNote: current.preparationNote,
@@ -316,6 +332,7 @@ function mergeServerLines(
         externalQuantity: current.externalQuantity,
         deliveredQuantity: current.deliveredQuantity,
         deliveredBaseQuantity: current.deliveredBaseQuantity,
+        deliveryDisplayUnitId: current.deliveryDisplayUnitId,
         deliveryCheck: current.deliveryCheck,
         deliveryActualWeightKg: current.deliveryActualWeightKg,
         deliveryNote: current.deliveryNote,
@@ -620,6 +637,10 @@ export function OperationalMatrix({
           checked && line.deliveredQuantity <= 0.000001
             ? line.requestedQuantity
             : line.deliveredQuantity,
+        deliveryDisplayUnitId:
+          checked && line.deliveryVersion === 0
+            ? line.preparationDisplayUnitId
+            : line.deliveryDisplayUnitId,
         deliveryActualWeightKg:
           checked &&
           line.deliveryActualWeightKg === null
@@ -712,6 +733,7 @@ export function OperationalMatrix({
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
           actualWeightKg: line.preparationActualWeightKg,
+          displayUnitId: line.preparationDisplayUnitId,
           note: line.preparationNote,
           idempotencyKey: idempotencyKey("prep"),
         });
@@ -772,6 +794,7 @@ export function OperationalMatrix({
           deliveredQuantity: line.deliveredQuantity,
           deliveryCheck: effectiveDeliveryCheck,
           actualWeightKg: line.deliveryActualWeightKg,
+          displayUnitId: line.deliveryDisplayUnitId,
           note:
             line.deliveryNote ||
             line.preparationNote ||
@@ -1634,7 +1657,9 @@ function MeasuredQuantityEditor({
   sourceUnitHint,
   weightUnits,
   quantityUnits,
+  selectedUnitId,
   onQuantityChange,
+  onUnitChange,
   onWeightChange,
   onBlur,
   disabled = false,
@@ -1647,7 +1672,9 @@ function MeasuredQuantityEditor({
   sourceUnitHint: string;
   weightUnits: MatrixWeightUnit[];
   quantityUnits: MatrixQuantityUnit[];
+  selectedUnitId: string;
   onQuantityChange: (value: number | null) => void;
+  onUnitChange: (value: string) => void;
   onWeightChange: (value: number | null) => void;
   onBlur: () => void;
   disabled?: boolean;
@@ -1683,9 +1710,11 @@ function MeasuredQuantityEditor({
           value={quantityValue}
           unitLabel={sourceLabel}
           quantityUnits={quantityUnits}
+          selectedUnitId={selectedUnitId}
           disabled={disabled}
           attention={attention}
           onChange={onQuantityChange}
+          onUnitChange={onUnitChange}
           onBlur={onBlur}
         />
       </div>
@@ -1751,6 +1780,15 @@ function PreparedMeasurementDisplay({
   const displayWeight = displayUnit
     ? weightFromKilograms(line.preparationActualWeightKg, displayUnit)
     : null;
+  const preparedUnit = selectedQuantityUnit(
+    line.quantityUnits,
+    line.preparationDisplayUnitId,
+    line.sourceLabel,
+  );
+  const preparedQuantity = quantityInSelectedUnit(
+    line.preparedQuantity,
+    preparedUnit,
+  );
 
   return (
     <div
@@ -1761,7 +1799,7 @@ function PreparedMeasurementDisplay({
         Cantidad preparada
       </span>
       <span className="block font-semibold">
-        {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
+        {formatQuantity(preparedQuantity ?? 0)} {preparedUnit.label}
       </span>
       {line.controlsActualWeight || line.preparationActualWeightKg !== null ? (
         <>
@@ -1798,7 +1836,9 @@ function QuantityEditor({
   value,
   unitLabel,
   quantityUnits,
+  selectedUnitId,
   onChange,
+  onUnitChange,
   onBlur,
   disabled = false,
   attention = false,
@@ -1807,15 +1847,18 @@ function QuantityEditor({
   value: number | null;
   unitLabel: string;
   quantityUnits: MatrixQuantityUnit[];
+  selectedUnitId: string;
   onChange: (value: number | null) => void;
+  onUnitChange: (value: string) => void;
   onBlur: () => void;
   disabled?: boolean;
   attention?: boolean;
 }) {
-  const [selectedUnitId, setSelectedUnitId] = useState("original");
-  const selectedUnit = quantityUnits.find((unit) => unit.id === selectedUnitId) ?? {
-    id: "original", label: unitLabel, sourceQuantity: 1,
-  };
+  const selectedUnit = selectedQuantityUnit(
+    quantityUnits,
+    selectedUnitId,
+    unitLabel,
+  );
   return (
     <div className="min-w-36">
       <div className="flex items-center gap-1">
@@ -1829,11 +1872,12 @@ function QuantityEditor({
         />
         <select
           aria-label={`Unidad de ${label.toLowerCase()}`}
-          title="La cantidad se guarda en la unidad original del pedido."
+          title="La unidad elegida queda guardada para preparación o entrega."
           className="h-7 max-w-28 rounded-md border border-input bg-background px-1 text-[11px] font-semibold uppercase"
           value={selectedUnit.id}
           disabled={disabled}
-          onChange={(event) => setSelectedUnitId(event.target.value)}
+          onChange={(event) => onUnitChange(event.target.value)}
+          onBlur={onBlur}
         >
           {quantityUnits.map((unit) => (
             <option key={unit.id} value={unit.id}>{unit.label}</option>
@@ -1960,6 +2004,7 @@ function DesktopOrderCells(props: CellProps) {
             label={`Peso real preparado de ${line.productName}`}
             quantityValue={line.preparedQuantity}
             quantityUnits={line.quantityUnits}
+            selectedUnitId={line.preparationDisplayUnitId}
             actualWeightKg={line.preparationActualWeightKg}
             sourceLabel={line.sourceLabel}
             sourceUnitHint={line.baseUnitSymbol}
@@ -1970,6 +2015,9 @@ function DesktopOrderCells(props: CellProps) {
               onChange({
                 preparedQuantity: value ?? 0,
               })
+            }
+            onUnitChange={(value) =>
+              onChange({ preparationDisplayUnitId: value })
             }
             onWeightChange={(value) =>
               onChange({
@@ -2054,6 +2102,7 @@ function DesktopOrderCells(props: CellProps) {
             label={`Peso real entrega ${line.productName}`}
             quantityValue={line.deliveredQuantity}
             quantityUnits={line.quantityUnits}
+            selectedUnitId={line.deliveryDisplayUnitId}
             actualWeightKg={line.deliveryActualWeightKg}
             sourceLabel={line.sourceLabel}
             sourceUnitHint={line.baseUnitSymbol}
@@ -2064,6 +2113,9 @@ function DesktopOrderCells(props: CellProps) {
               onChange({
                 deliveredQuantity: value ?? 0,
               })
+            }
+            onUnitChange={(value) =>
+              onChange({ deliveryDisplayUnitId: value })
             }
             onWeightChange={(value) =>
               onChange({

@@ -26,8 +26,8 @@ export type MarketSheetModel = {
   operationalDate: string;
   customers: MarketSheetCustomer[];
   rows: MarketSheetRow[];
-  productCount: number;
-  customerProductCounts: number[];
+  totalLineCount: number;
+  customerLineCounts: number[];
 };
 
 function uniqueText(values: Array<string | null>) {
@@ -119,11 +119,15 @@ export function buildMarketSheetModel(
         left.unit.localeCompare(right.unit, "es"),
     );
 
+  const customerLineCounts = customers.map(
+    (_, index) => rows.filter((row) => row.quantities[index] > 0).length,
+  );
+
   return {
-    operationalDate: data.operationalDate, customers, rows,
-    productCount: new Set(rows.filter((row) => row.total > 0).map((row) => row.productId)).size,
-    customerProductCounts: customers.map((_, index) =>
-      new Set(rows.filter((row) => row.quantities[index] > 0).map((row) => row.productId)).size,
-    ),
+    operationalDate: data.operationalDate,
+    customers,
+    rows,
+    totalLineCount: customerLineCounts.reduce((sum, count) => sum + count, 0),
+    customerLineCounts,
   };
 }
