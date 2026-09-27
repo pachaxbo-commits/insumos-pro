@@ -68,6 +68,7 @@ Directorios principales:
 ## Documentación canónica
 
 - [Onboarding de desarrollo](docs/ONBOARDING_DESARROLLO.md)
+- [Mensaje de traspaso listo para enviar](docs/MENSAJE_TRASPASO_HERMANO.md)
 - [Flujo de prueba E2E](docs/FLUJO_PRUEBA_E2E.md)
 - [Guía final de entrega](docs/QB_GUIA_ENTREGA_FINAL.md)
 - [Matriz operativa](docs/QB_MATRIZ_OPERATIVA.md)

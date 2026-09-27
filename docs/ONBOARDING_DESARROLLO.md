@@ -64,6 +64,21 @@ Referencia oficial: [administrar personas con acceso a un repositorio](https://d
 
 ### 2.2 Supabase
 
+El proyecto correcto se identifica por **Project ref**, no por el nombre que
+aparece en la tarjeta del Dashboard:
+
+| Project ref | Uso permitido |
+| --- | --- |
+| `tekfwbhvqtojpfqusosg` | Único backend autorizado para `qb-insumos.vercel.app` |
+| `wfhvuzigmkgojdoofjib` | Legacy/histórico; no usar |
+| `epxmrfwtssbcqsytuwhf` | Legacy/histórico; no usar |
+
+En informes de julio de 2026, `tekfwbhvqtojpfqusosg` figuraba con el nombre
+visible `qb-insumos-staging-v2`. El nombre puede conservar esa historia o haber
+cambiado; la referencia inmutable es la que debe compararse en
+**Project Settings → General → Reference ID**. No renombrar, pausar, restaurar,
+eliminar ni ejecutar SQL para “probar cuál es”.
+
 1. El hermano crea o usa su propia cuenta de Supabase con su correo.
 2. En **Organization Settings → Team**, enviar una invitación.
 3. Para trabajo técnico completo, asignar `Administrator` al proyecto
