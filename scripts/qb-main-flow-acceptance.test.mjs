@@ -202,10 +202,10 @@ assert.match(
   /grant select on table public\.qb_order_items to service_role/,
 );
 
-// Una sola matriz continua en escritorio y móvil, sin selector de clientes ni filtrado.
+// La vista Tabla sigue siendo una matriz continua; Formulario sí permite elegir un pedido.
 assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
 assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
-assert.doesNotMatch(matrix, /selectedMobileOrder|selectedOrder|selectedLines/);
+assert.doesNotMatch(matrix, /selectedMobileOrder|MobileRow/);
 assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
 assert.match(matrix, /Unidad de \$\{label\.toLowerCase\(\)\}/);
 assert.doesNotMatch(matrix, /orders\.filter/);

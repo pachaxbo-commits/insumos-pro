@@ -36,18 +36,11 @@ export function UserMenu({ user }: UserMenuProps) {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="h-11 rounded-xl border-white bg-white/70 px-3 hover:bg-white"
+          className="size-9 rounded-full border-slate-200 bg-white p-0 hover:bg-slate-50"
+          aria-label="Abrir menú de usuario"
         >
           <span className="flex size-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold text-white">
             {getInitials(user)}
-          </span>
-          <span className="hidden text-left sm:block">
-            <span className="block max-w-36 truncate text-sm font-medium">
-              {user.fullName || user.email || "Usuario"}
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              {getRoleLabel(user.role)}
-            </span>
           </span>
         </Button>
       </DropdownMenuTrigger>

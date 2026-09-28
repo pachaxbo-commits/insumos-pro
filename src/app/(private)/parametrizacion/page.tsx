@@ -10,7 +10,7 @@ export default async function ParametrizacionPage() {
   const canManage = auth.user.role === "administrador";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         eyebrow="Productos"
         title="Parametrización"

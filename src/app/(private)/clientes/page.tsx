@@ -43,7 +43,7 @@ export default async function ClientesPage({
   const data = await getQbCustomerDirectory(filters);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         eyebrow="Clientes"
         title="Directorio de clientes"

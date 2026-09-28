@@ -142,7 +142,7 @@ assert.match(matrix, /Math\.max\(line\[versionField\], version\)/);
 assert.match(matrix, /postgres_changes/);
 assert.doesNotMatch(
   matrix,
-  /selectedMobileOrder|selectedOrder|MobileRow/,
+  /selectedMobileOrder|MobileRow/,
 );
 assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /scrollIntoView/);
@@ -224,7 +224,8 @@ assert.match(matrix, /weightUnits\.map\(\(option\) =>/);
 assert.match(matrix, /option\.symbol \|\| option\.name/);
 assert.match(matrix, /Peso real preparado de/);
 assert.match(matrix, /function MeasuredQuantityEditor/);
-assert.match(matrix, />\s*Cantidad real\s*</);
+assert.match(matrix, /quantityLabel = "Cantidad real"/);
+assert.match(matrix, /quantityLabel=\{stage === "preparacion"/);
 assert.match(matrix, />\s*Peso real\s*</);
 assert.doesNotMatch(matrix, /<option value="source">/);
 assert.match(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);

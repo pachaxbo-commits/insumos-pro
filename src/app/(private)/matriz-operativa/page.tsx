@@ -46,15 +46,9 @@ export default async function MatrizOperativaPage({
   const isAdmin = auth.user.role === "administrador";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <PageHeader
-        eyebrow={
-          isAdmin
-            ? "Operación completa · Administrador"
-            : isInventory
-            ? "Paso 2 de 3 · Inventario"
-            : "Paso 3 de 3 · Entregador"
-        }
+        eyebrow={undefined}
         title={
           isAdmin
             ? "Preparación y entregas"
@@ -62,29 +56,25 @@ export default async function MatrizOperativaPage({
               ? "Preparar pedidos"
               : "Registrar entregas"
         }
-        description={
-          isAdmin
-            ? "Prepara pedidos, registra entregas y revisa toda la planilla operativa desde un solo lugar."
-            : isInventory
-            ? "Revisa únicamente los pedidos del día y confirma lo que queda preparado."
-            : "Registra las cantidades exactas entregadas al cliente y confirma la entrega."
-        }
+        description=""
       />
-      <form className="flex flex-wrap items-end gap-3" method="get">
-        <label className="text-sm font-medium">
-          Fecha operativa (Bolivia)
-          <input
-            className="mt-1 block h-10 rounded-md border bg-background px-3"
-            type="date"
-            name="date"
-            defaultValue={date}
-          />
-        </label>
-        <button className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
-          Ver fecha
-        </button>
-      </form>
-      {isAdmin ? <MarketSheetActions date={date} /> : null}
+      <div className="flex flex-wrap items-end gap-2">
+        <form className="flex flex-wrap items-end gap-2" method="get">
+          <label className="text-sm font-medium">
+            Fecha operativa (Bolivia)
+            <input
+              className="mt-1 block h-10 rounded-md border bg-background px-3"
+              type="date"
+              name="date"
+              defaultValue={date}
+            />
+          </label>
+          <button className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+            Ver fecha
+          </button>
+        </form>
+        {isAdmin ? <MarketSheetActions date={date} /> : null}
+      </div>
       <OperationalMatrix
         key={date}
         data={data}

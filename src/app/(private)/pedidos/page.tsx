@@ -8,11 +8,11 @@ export default async function PedidosPage() {
   const data = await getQbInternalOrdersData(false);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
-        eyebrow="Operación de pedidos · Administrador"
+        eyebrow={undefined}
         title="Crear pedidos"
-        description="Crea pedidos con fecha de entrega y continúa directamente con su preparación o entrega."
+        description=""
       />
       <OrderCreationWorkspace {...data} />
     </div>

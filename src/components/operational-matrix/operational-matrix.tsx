@@ -18,6 +18,7 @@ import {
   quantityInOriginalUnit,
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
+import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-scope";
 import {
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
@@ -106,6 +107,14 @@ function groupStatus(group: MatrixCustomerGroup) {
     return "En preparación";
   }
   return "Pendiente de preparación";
+}
+
+function orderFormStatus(order: MatrixOrder) {
+  if (order.deliveryStatus === "confirmado") return "Entregado";
+  if (order.status === "preparado") return "Preparado · Entrega pendiente";
+  if (order.status === "en_preparacion") return "En preparación";
+  if (order.status === "cancelado") return "Cancelado";
+  return "Pendiente";
 }
 
 function customerDividerClass(focused = false) {
@@ -355,6 +364,14 @@ export function OperationalMatrix({
   const [stage, setStage] = useState<MatrixStage>(() =>
     allowedStage(data.role, initialStage),
   );
+  const [viewMode, setViewMode] = useState<"formulario" | "tabla">("formulario");
+  const [selectedOrderId, setSelectedOrderId] = useState(() =>
+    data.orders.find((order) => order.id === initialOrderId)?.id ??
+    data.orders.find((order) => data.lines.some((line) => line.orderId === order.id))?.id ?? "",
+  );
+  const [selectedLineIndex, setSelectedLineIndex] = useState(0);
+  const [formStatus, setFormStatus] = useState<"guardado" | "pendiente" | "guardando" | "error">("guardado");
+  const formSaveSequence = useRef(0);
   const [lines, setLines] = useState(() =>
     applyAutomaticDeliveryValues(data.lines),
   );
@@ -551,11 +568,28 @@ export function OperationalMatrix({
     }
     return grouped;
   }, [groupByOrderId, lines]);
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
+  const selectedCustomer = selectedOrder ? groupByOrderId.get(selectedOrder.id) : undefined;
+  const selectedOrderLines = useMemo(
+    () => linesForOrder(lines, selectedOrder?.id ?? "")
+      .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "es") ||
+        left.productName.localeCompare(right.productName, "es")),
+    [lines, selectedOrder?.id],
+  );
+  const selectedLine = selectedOrderLines[Math.min(selectedLineIndex, selectedOrderLines.length - 1)];
+  const selectableOrders = customerGroups.flatMap((group) =>
+    group.orders.flatMap((order) => lines.some((line) => line.orderId === order.id) ? [order] : []),
+  );
+  const nextOrder = selectableOrders[selectableOrders.findIndex((order) => order.id === selectedOrder?.id) + 1];
+  const pendingLineCount = selectedOrderLines.filter((line) => stage === "preparacion"
+    ? !line.preparationCheck
+    : !hasDeliveryCheck(line) || line.deliveryVersion === 0).length;
 
   const updateGroupedLines = (
     groupedLines: MatrixLine[],
     patch: Partial<MatrixLine>,
   ) => {
+    setFormStatus("pendiente");
     const ids = new Set(groupedLines.map((line) => line.orderItemId));
     groupedLines.forEach((line) => dirty.current.add(line.orderItemId));
     const preparationWeights =
@@ -621,6 +655,7 @@ export function OperationalMatrix({
     groupedLines: MatrixLine[],
     checked: boolean,
   ) => {
+    setFormStatus("pendiente");
     const missingIds = new Set(
       groupedLines
         .filter((line) => !line.preparationCheck)
@@ -910,11 +945,13 @@ export function OperationalMatrix({
     router.refresh();
   };
 
-  const actionForCustomer = async (
-    group: MatrixCustomerGroup,
+  const actionForOrders = async (
+    targetOrders: MatrixOrder[],
+    label: string,
+    pendingKey: string,
     action: "confirm" | "reopen",
   ) => {
-    const groupOrderIds = new Set(group.orders.map((order) => order.id));
+    const groupOrderIds = new Set(targetOrders.map((order) => order.id));
     const groupLines = linesRef.current.filter((line) =>
       groupOrderIds.has(line.orderId),
     );
@@ -959,12 +996,12 @@ export function OperationalMatrix({
     if (
       action === "confirm" &&
       !window.confirm(
-        `¿Confirmar la entrega de ${group.customerName}? Esta acción registrará al usuario responsable.`,
+        `¿Confirmar la entrega de ${label}? Esta acción registrará al usuario responsable.`,
       )
     ) {
       return;
     }
-    setActionPending(`${group.id}:${action}`);
+    setActionPending(`${pendingKey}:${action}`);
     if (action === "confirm") {
       setMessage("Guardando cantidades reales y confirmando la entrega...");
       const saved = await saveGroupedDelivery(
@@ -978,16 +1015,7 @@ export function OperationalMatrix({
         return;
       }
     }
-    const applicableOrders = ordersRef.current.flatMap((order) => {
-      if (!groupOrderIds.has(order.id)) return [];
-      const applies =
-        action === "confirm"
-          ? ["pendiente_preparacion", "en_preparacion", "preparado"].includes(
-              order.status,
-            ) && order.deliveryStatus !== "confirmado"
-          : order.deliveryStatus === "confirmado";
-      return applies ? [order] : [];
-    });
+    const applicableOrders = actionableOrders(ordersRef.current, groupOrderIds, action);
     if (!applicableOrders.length) {
       setActionPending(null);
       setMessage("Este cliente todavía no está listo para esa confirmación.");
@@ -1014,6 +1042,8 @@ export function OperationalMatrix({
     setActionPending(null);
     router.refresh();
   };
+  const actionForCustomer = (group: MatrixCustomerGroup, action: "confirm" | "reopen") =>
+    actionForOrders(group.orders, group.customerName, group.id, action);
 
   const canAdmin = data.role === "administrador";
   const visibleStages: MatrixStage[] = canAdmin
@@ -1022,6 +1052,32 @@ export function OperationalMatrix({
   const headers = stageHeaders(stage);
   const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
+  const showForm = viewMode === "formulario" && (stage === "preparacion" || stage === "entrega");
+  const saveFormLine = async (advance = false) => {
+    if (!selectedLine) return false;
+    const sequence = ++formSaveSequence.current;
+    setFormStatus("guardando");
+    try {
+      const result = stage === "preparacion"
+        ? (await savePreparationLine(selectedLine.orderItemId)).result.success
+        : await saveGroupedDelivery([selectedLine.orderItemId]);
+      if (sequence === formSaveSequence.current) setFormStatus(result ? "guardado" : "error");
+      if (result && advance) {
+        setSelectedLineIndex((index) => Math.min(index + 1, selectedOrderLines.length - 1));
+      }
+      return result;
+    } catch {
+      if (sequence === formSaveSequence.current) setFormStatus("error");
+      setMessage("No se pudo guardar. Intenta nuevamente.");
+      return false;
+    }
+  };
+  const navigateForm = async (next: () => void) => {
+    if (selectedLine && dirty.current.has(selectedLine.orderItemId)) {
+      if (!(await saveFormLine())) return;
+    }
+    next();
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1036,7 +1092,7 @@ export function OperationalMatrix({
               type="button"
               size="sm"
               variant={stage === item ? "default" : "ghost"}
-              onClick={() => setStage(item)}
+              onClick={() => void navigateForm(() => setStage(item))}
               role="tab"
               aria-selected={stage === item}
               className="capitalize"
@@ -1045,7 +1101,13 @@ export function OperationalMatrix({
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-2 text-sm" aria-live="polite">
+        <div className="flex items-center gap-3 text-sm" aria-live="polite">
+          {stage === "preparacion" || stage === "entrega" ? (
+            <div className="flex rounded-md border bg-white p-0.5" role="group" aria-label="Vista operativa">
+              <Button size="sm" variant={showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("formulario"))}>Formulario</Button>
+              <Button size="sm" variant={!showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("tabla"))}>Tabla</Button>
+            </div>
+          ) : null}
           {remotePending ? (
             <Button
               size="sm"
@@ -1066,16 +1128,180 @@ export function OperationalMatrix({
                 : "Cambios remotos"}
             </Button>
           ) : null}
-          {message ? (
+          {message && !showForm ? (
             <span className="text-muted-foreground">{message}</span>
           ) : null}
         </div>
       </div>
 
-      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+      {!showForm ? <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
         <p className="font-semibold">{guidance.title}</p>
-        <p className="mt-1 leading-5 text-sky-900">{guidance.detail}</p>
-      </div>
+        <p className="text-sky-900">{guidance.detail}</p>
+      </div> : null}
+
+      {showForm ? (
+        <section className="mx-auto w-full max-w-4xl space-y-4 rounded-lg border bg-white p-4 sm:p-5" aria-label={`Formulario de ${stage}`}>
+          {!selectedOrder || !selectedLine ? (
+            <p className="py-12 text-center text-muted-foreground">No hay productos para esta fecha.</p>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="space-y-1 text-sm font-medium">Cliente
+                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedCustomer?.id ?? ""}
+                    onChange={(event) => void navigateForm(() => {
+                      const order = customerGroups.find((group) => group.id === event.target.value)?.orders.find(
+                        (item) => lines.some((line) => line.orderId === item.id),
+                      );
+                      setSelectedOrderId(order?.id ?? ""); setSelectedLineIndex(0);
+                    })}>
+                    {customerGroups.map((group) => <option key={group.id} value={group.id}>
+                      {group.customerName} · {actionableOrders(group.orders, new Set(group.orders.map((order) => order.id)), "confirm").length} por confirmar
+                    </option>)}
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm font-medium">Pedido
+                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedOrder.id}
+                    onChange={(event) => void navigateForm(() => { setSelectedOrderId(event.target.value); setSelectedLineIndex(0); })}>
+                    {(selectedCustomer?.orders ?? []).flatMap((order) => lines.some((line) => line.orderId === order.id)
+                      ? [<option key={order.id} value={order.id}>{order.reference} · {orderFormStatus(order)}</option>]
+                      : [])}
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm font-medium">Producto
+                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedLine.orderItemId}
+                    onChange={(event) => void navigateForm(() => setSelectedLineIndex(
+                      selectedOrderLines.findIndex((line) => line.orderItemId === event.target.value),
+                    ))}>
+                    {selectedOrderLines.map((line) => <option key={line.orderItemId} value={line.orderItemId}>{line.productName}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-y py-3">
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Solicitado</p>
+                  <p className="text-lg font-semibold">{formatQuantity(selectedLine.requestedQuantity)} {selectedLine.sourceLabel}</p>
+                  {selectedLine.requestedNote ? <p className="text-sm text-amber-800">Pedido: {selectedLine.requestedNote}</p> : null}
+                  {selectedOrder.customerNotes ? <p className="text-sm text-amber-800">Nota general: {selectedOrder.customerNotes}</p> : null}
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  Producto {selectedLineIndex + 1} de {selectedOrderLines.length} · {pendingLineCount} pendientes
+                </span>
+              </div>
+              {stage === "entrega" ? (
+                <div className="rounded-md bg-slate-50 px-3 py-2 text-sm">
+                  <span className="font-medium">Preparado:</span> {formatQuantity(selectedLine.preparedQuantity)} {selectedLine.sourceLabel}
+                  {selectedLine.preparationActualWeightKg !== null ? ` · Peso preparado: ${formatQuantity(selectedLine.preparationActualWeightKg)} KG` : ""}
+                  {selectedLine.preparationNote ? <p className="text-amber-800">Bodega: {selectedLine.preparationNote}</p> : null}
+                </div>
+              ) : null}
+              <h2 className="text-base font-semibold">{stage === "preparacion" ? "Preparación" : "Entrega real"}</h2>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="space-y-2">
+                  <MeasuredQuantityEditor
+                    key={`${stage}:${selectedLine.orderItemId}`}
+                    label={`${stage === "preparacion" ? "Preparación" : "Entrega"} de ${selectedLine.productName}`}
+                    quantityLabel={stage === "preparacion" ? "Cantidad preparada" : "Cantidad entregada"}
+                    quantityValue={stage === "preparacion" ? selectedLine.preparedQuantity : selectedLine.deliveredQuantity}
+                    quantityUnits={selectedLine.quantityUnits}
+                    selectedUnitId={stage === "preparacion" ? selectedLine.preparationDisplayUnitId : selectedLine.deliveryDisplayUnitId}
+                    actualWeightKg={stage === "preparacion" ? selectedLine.preparationActualWeightKg : selectedLine.deliveryActualWeightKg}
+                    sourceLabel={selectedLine.sourceLabel}
+                    sourceUnitHint={selectedLine.baseUnitSymbol}
+                    weightUnits={data.weightUnits}
+                    disabled={stage === "preparacion"
+                      ? !["pendiente_preparacion", "en_preparacion"].includes(selectedOrder.status)
+                      : selectedOrder.deliveryStatus === "confirmado"}
+                    onQuantityChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
+                      ? { preparedQuantity: value ?? 0 } : { deliveredQuantity: value ?? 0 })}
+                    onUnitChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
+                      ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
+                    onWeightChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
+                      ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
+                    onBlur={() => void saveFormLine()}
+                  />
+                  <WeightPricingHint line={selectedLine} />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <CheckEditor
+                      label={stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
+                      checked={stage === "preparacion" ? selectedLine.preparationCheck : hasDeliveryCheck(selectedLine)}
+                      disabled={stage === "preparacion"
+                        ? !["pendiente_preparacion", "en_preparacion"].includes(selectedOrder.status) ||
+                          (!selectedLine.preparationCheck && selectedLine.preparedQuantity > 0 &&
+                            Math.abs(selectedLine.preparedQuantity - selectedLine.requestedQuantity) > 0.000001)
+                        : selectedOrder.deliveryStatus === "confirmado" || selectedLine.preparationCheck}
+                      onChange={(checked) => {
+                        if (stage === "preparacion") {
+                          updateGroupedLines([selectedLine], {
+                            preparationCheck: checked,
+                            ...(checked && selectedLine.preparedQuantity <= 0 ? { preparedQuantity: selectedLine.requestedQuantity } : {}),
+                            ...(checked && selectedLine.controlsActualWeight &&
+                              findWeightUnit(data.weightUnits, selectedLine.sourceLabel) &&
+                              selectedLine.preparationActualWeightKg === null
+                              ? { preparationActualWeightKg: requestedWeightInKilograms(selectedLine, data.weightUnits) } : {}),
+                          });
+                        } else {
+                          updateMissingDeliveryChecks([selectedLine], checked);
+                        }
+                      }}
+                      onBlur={() => void saveFormLine()}
+                    />
+                    {stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
+                  </div>
+                  <div className="block space-y-1 text-sm font-medium">Observación
+                    <NoteEditor
+                      label={`Observación de ${stage} para ${selectedLine.productName}`}
+                      value={stage === "preparacion" ? selectedLine.preparationNote : selectedLine.deliveryNote}
+                      onChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
+                        ? { preparationNote: value } : { deliveryNote: value })}
+                      onBlur={() => void saveFormLine()}
+                    />
+                  </div>
+                </div>
+              </div>
+              {stage === "entrega" && selectedLine.deliveredQuantity !== selectedLine.requestedQuantity ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Se solicitaron {formatQuantity(selectedLine.requestedQuantity)} {selectedLine.sourceLabel} y se entregaron {formatQuantity(selectedLine.deliveredQuantity)} {selectedLine.sourceLabel}. Explica la diferencia en Observación.
+                </p>
+              ) : null}
+              {stage === "entrega" ? (
+                <p className="text-sm text-muted-foreground">
+                  Externo calculado: {formatQuantity(Math.max(selectedLine.deliveredQuantity - selectedLine.preparedQuantity, 0))} {selectedLine.sourceLabel}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" disabled={selectedLineIndex === 0 || formStatus === "guardando"}
+                    onClick={() => void navigateForm(() => setSelectedLineIndex((index) => index - 1))}>Anterior</Button>
+                  <Button variant="outline" disabled={selectedLineIndex >= selectedOrderLines.length - 1 || formStatus === "guardando"}
+                    onClick={() => void navigateForm(() => setSelectedLineIndex((index) => index + 1))}>Siguiente</Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span role="status" aria-live="polite" className={formStatus === "error" ? "text-sm text-red-700" : "text-sm text-muted-foreground"}>
+                    {formStatus === "pendiente" ? "Sin guardar" : formStatus === "guardando" ? "Guardando..." : formStatus === "error" ? `Error al guardar. ${message ?? ""}` : "✓ Guardado"}
+                  </span>
+                  <Button disabled={formStatus === "guardando"} onClick={() => void saveFormLine(true)}>Guardar y siguiente</Button>
+                  {stage === "entrega" && selectedLineIndex === selectedOrderLines.length - 1 &&
+                    actionableOrders([selectedOrder], new Set([selectedOrder.id]), "confirm").length > 0 ? (
+                    <Button variant="outline" disabled={formStatus === "guardando" || Boolean(actionPending)}
+                      onClick={() => void actionForOrders([selectedOrder], `${selectedOrder.customerName} · ${selectedOrder.reference}`, selectedOrder.id, "confirm")}>
+                      Confirmar entrega del pedido
+                    </Button>
+                  ) : null}
+                  {selectedLineIndex === selectedOrderLines.length - 1 && nextOrder ? (
+                    <Button variant="outline" disabled={formStatus === "guardando"}
+                      onClick={() => void navigateForm(() => { setSelectedOrderId(nextOrder.id); setSelectedLineIndex(0); })}>
+                      Siguiente cliente/pedido
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
+            </>
+          )}
+        </section>
+      ) : <>
 
       {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
@@ -1085,7 +1311,7 @@ export function OperationalMatrix({
       ) : (
         <div
           ref={matrixScrollRef}
-          className="max-h-[68vh] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg border"
+          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg border"
           data-matrix-layout="continuous-sheet"
           aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
         >
@@ -1434,6 +1660,7 @@ export function OperationalMatrix({
           </table>
         </div>
       )}
+      </>}
     </div>
   );
 }
@@ -1651,6 +1878,7 @@ function DecimalInput({
 
 function MeasuredQuantityEditor({
   label,
+  quantityLabel = "Cantidad real",
   quantityValue,
   actualWeightKg,
   sourceLabel,
@@ -1666,6 +1894,7 @@ function MeasuredQuantityEditor({
   attention = false,
 }: {
   label: string;
+  quantityLabel?: string;
   quantityValue: number | null;
   actualWeightKg: number | null;
   sourceLabel: string;
@@ -1703,7 +1932,7 @@ function MeasuredQuantityEditor({
     <div className="flex min-w-40 flex-col gap-1.5">
       <div>
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
-          Cantidad real
+          {quantityLabel}
         </span>
         <QuantityEditor
           label={`Cantidad comercial de ${label.toLowerCase()}`}

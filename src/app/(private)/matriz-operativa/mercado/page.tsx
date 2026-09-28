@@ -56,20 +56,23 @@ export default async function MarketPrintPage({
   const model = buildMarketSheetModel(data);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 print:hidden">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-semibold">Hoja de compras</h1>
         <Button asChild variant="outline">
           <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
             <ArrowLeft className="size-4" />
             Preparación y entregas
           </Link>
         </Button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline"><a href={`/api/matriz-operativa/mercado.xlsx?date=${encodeURIComponent(date)}`}>Descargar Excel</a></Button>
           <PrintReceiptButton />
         </div>
       </div>
-      <form method="get" className="flex flex-wrap items-end gap-3 print:hidden">
+      <form method="get" className="flex flex-wrap items-end gap-2 print:hidden">
         <label className="text-sm">Fecha de compras
           <input type="date" name="date" defaultValue={date} className="mt-1 block rounded-md border p-2" />
         </label>
@@ -83,9 +86,9 @@ export default async function MarketPrintPage({
         </p>
       ) : null}
 
-      <section className="bg-white p-4 text-slate-950 print:p-0">
-        <div className="border-b-2 border-emerald-900 pb-3 text-center">
-          <h1 className="text-xl font-bold">QB INSUMOS · HOJA DE COMPRAS DE MERCADO</h1>
+      <section className="bg-white p-3 text-slate-950 print:p-0">
+        <div className="border-b-2 border-emerald-900 pb-2 text-center">
+          <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE COMPRAS DE MERCADO</h2>
           <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
           <p className="text-xs text-slate-600">
             Cantidades solicitadas por los clientes antes de preparación
@@ -97,7 +100,7 @@ export default async function MarketPrintPage({
             No hay pedidos solicitados para esta fecha.
           </p>
         ) : (
-          <div className="mt-4 overflow-x-auto print:overflow-visible">
+          <div className="mt-3 overflow-x-auto print:overflow-visible">
             <table className="w-full min-w-max border-collapse text-[10px]">
               <thead>
                 <tr className="bg-slate-200">

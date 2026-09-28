@@ -16,11 +16,11 @@ export default async function RecibosPage({
     : undefined;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
-        eyebrow="Cierre de entregas"
+        eyebrow={undefined}
         title="Recibos acumulativos"
-        description="Agrupa las entregas confirmadas de cada cliente usando exactamente la cantidad real registrada por el entregador."
+        description=""
       />
       <QbReceiptsManagement
         key={initialSection ?? "automatico"}

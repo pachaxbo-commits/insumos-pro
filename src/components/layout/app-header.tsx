@@ -1,87 +1,58 @@
 "use client";
 
-import { useState } from "react";
-import { Menu } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { FileSpreadsheet } from "lucide-react";
 
-import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { UserMenu } from "@/components/auth/user-menu";
-import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { getFocusedWorkspace, getRoleLabel } from "@/lib/auth/roles";
+import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
+import { canAccessPath } from "@/lib/auth/roles";
+import { mainNavigation } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types/auth";
 
-type AppHeaderProps = {
-  user: SessionUser;
-};
-
-export function AppHeader({ user }: AppHeaderProps) {
-  const [open, setOpen] = useState(false);
+export function AppHeader({ user }: { user: SessionUser }) {
   const pathname = usePathname();
-  const primaryWorkspace = getFocusedWorkspace(user.role);
-  const workspace =
-    user.role === "administrador" && pathname.startsWith("/recibos")
-      ? {
-          href: "/recibos",
-          title: "Recibos acumulativos",
-          description:
-            "Genera el recibo con las cantidades reales entregadas.",
-          step: "Cierre de entregas",
-        }
-      : pathname === "/matriz-operativa/mercado"
-        ? { title: "Hoja de compras", step: "Compras por fecha", description: "Consulta productos, imprime la hoja o descarga Excel." }
-        : pathname === "/matriz-operativa"
-          ? { title: "Preparación y entregas", step: "Operación diaria", description: "Confirma las cantidades preparadas y entregadas." }
-          : primaryWorkspace;
+  const activePaths = [
+    "/productos", "/pedidos", "/matriz-operativa", "/recibos",
+    "/parametrizacion", "/clientes",
+  ];
+  const navigation = [
+    ...activePaths.map((href) => mainNavigation.find((item) => item.href === href)),
+    user.role === "administrador"
+      ? { href: "/matriz-operativa/mercado", title: "Hoja de compras", icon: FileSpreadsheet }
+      : undefined,
+  ].filter((item): item is NonNullable<typeof item> =>
+    Boolean(item && canAccessPath(user.role, item.href)),
+  );
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between gap-4 rounded-[1.5rem] border border-white/60 bg-white/78 px-4 py-3 shadow-sm backdrop-blur lg:px-5">
-      <div className="flex items-center gap-3">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="lg:hidden">
-              <Menu className="size-5" />
-              <span className="sr-only">Abrir menú</span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[320px] border-0 bg-transparent p-0">
-            <SheetHeader className="sr-only">
-              <SheetTitle>Navegación principal</SheetTitle>
-            </SheetHeader>
-            <AppSidebar mobile onNavigate={() => setOpen(false)} user={user} />
-          </SheetContent>
-        </Sheet>
-
-        <div className="flex min-w-0 items-center gap-3">
-          <QbInsumosBrand variant="compact" />
-          <h2 className="hidden font-heading text-lg font-semibold tracking-tight sm:block">
-            {workspace.title}
-          </h2>
-        </div>
-      </div>
-
-      <div className="hidden min-w-0 flex-1 justify-center px-4 md:flex">
-        <div className="rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
-          {workspace.step} · {workspace.description}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <div className="hidden text-right sm:block">
-          <p className="max-w-48 truncate text-sm font-medium">
-            {user.fullName || user.email || "Usuario"}
-          </p>
-          <p className="text-xs text-muted-foreground">{getRoleLabel(user.role)}</p>
-        </div>
-        <UserMenu user={user} />
-      </div>
+    <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b bg-white px-3 py-2 lg:px-5">
+      <Link href="/" aria-label="QB Insumos, inicio" className="shrink-0">
+        <QbInsumosBrand variant="compact" />
+      </Link>
+      <nav aria-label="Navegación principal" className="flex min-w-0 flex-1 gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:thin]">
+        {navigation.map((item) => {
+          const active = pathname === item.href ||
+            (item.href !== "/matriz-operativa" && pathname.startsWith(`${item.href}/`));
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
+                active ? "bg-emerald-900 text-white" : "text-slate-700 hover:bg-slate-100",
+              )}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {item.href === "/matriz-operativa" ? "Operación" : item.title}
+            </Link>
+          );
+        })}
+      </nav>
+      <UserMenu user={user} />
     </header>
   );
 }

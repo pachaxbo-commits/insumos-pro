@@ -9,7 +9,7 @@ const matrix = read("src/components/operational-matrix/operational-matrix.tsx");
 const migration = read("supabase/migrations/20260918010000_qb_optional_actual_weight.sql");
 
 test("todos los productos muestran cantidad y peso sin depender de la bandera del catálogo", () => {
-  assert.equal((matrix.match(/<MeasuredQuantityEditor/g) ?? []).length, 2);
+  assert.equal((matrix.match(/<MeasuredQuantityEditor/g) ?? []).length, 3);
   assert.doesNotMatch(matrix, /controlsActualWeight \? \(\s*<MeasuredQuantityEditor/);
   assert.match(matrix, /actualWeightKg: line\.preparationActualWeightKg,/);
   assert.match(matrix, /actualWeightKg: line\.deliveryActualWeightKg,/);
