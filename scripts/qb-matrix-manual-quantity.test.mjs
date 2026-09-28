@@ -10,7 +10,7 @@ const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
 
 test("todos los productos muestran una cantidad real con su unidad", () => {
   assert.match(matrix, /function QuantityEditor/);
-  assert.equal(matrix.match(/sourceLabel=\{line\.sourceLabel\}/g)?.length, 2);
+  assert.equal(matrix.match(/sourceLabel=\{line\.sourceLabel\}/g)?.length, 3);
   assert.match(matrix, /quantityValue=\{line\.preparedQuantity\}/);
   assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
 });
@@ -50,7 +50,8 @@ test("editar cantidades conserva el estado actual de los checks", () => {
 });
 
 test("cantidad comercial y peso real permanecen visibles y editables", () => {
-  assert.match(matrix, />\s*Cantidad real\s*</);
+  assert.match(matrix, /quantityLabel = "Cantidad real"/);
+  assert.match(matrix, /quantityLabel=\{stage === "preparacion" \? "Cantidad preparada" : "Cantidad entregada"\}/);
   assert.match(matrix, />\s*Peso real\s*</);
   assert.match(matrix, /value=\{quantityValue\}/);
   assert.match(matrix, /value=\{displayWeight\}/);

@@ -38,19 +38,19 @@ test("la interfaz selecciona productos, unidades y cantidades permitidas", () =>
   assert.match(creator, /step="0\.5"/);
 });
 
-test("Nuevo pedido usa una tabla continua y no el selector producto por producto", () => {
+test("Nuevo pedido usa una cuadrícula compacta sin selector producto por producto", () => {
   assert.match(creator, /data-product-order-table/);
-  assert.match(creator, /<table className="w-full min-w-\[820px\]/);
-  assert.match(creator, /overflow-auto/);
+  assert.match(creator, /grid gap-2 md:grid-cols-2 xl:grid-cols-3/);
+  assert.match(creator, /max-h-\[36rem\]/);
   assert.match(creator, /type="checkbox"/);
   assert.match(creator, />\s*Cantidad\s*</);
   assert.doesNotMatch(creator, /ProductCombobox/);
   assert.doesNotMatch(creator, /Agregar producto/);
 });
 
-test("la tabla prioriza el promedio histórico y pagina el resto alfabéticamente", () => {
+test("la cuadrícula prioriza el promedio histórico y pagina el resto alfabéticamente", () => {
   assert.match(creator, /history\?\.lines/);
-  assert.match(creator, /Promedio de pedidos del cliente/);
+  assert.match(creator, /Sugeridos por pedidos anteriores/);
   assert.match(creator, /localeCompare\(right\.name, "es"\)/);
   assert.match(creator, /const PRODUCT_BATCH_SIZE = 40/);
   assert.match(creator, /Mostrar\{" "\}/);

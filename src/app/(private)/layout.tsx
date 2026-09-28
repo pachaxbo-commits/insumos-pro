@@ -13,8 +13,8 @@ async function AuthenticatedPrivateLayout({ children }: { children: ReactNode })
   const auth = await requireAuthenticatedUser();
   return (
     <div className="min-h-screen bg-slate-50/60">
-      <AppHeader user={auth.user} />
-      <main className="mx-auto w-full max-w-[2200px] px-3 py-4 lg:px-5">
+      <div className="qb-app-header"><AppHeader user={auth.user} /></div>
+      <main className="qb-app-main mx-auto w-full max-w-[2200px] px-3 py-4 lg:px-5">
         {children}
       </main>
     </div>

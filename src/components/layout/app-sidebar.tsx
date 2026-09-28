@@ -34,6 +34,7 @@ export function AppSidebar({
     "/parametrizacion",
     "/clientes",
     "/recibos",
+    "/historial",
   ]);
   const availableItems = mainNavigation.filter(
     (item) =>

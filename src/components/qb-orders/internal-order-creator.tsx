@@ -12,7 +12,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
-  Check,
   Clock3,
   Plus,
   Search,
@@ -29,6 +28,7 @@ import {
   updateQbInternalOrderAction,
 } from "@/lib/qb-orders/actions";
 import { getAverageRepeatableOrderAction } from "@/lib/qb-orders/creation-actions";
+import { serializeOrderItems } from "@/lib/qb-orders/draft-payload";
 import type {
   QbInternalOrder,
   QbInternalOrderCreationData,
@@ -47,10 +47,6 @@ type DraftLine = {
   quantity: string;
   notes: string;
 };
-
-function numberOrNull(value: string) {
-  return value.trim() ? Number(value) : null;
-}
 
 function shortDate(value: string) {
   return new Intl.DateTimeFormat("es-BO", {
@@ -112,6 +108,8 @@ export function InternalOrderCreator({
   const maxSelectedProducts = editing ? 30 : MAX_ORDER_PRODUCTS;
   const startingLines = initialDraftLines(editingOrder ?? undefined);
   const [open, setOpen] = useState(initiallyOpen || editing);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [locationExpanded, setLocationExpanded] = useState(false);
   const [customerId, setCustomerId] = useState(
     editingOrder?.customerAccountId ?? "",
   );
@@ -204,16 +202,7 @@ export function InternalOrderCreator({
   }, [customerId, locationId]);
 
   const itemsPayload = useMemo(
-    () =>
-      JSON.stringify(
-        lines.map((line) => ({
-          productId: line.productId,
-          inputMode: "quantity",
-          allowedUnitId: line.allowedUnitId || null,
-          quantity: numberOrNull(line.quantity),
-          notes: line.notes,
-        })),
-      ),
+    () => serializeOrderItems(lines),
     [lines],
   );
 
@@ -291,15 +280,11 @@ export function InternalOrderCreator({
       product.allowedUnits[0];
 
     return (
-      <tr
+      <div
         key={product.id}
-        className={
-          selected
-            ? "border-b bg-emerald-50/80"
-            : "border-b bg-background hover:bg-muted/35"
-        }
+        className={selected ? "rounded-lg border border-emerald-400 bg-emerald-50 p-3" : "rounded-lg border bg-white p-3"}
       >
-        <td className="sticky left-0 z-10 w-12 bg-inherit px-3 py-2 text-center">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
             aria-label={`Seleccionar ${product.name}`}
@@ -307,23 +292,11 @@ export function InternalOrderCreator({
             onChange={() => toggleProduct(product.id)}
             className="size-4 rounded border-input accent-emerald-700"
           />
-        </td>
-        <td className="sticky left-12 z-10 min-w-64 bg-inherit px-3 py-2 shadow-[1px_0_0_0_hsl(var(--border))]">
-          <button
-            type="button"
-            onClick={() => toggleProduct(product.id)}
-            className="w-full text-left"
-          >
-            <span className="flex items-center gap-2 font-medium">
-              {selected ? (
-                <Check className="size-4 text-emerald-700" aria-hidden />
-              ) : null}
-              {product.name}
-            </span>
-          </button>
-        </td>
-        <td className="w-44 min-w-44 px-2 py-2">
-          {line ? (
+          {product.name}
+          {!line ? <span className="ml-auto text-xs text-muted-foreground">{visibleUnit?.label ?? "Sin unidad"}</span> : null}
+        </label>
+        {line ? <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(110px,1fr)_minmax(100px,1fr)]">
+          <label className="space-y-1 text-xs">Unidad
             <select
               aria-label={`Unidad de ${product.name}`}
               value={line.allowedUnitId}
@@ -339,14 +312,8 @@ export function InternalOrderCreator({
                 </option>
               ))}
             </select>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              {visibleUnit?.label ?? "Sin unidad"}
-            </span>
-          )}
-        </td>
-        <td className="w-36 min-w-36 px-2 py-2">
-          {line ? (
+          </label>
+          <label className="space-y-1 text-xs">Cantidad
             <Input
               aria-label={`Cantidad de ${product.name}`}
               type="number"
@@ -359,12 +326,8 @@ export function InternalOrderCreator({
               required
               className="h-9"
             />
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          )}
-        </td>
-        <td className="min-w-64 px-2 py-2">
-          {line ? (
+          </label>
+          <label className="space-y-1 text-xs sm:col-span-2">Observación
             <Textarea
               aria-label={`Nota de ${product.name}`}
               value={line.notes}
@@ -373,15 +336,13 @@ export function InternalOrderCreator({
               }
               placeholder="Nota opcional"
               maxLength={500}
-              rows={2}
+              rows={1}
               className="min-h-9 resize-y whitespace-pre-wrap"
               onKeyDown={(event) => event.stopPropagation()}
             />
-          ) : (
-            <span className="text-sm text-muted-foreground">—</span>
-          )}
-        </td>
-      </tr>
+          </label>
+        </div> : null}
+      </div>
     );
   }
 
@@ -389,6 +350,7 @@ export function InternalOrderCreator({
     resetHistorySelection();
     const customer = customers.find((item) => item.id === value);
     setCustomerId(value);
+    setLocationExpanded(false);
     setLocationId(
       customer?.locations.find((location) => location.isPrimary)?.id ??
         customer?.locations[0]?.id ??
@@ -409,6 +371,8 @@ export function InternalOrderCreator({
   }
 
   function resetAfterConfirmedCreation() {
+    setStep(1);
+    setLocationExpanded(false);
     setCustomerId("");
     setLocationId("");
     setOperationalDate(boliviaTomorrow());
@@ -423,6 +387,7 @@ export function InternalOrderCreator({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (step !== 2) return;
     if (submissionInFlightRef.current || (!editing && !idempotencyKey)) return;
 
     const formData = new FormData(event.currentTarget);
@@ -535,23 +500,14 @@ export function InternalOrderCreator({
             </>
           ) : null}
 
-          <div className="grid gap-2 rounded-xl border bg-slate-50 p-3 sm:grid-cols-3">
-            <div className={customerId && locationId ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
-              <p className="text-xs font-semibold uppercase">1. Cliente</p>
-              <p className="mt-1 text-sm font-medium">{customerId && locationId ? "Completo" : "Selecciona cliente y ubicación"}</p>
-            </div>
-            <div className={operationalDate ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
-              <p className="text-xs font-semibold uppercase">2. Entrega</p>
-              <p className="mt-1 text-sm font-medium">{operationalDate ? "Fecha seleccionada" : "Selecciona una fecha"}</p>
-            </div>
-            <div className={lines.length ? "rounded-lg bg-emerald-100 p-3 text-emerald-900" : "rounded-lg bg-white p-3 text-muted-foreground"}>
-              <p className="text-xs font-semibold uppercase">3. Productos</p>
-              <p className="mt-1 text-sm font-medium">{lines.length ? `${lines.length} seleccionado${lines.length === 1 ? "" : "s"}` : "Marca al menos uno"}</p>
-            </div>
+          <div className="flex items-center gap-2 border-b pb-2 text-sm">
+            <span className={step === 1 ? "font-semibold text-emerald-900" : "text-muted-foreground"}>1. Cliente y entrega</span>
+            <span aria-hidden>→</span>
+            <span className={step === 2 ? "font-semibold text-emerald-900" : "text-muted-foreground"}>2. Productos</span>
           </div>
 
-          <div className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-3">
+          <div className={step === 1 ? "space-y-4" : "hidden"}>
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="internal-customer">Cliente</Label>
                 <select
@@ -571,7 +527,7 @@ export function InternalOrderCreator({
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
+              <div className={locationExpanded || !locationId ? "space-y-2" : "hidden"}>
                 <Label htmlFor="internal-location">Ubicación</Label>
                 <select
                   id="internal-location"
@@ -615,6 +571,13 @@ export function InternalOrderCreator({
                 </p>
               </div>
             </div>
+
+            {customerId && locationId && !locationExpanded ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span>Ubicación: {selectedCustomer?.locations.find((item) => item.id === locationId)?.label}</span>
+                {!editing ? <Button type="button" size="sm" variant="link" onClick={() => setLocationExpanded(true)}>Cambiar ubicación</Button> : null}
+              </div>
+            ) : null}
 
             {customerId && selectedCustomer && selectedCustomer.locations.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -681,10 +644,17 @@ export function InternalOrderCreator({
                 </div>
               </section>
             ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="internal-customer-notes">Notas generales</Label>
+              <Textarea id="internal-customer-notes" name="customer_notes" value={customerNotes}
+                onChange={(event) => setCustomerNotes(event.target.value)} maxLength={1000} rows={2} />
+            </div>
+            <Button type="button" disabled={!customerId || !locationId || !operationalDate}
+              onClick={() => setStep(2)}>Siguiente: Productos</Button>
           </div>
 
           <section
-            className="space-y-3"
+            className={step === 2 ? "space-y-3" : "hidden"}
             aria-labelledby="order-products-title"
             data-product-order-table
           >
@@ -730,69 +700,18 @@ export function InternalOrderCreator({
               </p>
             ) : null}
 
-            <div className="max-h-[32rem] overflow-auto rounded-xl border overscroll-contain [touch-action:pan-x_pan-y]">
-              <table className="w-full min-w-[820px] border-collapse text-sm">
-                <thead className="sticky top-0 z-30 bg-slate-100 shadow-[0_1px_0_0_hsl(var(--border))]">
-                  <tr>
-                    <th className="sticky left-0 z-40 w-12 bg-slate-100 px-3 py-2 text-center font-semibold">
-                      Sel.
-                    </th>
-                    <th className="sticky left-12 z-40 min-w-64 bg-slate-100 px-3 py-2 text-left font-semibold shadow-[1px_0_0_0_hsl(var(--border))]">
-                      Producto
-                    </th>
-                    <th className="w-44 px-2 py-2 text-left font-semibold">
-                      Unidad
-                    </th>
-                    <th className="w-36 px-2 py-2 text-left font-semibold">
-                      Cantidad
-                    </th>
-                    <th className="min-w-64 px-2 py-2 text-left font-semibold">
-                      Observación
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalogGroups.latest.length ? (
-                    <tr className="border-b bg-emerald-100/80">
-                      <th
-                        colSpan={5}
-                        className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-emerald-900"
-                      >
-                        Promedio de pedidos del cliente
-                      </th>
-                    </tr>
-                  ) : null}
-                  {catalogGroups.latest.map((product) =>
-                    productRow(product.id),
-                  )}
-                  {catalogGroups.visibleAlphabetical.length ? (
-                    <tr className="border-b bg-slate-100">
-                      <th
-                        colSpan={5}
-                        className="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-700"
-                      >
-                        {catalogGroups.latest.length
-                          ? "Otros productos en orden alfabético"
-                          : "Productos en orden alfabético"}
-                      </th>
-                    </tr>
-                  ) : null}
-                  {catalogGroups.visibleAlphabetical.map((product) =>
-                    productRow(product.id),
-                  )}
-                  {!catalogGroups.latest.length &&
-                  !catalogGroups.visibleAlphabetical.length ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-10 text-center text-muted-foreground"
-                      >
-                        No encontramos productos con esa búsqueda.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="max-h-[36rem] space-y-2 overflow-y-auto rounded-xl border p-2 overscroll-contain">
+              {catalogGroups.latest.length ? <h4 className="px-1 text-xs font-bold uppercase text-emerald-900">Sugeridos por pedidos anteriores</h4> : null}
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {catalogGroups.latest.map((product) => productRow(product.id))}
+              </div>
+              {catalogGroups.visibleAlphabetical.length ? <h4 className="px-1 text-xs font-bold uppercase text-slate-700">Otros productos</h4> : null}
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {catalogGroups.visibleAlphabetical.map((product) => productRow(product.id))}
+              </div>
+              {!catalogGroups.latest.length && !catalogGroups.visibleAlphabetical.length ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">No encontramos productos con esa búsqueda.</p>
+              ) : null}
             </div>
 
             {catalogGroups.visibleAlphabetical.length <
@@ -816,18 +735,6 @@ export function InternalOrderCreator({
             ) : null}
           </section>
 
-          <div className="space-y-2">
-            <Label htmlFor="internal-customer-notes">Notas generales</Label>
-            <Textarea
-              id="internal-customer-notes"
-              name="customer_notes"
-              value={customerNotes}
-              onChange={(event) => setCustomerNotes(event.target.value)}
-              maxLength={1000}
-              rows={2}
-            />
-          </div>
-
           {state.message ? (
             <div
               className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
@@ -837,7 +744,11 @@ export function InternalOrderCreator({
             </div>
           ) : null}
 
-          <Button
+          {step === 2 ? <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
+            <span>{selectedCustomer?.label} · {operationalDate} · {lines.length} productos seleccionados</span>
+            <Button type="button" variant="outline" onClick={() => setStep(1)}>Volver</Button>
+          </div> : null}
+          {step === 2 ? <Button
             type="submit"
             disabled={
               pending ||
@@ -857,8 +768,8 @@ export function InternalOrderCreator({
                 ? "Guardar cambios"
                 : customerId && locationId && operationalDate && lines.length
                   ? "Crear pedido"
-                  : "Completa los 3 pasos"}
-          </Button>
+                  : "Selecciona productos"}
+          </Button> : null}
         </form>
       </CardContent>
     </Card>

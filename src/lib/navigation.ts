@@ -51,6 +51,12 @@ export const mainNavigation: NavItem[] = [
     description: "Recibos acumulativos.",
   },
   {
+    title: "Historial",
+    href: "/historial",
+    icon: BarChart3,
+    description: "Consulta operativa por fecha.",
+  },
+  {
     title: "Reportes",
     href: "/reportes",
     icon: BarChart3,

@@ -15,7 +15,7 @@ export function AppHeader({ user }: { user: SessionUser }) {
   const pathname = usePathname();
   const activePaths = [
     "/productos", "/pedidos", "/matriz-operativa", "/recibos",
-    "/parametrizacion", "/clientes",
+    "/parametrizacion", "/clientes", "/historial",
   ];
   const navigation = [
     ...activePaths.map((href) => mainNavigation.find((item) => item.href === href)),
@@ -27,7 +27,7 @@ export function AppHeader({ user }: { user: SessionUser }) {
   );
 
   return (
-    <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b bg-white px-3 py-2 lg:px-5">
+    <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-100/95 px-3 py-2 lg:px-5">
       <Link href="/" aria-label="QB Insumos, inicio" className="shrink-0">
         <QbInsumosBrand variant="compact" />
       </Link>

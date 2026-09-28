@@ -365,11 +365,7 @@ export function OperationalMatrix({
     allowedStage(data.role, initialStage),
   );
   const [viewMode, setViewMode] = useState<"formulario" | "tabla">("formulario");
-  const [selectedOrderId, setSelectedOrderId] = useState(() =>
-    data.orders.find((order) => order.id === initialOrderId)?.id ??
-    data.orders.find((order) => data.lines.some((line) => line.orderId === order.id))?.id ?? "",
-  );
-  const [selectedLineIndex, setSelectedLineIndex] = useState(0);
+  const [expandedOrderId, setExpandedOrderId] = useState(initialOrderId ?? data.orders[0]?.id ?? "");
   const [formStatus, setFormStatus] = useState<"guardado" | "pendiente" | "guardando" | "error">("guardado");
   const formSaveSequence = useRef(0);
   const [lines, setLines] = useState(() =>
@@ -568,22 +564,6 @@ export function OperationalMatrix({
     }
     return grouped;
   }, [groupByOrderId, lines]);
-  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? orders[0];
-  const selectedCustomer = selectedOrder ? groupByOrderId.get(selectedOrder.id) : undefined;
-  const selectedOrderLines = useMemo(
-    () => linesForOrder(lines, selectedOrder?.id ?? "")
-      .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "es") ||
-        left.productName.localeCompare(right.productName, "es")),
-    [lines, selectedOrder?.id],
-  );
-  const selectedLine = selectedOrderLines[Math.min(selectedLineIndex, selectedOrderLines.length - 1)];
-  const selectableOrders = customerGroups.flatMap((group) =>
-    group.orders.flatMap((order) => lines.some((line) => line.orderId === order.id) ? [order] : []),
-  );
-  const nextOrder = selectableOrders[selectableOrders.findIndex((order) => order.id === selectedOrder?.id) + 1];
-  const pendingLineCount = selectedOrderLines.filter((line) => stage === "preparacion"
-    ? !line.preparationCheck
-    : !hasDeliveryCheck(line) || line.deliveryVersion === 0).length;
 
   const updateGroupedLines = (
     groupedLines: MatrixLine[],
@@ -793,7 +773,8 @@ export function OperationalMatrix({
     const currentLines = results
       .map(({ line }) => line)
       .filter((line): line is MatrixLine => Boolean(line));
-    if (results.every(({ result }) => result.success)) {
+    const success = results.every(({ result }) => result.success);
+    if (success) {
       setRemotePending(false);
       setMessage(
         currentLines.length > 1
@@ -801,6 +782,7 @@ export function OperationalMatrix({
           : "Guardado.",
       );
     }
+    return success;
   };
 
   const saveDeliveryLine = async (id: string) => {
@@ -1052,19 +1034,16 @@ export function OperationalMatrix({
   const headers = stageHeaders(stage);
   const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
-  const showForm = viewMode === "formulario" && (stage === "preparacion" || stage === "entrega");
-  const saveFormLine = async (advance = false) => {
-    if (!selectedLine) return false;
+  const showForm = viewMode === "formulario";
+  const saveFormLine = async (id: string) => {
+    if (!dirty.current.has(id)) return true;
     const sequence = ++formSaveSequence.current;
     setFormStatus("guardando");
     try {
       const result = stage === "preparacion"
-        ? (await savePreparationLine(selectedLine.orderItemId)).result.success
-        : await saveGroupedDelivery([selectedLine.orderItemId]);
+        ? (await savePreparationLine(id)).result.success
+        : await saveGroupedDelivery([id]);
       if (sequence === formSaveSequence.current) setFormStatus(result ? "guardado" : "error");
-      if (result && advance) {
-        setSelectedLineIndex((index) => Math.min(index + 1, selectedOrderLines.length - 1));
-      }
       return result;
     } catch {
       if (sequence === formSaveSequence.current) setFormStatus("error");
@@ -1073,8 +1052,12 @@ export function OperationalMatrix({
     }
   };
   const navigateForm = async (next: () => void) => {
-    if (selectedLine && dirty.current.has(selectedLine.orderItemId)) {
-      if (!(await saveFormLine())) return;
+    if (dirty.current.size && (stage === "preparacion" || stage === "entrega")) {
+      const ids = [...dirty.current];
+      const saved = stage === "preparacion"
+        ? await saveGroupedPreparation(ids)
+        : await saveGroupedDelivery(ids);
+      if (!saved) return;
     }
     next();
   };
@@ -1102,12 +1085,12 @@ export function OperationalMatrix({
           ))}
         </div>
         <div className="flex items-center gap-3 text-sm" aria-live="polite">
-          {stage === "preparacion" || stage === "entrega" ? (
-            <div className="flex rounded-md border bg-white p-0.5" role="group" aria-label="Vista operativa">
-              <Button size="sm" variant={showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("formulario"))}>Formulario</Button>
-              <Button size="sm" variant={!showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("tabla"))}>Tabla</Button>
-            </div>
-          ) : null}
+          <div className="flex rounded-md border bg-white p-0.5" role="group" aria-label="Vista operativa">
+            <Button size="sm" variant={showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("formulario"))}>
+              {stage === "resumen" ? "Resumen" : "Formulario"}
+            </Button>
+            <Button size="sm" variant={!showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("tabla"))}>Tabla</Button>
+          </div>
           {remotePending ? (
             <Button
               size="sm"
@@ -1140,166 +1123,159 @@ export function OperationalMatrix({
       </div> : null}
 
       {showForm ? (
-        <section className="mx-auto w-full max-w-4xl space-y-4 rounded-lg border bg-white p-4 sm:p-5" aria-label={`Formulario de ${stage}`}>
-          {!selectedOrder || !selectedLine ? (
-            <p className="py-12 text-center text-muted-foreground">No hay productos para esta fecha.</p>
-          ) : (
-            <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="space-y-1 text-sm font-medium">Cliente
-                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedCustomer?.id ?? ""}
-                    onChange={(event) => void navigateForm(() => {
-                      const order = customerGroups.find((group) => group.id === event.target.value)?.orders.find(
-                        (item) => lines.some((line) => line.orderId === item.id),
-                      );
-                      setSelectedOrderId(order?.id ?? ""); setSelectedLineIndex(0);
-                    })}>
-                    {customerGroups.map((group) => <option key={group.id} value={group.id}>
-                      {group.customerName} · {actionableOrders(group.orders, new Set(group.orders.map((order) => order.id)), "confirm").length} por confirmar
-                    </option>)}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm font-medium">Pedido
-                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedOrder.id}
-                    onChange={(event) => void navigateForm(() => { setSelectedOrderId(event.target.value); setSelectedLineIndex(0); })}>
-                    {(selectedCustomer?.orders ?? []).flatMap((order) => lines.some((line) => line.orderId === order.id)
-                      ? [<option key={order.id} value={order.id}>{order.reference} · {orderFormStatus(order)}</option>]
-                      : [])}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm font-medium">Producto
-                  <select className="block h-10 w-full rounded-md border bg-white px-2" value={selectedLine.orderItemId}
-                    onChange={(event) => void navigateForm(() => setSelectedLineIndex(
-                      selectedOrderLines.findIndex((line) => line.orderItemId === event.target.value),
-                    ))}>
-                    {selectedOrderLines.map((line) => <option key={line.orderItemId} value={line.orderItemId}>{line.productName}</option>)}
-                  </select>
-                </label>
+        <section className="space-y-3" aria-label="Pedidos por cliente">
+          {!customerGroups.length ? <p className="rounded-lg border bg-white p-6 text-sm">No hay pedidos para esta fecha.</p> : null}
+          {customerGroups.map((group) => (
+            <div key={group.id} className="rounded-lg border bg-white p-3 sm:p-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                <h2 className="font-semibold">{group.customerName}</h2>
+                <span className="text-xs text-muted-foreground">{group.orders.length} pedidos · {groupStatus(group)}</span>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-y py-3">
-                <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Solicitado</p>
-                  <p className="text-lg font-semibold">{formatQuantity(selectedLine.requestedQuantity)} {selectedLine.sourceLabel}</p>
-                  {selectedLine.requestedNote ? <p className="text-sm text-amber-800">Pedido: {selectedLine.requestedNote}</p> : null}
-                  {selectedOrder.customerNotes ? <p className="text-sm text-amber-800">Nota general: {selectedOrder.customerNotes}</p> : null}
-                </div>
-                <span className="text-sm text-muted-foreground">
-                  Producto {selectedLineIndex + 1} de {selectedOrderLines.length} · {pendingLineCount} pendientes
-                </span>
+              <div className="space-y-2">
+                {group.orders.map((order) => {
+                  const orderLines = linesForOrder(lines, order.id).sort((left, right) =>
+                    left.categoryName.localeCompare(right.categoryName, "es") || left.productName.localeCompare(right.productName, "es"));
+                  if (!orderLines.length) return null;
+                  const expanded = stage === "pedido" || stage === "resumen" || expandedOrderId === order.id;
+                  const editable = stage === "preparacion"
+                    ? ["pendiente_preparacion", "en_preparacion"].includes(order.status)
+                    : order.deliveryStatus !== "confirmado";
+                  const pending = orderLines.filter((line) => stage === "preparacion"
+                    ? !line.preparationCheck : !hasDeliveryCheck(line) || line.deliveryVersion === 0).length;
+                  return (
+                    <article key={order.id} className="rounded-md border">
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                        <div>
+                          <h3 className="text-sm font-semibold">{order.reference}</h3>
+                          <p className="text-xs text-muted-foreground">{orderLines.length} productos · {orderFormStatus(order)}
+                            {stage === "preparacion" || stage === "entrega" ? " · " + pending + " pendientes" : ""}
+                          </p>
+                        </div>
+                        {stage === "preparacion" || stage === "entrega" ? (
+                          <Button size="sm" variant="outline" onClick={() => void navigateForm(() => setExpandedOrderId(expanded ? "" : order.id))}>
+                            {expanded ? "Ocultar productos" : "Ver productos"}
+                          </Button>
+                        ) : null}
+                      </div>
+                      {expanded ? <div className="space-y-3 p-3">
+                        {order.customerNotes ? <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">Nota: {order.customerNotes}</p> : null}
+                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {orderLines.map((line) => (
+                            <div key={line.orderItemId} className="min-w-0 rounded-md border p-3" style={{ borderLeftColor: line.productColor ?? undefined, borderLeftWidth: 4 }}>
+                              <div className="mb-2 flex items-start justify-between gap-2">
+                                <div>
+                                  <h4 className="text-sm font-semibold">{line.productName}</h4>
+                                  <p className="text-xs text-muted-foreground">Solicitado: {formatQuantity(line.requestedQuantity)} {line.sourceLabel}</p>
+                                </div>
+                                {stage === "pedido" && canAdmin ? <Button size="xs" variant="outline" onClick={() => void correctGroupedRequest([line])}>Corregir</Button> : null}
+                              </div>
+                              {line.requestedNote ? <p className="mb-2 text-xs text-amber-800">Pedido: {line.requestedNote}</p> : null}
+                              {stage === "resumen" ? (
+                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                  <span>Preparado<br />{formatQuantity(line.preparedQuantity)} {line.sourceLabel}</span>
+                                  <span>Entregado<br />{formatQuantity(line.deliveredQuantity)} {line.sourceLabel}</span>
+                                  <span>Diferencia<br />{formatQuantity(line.deliveredQuantity - line.requestedQuantity)} {line.sourceLabel}</span>
+                                  {line.deliveryNote || line.preparationNote ? <p className="col-span-3 text-amber-800">{line.deliveryNote || line.preparationNote}</p> : null}
+                                </div>
+                              ) : null}
+                              {stage === "preparacion" || stage === "entrega" ? (
+                                <div className="space-y-2">
+                                  {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
+                                    Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
+                                    {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
+                                  </p> : null}
+                                  <MeasuredQuantityEditor
+                                    key={stage + ":" + line.orderItemId}
+                                    label={(stage === "preparacion" ? "Preparación" : "Entrega") + " de " + line.productName}
+                                    quantityLabel={stage === "preparacion" ? "Cantidad preparada" : "Cantidad entregada"}
+                                    quantityValue={stage === "preparacion" ? line.preparedQuantity : line.deliveredQuantity}
+                                    quantityUnits={line.quantityUnits}
+                                    selectedUnitId={stage === "preparacion" ? line.preparationDisplayUnitId : line.deliveryDisplayUnitId}
+                                    actualWeightKg={stage === "preparacion" ? line.preparationActualWeightKg : line.deliveryActualWeightKg}
+                                    sourceLabel={line.sourceLabel}
+                                    sourceUnitHint={line.baseUnitSymbol}
+                                    weightUnits={data.weightUnits}
+                                    disabled={!editable}
+                                    onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0 } : { deliveredQuantity: value ?? 0 })}
+                                    onUnitChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
+                                    onWeightChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
+                                    onBlur={() => void saveFormLine(line.orderItemId)}
+                                  />
+                                  <WeightPricingHint line={line} />
+                                  <label className="flex items-center gap-2 text-xs font-medium">
+                                    <CheckEditor
+                                      label={stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
+                                      checked={stage === "preparacion" ? line.preparationCheck : hasDeliveryCheck(line)}
+                                      disabled={stage === "preparacion"
+                                        ? !editable || (!line.preparationCheck && line.preparedQuantity > 0 && Math.abs(line.preparedQuantity - line.requestedQuantity) > 0.000001)
+                                        : !editable || line.preparationCheck}
+                                      onChange={(checked) => {
+                                        if (stage === "preparacion") updateGroupedLines([line], {
+                                          preparationCheck: checked,
+                                          ...(checked && line.preparedQuantity <= 0 ? { preparedQuantity: line.requestedQuantity } : {}),
+                                          ...(checked && line.controlsActualWeight && findWeightUnit(data.weightUnits, line.sourceLabel) &&
+                                            line.preparationActualWeightKg === null
+                                            ? { preparationActualWeightKg: requestedWeightInKilograms(line, data.weightUnits) } : {}),
+                                        });
+                                        else updateMissingDeliveryChecks([line], checked);
+                                      }}
+                                      onBlur={() => void saveFormLine(line.orderItemId)}
+                                    />
+                                    {stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
+                                  </label>
+                                  {stage === "preparacion" && !line.preparationCheck && line.preparedQuantity > 0 &&
+                                    Math.abs(line.preparedQuantity - line.requestedQuantity) > 0.000001 ? (
+                                    <p className="text-xs text-amber-800">El check actual exige preparar exactamente lo solicitado.</p>
+                                  ) : null}
+                                  <label className="block space-y-1 text-xs font-medium">Observación
+                                    <NoteEditor
+                                      label={"Observación de " + stage + " para " + line.productName}
+                                      value={stage === "preparacion" ? line.preparationNote : line.deliveryNote}
+                                      onChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationNote: value } : { deliveryNote: value })}
+                                      onBlur={() => void saveFormLine(line.orderItemId)}
+                                    />
+                                  </label>
+                                  {stage === "entrega" ? <p className="text-xs text-muted-foreground">
+                                    Frente a solicitado: {formatQuantity(line.deliveredQuantity - line.requestedQuantity)} {line.sourceLabel} ·
+                                    Frente a preparado: {formatQuantity(line.deliveredQuantity - line.preparedQuantity)} {line.sourceLabel} ·
+                                    Externo calculado: {formatQuantity(Math.max(line.deliveredQuantity - line.preparedQuantity, 0))} {line.sourceLabel}
+                                  </p> : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        {stage === "preparacion" || stage === "entrega" ? (
+                          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+                            <span role="status" className="mr-auto text-xs text-muted-foreground">
+                              {formStatus === "pendiente" ? "Sin guardar" : formStatus === "guardando" ? "Guardando..." : formStatus === "error" ? "Error al guardar" : "Guardado"}
+                            </span>
+                            <Button variant="outline" disabled={formStatus === "guardando" || !editable}
+                              onClick={() => void (async () => {
+                                const ids = orderLines.filter((line) => dirty.current.has(line.orderItemId)).map((line) => line.orderItemId);
+                                if (!ids.length) return;
+                                setFormStatus("guardando");
+                                const success = stage === "preparacion" ? await saveGroupedPreparation(ids) : await saveGroupedDelivery(ids);
+                                setFormStatus(success ? "guardado" : "error");
+                              })()}>
+                              Guardar {stage === "preparacion" ? "preparación" : "entrega"}
+                            </Button>
+                            {stage === "entrega" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
+                              <Button disabled={Boolean(actionPending) || formStatus === "guardando"}
+                                onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
+                                Confirmar entrega de este pedido
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div> : null}
+                    </article>
+                  );
+                })}
               </div>
-              {stage === "entrega" ? (
-                <div className="rounded-md bg-slate-50 px-3 py-2 text-sm">
-                  <span className="font-medium">Preparado:</span> {formatQuantity(selectedLine.preparedQuantity)} {selectedLine.sourceLabel}
-                  {selectedLine.preparationActualWeightKg !== null ? ` · Peso preparado: ${formatQuantity(selectedLine.preparationActualWeightKg)} KG` : ""}
-                  {selectedLine.preparationNote ? <p className="text-amber-800">Bodega: {selectedLine.preparationNote}</p> : null}
-                </div>
-              ) : null}
-              <h2 className="text-base font-semibold">{stage === "preparacion" ? "Preparación" : "Entrega real"}</h2>
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <div className="space-y-2">
-                  <MeasuredQuantityEditor
-                    key={`${stage}:${selectedLine.orderItemId}`}
-                    label={`${stage === "preparacion" ? "Preparación" : "Entrega"} de ${selectedLine.productName}`}
-                    quantityLabel={stage === "preparacion" ? "Cantidad preparada" : "Cantidad entregada"}
-                    quantityValue={stage === "preparacion" ? selectedLine.preparedQuantity : selectedLine.deliveredQuantity}
-                    quantityUnits={selectedLine.quantityUnits}
-                    selectedUnitId={stage === "preparacion" ? selectedLine.preparationDisplayUnitId : selectedLine.deliveryDisplayUnitId}
-                    actualWeightKg={stage === "preparacion" ? selectedLine.preparationActualWeightKg : selectedLine.deliveryActualWeightKg}
-                    sourceLabel={selectedLine.sourceLabel}
-                    sourceUnitHint={selectedLine.baseUnitSymbol}
-                    weightUnits={data.weightUnits}
-                    disabled={stage === "preparacion"
-                      ? !["pendiente_preparacion", "en_preparacion"].includes(selectedOrder.status)
-                      : selectedOrder.deliveryStatus === "confirmado"}
-                    onQuantityChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
-                      ? { preparedQuantity: value ?? 0 } : { deliveredQuantity: value ?? 0 })}
-                    onUnitChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
-                      ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
-                    onWeightChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
-                      ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
-                    onBlur={() => void saveFormLine()}
-                  />
-                  <WeightPricingHint line={selectedLine} />
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <CheckEditor
-                      label={stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
-                      checked={stage === "preparacion" ? selectedLine.preparationCheck : hasDeliveryCheck(selectedLine)}
-                      disabled={stage === "preparacion"
-                        ? !["pendiente_preparacion", "en_preparacion"].includes(selectedOrder.status) ||
-                          (!selectedLine.preparationCheck && selectedLine.preparedQuantity > 0 &&
-                            Math.abs(selectedLine.preparedQuantity - selectedLine.requestedQuantity) > 0.000001)
-                        : selectedOrder.deliveryStatus === "confirmado" || selectedLine.preparationCheck}
-                      onChange={(checked) => {
-                        if (stage === "preparacion") {
-                          updateGroupedLines([selectedLine], {
-                            preparationCheck: checked,
-                            ...(checked && selectedLine.preparedQuantity <= 0 ? { preparedQuantity: selectedLine.requestedQuantity } : {}),
-                            ...(checked && selectedLine.controlsActualWeight &&
-                              findWeightUnit(data.weightUnits, selectedLine.sourceLabel) &&
-                              selectedLine.preparationActualWeightKg === null
-                              ? { preparationActualWeightKg: requestedWeightInKilograms(selectedLine, data.weightUnits) } : {}),
-                          });
-                        } else {
-                          updateMissingDeliveryChecks([selectedLine], checked);
-                        }
-                      }}
-                      onBlur={() => void saveFormLine()}
-                    />
-                    {stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
-                  </div>
-                  <div className="block space-y-1 text-sm font-medium">Observación
-                    <NoteEditor
-                      label={`Observación de ${stage} para ${selectedLine.productName}`}
-                      value={stage === "preparacion" ? selectedLine.preparationNote : selectedLine.deliveryNote}
-                      onChange={(value) => updateGroupedLines([selectedLine], stage === "preparacion"
-                        ? { preparationNote: value } : { deliveryNote: value })}
-                      onBlur={() => void saveFormLine()}
-                    />
-                  </div>
-                </div>
-              </div>
-              {stage === "entrega" && selectedLine.deliveredQuantity !== selectedLine.requestedQuantity ? (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  Se solicitaron {formatQuantity(selectedLine.requestedQuantity)} {selectedLine.sourceLabel} y se entregaron {formatQuantity(selectedLine.deliveredQuantity)} {selectedLine.sourceLabel}. Explica la diferencia en Observación.
-                </p>
-              ) : null}
-              {stage === "entrega" ? (
-                <p className="text-sm text-muted-foreground">
-                  Externo calculado: {formatQuantity(Math.max(selectedLine.deliveredQuantity - selectedLine.preparedQuantity, 0))} {selectedLine.sourceLabel}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                <div className="flex gap-2">
-                  <Button variant="outline" disabled={selectedLineIndex === 0 || formStatus === "guardando"}
-                    onClick={() => void navigateForm(() => setSelectedLineIndex((index) => index - 1))}>Anterior</Button>
-                  <Button variant="outline" disabled={selectedLineIndex >= selectedOrderLines.length - 1 || formStatus === "guardando"}
-                    onClick={() => void navigateForm(() => setSelectedLineIndex((index) => index + 1))}>Siguiente</Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span role="status" aria-live="polite" className={formStatus === "error" ? "text-sm text-red-700" : "text-sm text-muted-foreground"}>
-                    {formStatus === "pendiente" ? "Sin guardar" : formStatus === "guardando" ? "Guardando..." : formStatus === "error" ? `Error al guardar. ${message ?? ""}` : "✓ Guardado"}
-                  </span>
-                  <Button disabled={formStatus === "guardando"} onClick={() => void saveFormLine(true)}>Guardar y siguiente</Button>
-                  {stage === "entrega" && selectedLineIndex === selectedOrderLines.length - 1 &&
-                    actionableOrders([selectedOrder], new Set([selectedOrder.id]), "confirm").length > 0 ? (
-                    <Button variant="outline" disabled={formStatus === "guardando" || Boolean(actionPending)}
-                      onClick={() => void actionForOrders([selectedOrder], `${selectedOrder.customerName} · ${selectedOrder.reference}`, selectedOrder.id, "confirm")}>
-                      Confirmar entrega del pedido
-                    </Button>
-                  ) : null}
-                  {selectedLineIndex === selectedOrderLines.length - 1 && nextOrder ? (
-                    <Button variant="outline" disabled={formStatus === "guardando"}
-                      onClick={() => void navigateForm(() => { setSelectedOrderId(nextOrder.id); setSelectedLineIndex(0); })}>
-                      Siguiente cliente/pedido
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-              {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
-            </>
-          )}
+            </div>
+          ))}
+          {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
         </section>
       ) : <>
 

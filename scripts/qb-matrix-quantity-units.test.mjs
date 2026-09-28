@@ -76,7 +76,7 @@ test("unidades importadas antiguas no se tratan como equivalencias 1:1", () => {
 
 test("ambas etapas usan el selector con y sin control de peso", () => {
   const matrix = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
-  assert.equal(matrix.match(/quantityUnits=\{line\.quantityUnits\}/g)?.length, 2);
+  assert.equal(matrix.match(/quantityUnits=\{line\.quantityUnits\}/g)?.length, 3);
   const editor = matrix.split("function QuantityEditor(")[1].split("function DesktopOrderCells")[0];
   assert.match(editor, /<select/);
   assert.match(editor, /quantityInOriginalUnit\(nextValue, selectedUnit\)/);

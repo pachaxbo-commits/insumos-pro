@@ -145,3 +145,35 @@
 .qb-receipt-export-capturing [data-qb-receipt-table] {
   overflow: visible;
 }
+
+@media print {
+  @page qb-receipt-page { margin: 12mm; }
+  body:has(.qb-receipt-print-page) {
+    background: #fff !important;
+    background-image: none !important;
+  }
+  body:has(.qb-receipt-print-page) .qb-app-header,
+  body:has(.qb-receipt-print-page) .qb-receipt-print-page > div:first-child,
+  body:has(.qb-receipt-print-page) .qb-receipt-screen-tabs {
+    display: none !important;
+  }
+  body:has(.qb-receipt-print-page) .qb-receipt-print-only { display: block !important; }
+  body:has(.qb-receipt-print-page) .qb-receipt-print-page { page: qb-receipt-page; }
+  body:has(.qb-receipt-print-page) .qb-app-main,
+  body:has(.qb-receipt-print-page) .qb-receipt-print-page,
+  body:has(.qb-receipt-print-page) .qb-receipt-print-only {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body:has(.qb-receipt-print-page) .qb-receipt-print-only [data-qb-receipt-document] {
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    font-size: 12pt;
+  }
+  body:has(.qb-receipt-print-page) [data-qb-receipt-table] {
+    overflow: visible !important;
+  }
+}

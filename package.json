@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:matrix": "node scripts/qb-operational-matrix.test.mjs",
     "test:form-scope": "node --experimental-strip-types scripts/qb-operational-form-scope.test.mjs",
+    "test:ux-second-iteration": "node --experimental-strip-types scripts/qb-ux-second-iteration.test.mjs",
     "test:matrix-units": "node --experimental-strip-types scripts/qb-matrix-quantity-units.test.mjs",
     "test:delivery-polish": "node --experimental-strip-types scripts/qb-delivery-polish.test.mjs",
     "test:receipt-calculations": "node --experimental-strip-types scripts/qb-receipt-calculations.test.mjs",

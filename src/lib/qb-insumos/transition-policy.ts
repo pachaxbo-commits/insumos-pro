@@ -46,6 +46,14 @@ export const transitionModules: TransitionModule[] = [
     visibleInNavigation: true,
   },
   {
+    id: "historial",
+    title: "Historial",
+    href: "/historial",
+    status: "active_transitional",
+    reason: "Consulta pedidos, preparación, entregas y recibos existentes por fecha.",
+    visibleInNavigation: true,
+  },
+  {
     id: "matriz-operativa",
     title: "Matriz operativa",
     href: "/matriz-operativa",

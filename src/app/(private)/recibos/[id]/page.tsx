@@ -49,7 +49,7 @@ export default async function ReceiptDetailPage({
     : money(receipt.totalAmount);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="qb-receipt-print-page mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Button asChild variant="outline">
           <Link href="/recibos">
@@ -77,7 +77,7 @@ export default async function ReceiptDetailPage({
         </div>
       </div>
 
-      <Tabs defaultValue="cliente" className="space-y-4">
+      <Tabs defaultValue="cliente" className="qb-receipt-screen-tabs space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1 print:hidden">
           <TabsTrigger value="cliente" className="min-h-10 flex-none px-4">
             Vista del cliente
@@ -92,7 +92,7 @@ export default async function ReceiptDetailPage({
             Este es el documento que recibe el cliente. Solo muestra productos, cantidades,
             precio unitario de venta y total. Nunca incluye costo de compra ni utilidad.
           </div>
-          <ReceiptDocument receipt={receipt} variant="customer-export" />
+          <div className="qb-receipt-print-document"><ReceiptDocument receipt={receipt} variant="customer-export" /></div>
         </TabsContent>
 
         <TabsContent value="administracion" className="space-y-3">
@@ -103,6 +103,10 @@ export default async function ReceiptDetailPage({
           <ReceiptDocument receipt={receipt} variant="admin" />
         </TabsContent>
       </Tabs>
+
+      <div className="qb-receipt-print-only hidden">
+        <ReceiptDocument receipt={receipt} variant="customer-export" />
+      </div>
 
       <div
         aria-hidden="true"
