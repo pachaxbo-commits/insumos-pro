@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEventHandler, ReactNode } from "react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -13,6 +13,8 @@ import {
   Ruler,
   Save,
   Tags,
+  History,
+  ArrowRightLeft,
 } from "lucide-react";
 
 import {
@@ -24,11 +26,12 @@ import {
   updateProductAction,
   updateUnitAction,
 } from "@/lib/products/actions";
+import { createInventoryMovementAction } from "@/lib/inventory/actions";
 import { ProductFiltersBar } from "@/components/products/product-filters-bar";
 import { LazyProductClassificationConfiguration } from "@/components/products/lazy-product-classification-configuration";
 import { ProductAmountModeControl } from "@/components/products/product-amount-mode-control";
 import { ProductPricingEditor } from "@/components/products/product-pricing-editor";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useActionToast } from "@/hooks/use-action-toast";
 import type {
@@ -73,6 +76,11 @@ type ProductManagementProps = {
   categories: ProductCategory[];
   units: UnitOfMeasure[];
   productIdsWithMovements: string[];
+  movementHistory: Record<string, Array<{
+    id: string; movement_type: string; quantity: number; stock_before: number;
+    stock_after: number; reason: string; created_at: string;
+    created_by: string | null; created_by_name: string | null;
+  }>>;
   filters: ProductFilters;
   qbUnits: QbUnit[];
   qbProductUnitSettings: QbProductUnitSettings[];
@@ -201,6 +209,48 @@ function FormMessage({ state }: { state: ActionState }) {
   );
 }
 
+function StockAdjustmentDialog({
+  product,
+  history,
+  canManage,
+}: {
+  product: ProductWithRelations;
+  history: Array<{ id: string; movement_type: string; quantity: number; stock_before: number; stock_after: number; reason: string; created_at: string; created_by: string | null; created_by_name: string | null }>;
+  canManage: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(createInventoryMovementAction, initialState);
+  const [type, setType] = useState("entrada");
+  const [quantity, setQuantity] = useState("");
+  const current = Number(product.stock_current ?? 0);
+  const amount = Number(quantity) || 0;
+  const result = type === "ajuste" ? amount : type === "salida" || type === "merma" ? current - amount : current + amount;
+  const typeLabel = type === "ajuste" ? "Corrección por conteo físico" : type === "entrada" ? "Ingreso de inventario" : "Salida de inventario";
+  if (!canManage) return null;
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="rounded-lg"><ArrowRightLeft className="size-3.5" /> Ajustar stock</Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader><DialogTitle>Ajustar stock · {product.name}</DialogTitle><DialogDescription>El movimiento queda registrado y no modifica costos ni lotes de compras.</DialogDescription></DialogHeader>
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="product_id" value={product.id} />
+          <input type="hidden" name="reason" value={typeLabel} />
+          <FormMessage state={state} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2"><Label>Tipo de movimiento</Label><select name="movement_type" value={type} onChange={(e) => setType(e.target.value)} className="flex h-10 w-full rounded-xl border bg-white px-3 text-sm"><option value="entrada">Ingreso de inventario</option><option value="salida">Salida de inventario</option><option value="ajuste">Corrección por conteo físico</option></select></div>
+            <div className="space-y-2"><Label htmlFor={`stock-qty-${product.id}`}>{type === "ajuste" ? "Stock contado" : "Cantidad"}</Label><Input id={`stock-qty-${product.id}`} name="quantity" type="number" min="0" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} required className="rounded-xl" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><p className="text-muted-foreground">Stock anterior</p><p className="font-semibold">{formatNumber(current)}</p></div><div><p className="text-muted-foreground">Stock resultante</p><p className={cn("font-semibold", result < 0 ? "text-rose-600" : "text-emerald-700")}>{formatNumber(result)}</p></div></div>
+          <div className="space-y-2"><Label htmlFor={`stock-notes-${product.id}`}>Notas (opcional)</Label><Textarea id={`stock-notes-${product.id}`} name="notes" placeholder="Detalle del conteo o autorización" className="rounded-xl" /></div>
+          <DialogFooter><Button type="submit" disabled={pending} className="rounded-xl">{pending ? "Guardando..." : "Confirmar movimiento"}</Button></DialogFooter>
+        </form>
+        <div className="border-t pt-4"><p className="mb-2 flex items-center gap-2 text-sm font-medium"><History className="size-4" /> Historial reciente</p>{history.length ? <div className="space-y-2 text-xs">{history.map((movement) => <div key={movement.id} className="rounded-lg border px-3 py-2"><div className="flex items-center justify-between"><span className="font-medium">{movement.movement_type} · {movement.reason}</span><span className="text-muted-foreground">{formatNumber(movement.stock_before)} → {formatNumber(movement.stock_after)}</span></div><div className="mt-1 text-muted-foreground">{new Intl.DateTimeFormat("es-BO", { dateStyle: "short", timeStyle: "short" }).format(new Date(movement.created_at))} · {movement.created_by_name ?? "Usuario no disponible"}</div></div>)}</div> : <p className="text-xs text-muted-foreground">Todavía no hay movimientos registrados.</p>}</div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function NativeSelect({
   name,
   defaultValue,
@@ -285,6 +335,10 @@ function ProductForm({
       <FormMessage state={state} />
 
       <div className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2 border-b border-border/60 pb-2 pt-1">
+          <p className="text-sm font-semibold">Información general</p>
+          <p className="text-xs text-muted-foreground">Identidad, categoría y estado del producto.</p>
+        </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor={`${mode}-name`}>Nombre</Label>
           <Input
@@ -383,6 +437,11 @@ function ProductForm({
           </NativeSelect>
         </div>
 
+        <div className="md:col-span-2 border-b border-border/60 pb-2 pt-3">
+          <p className="text-sm font-semibold">Unidades</p>
+          <p className="text-xs text-muted-foreground">Define cómo se mide, inventaría y entrega.</p>
+        </div>
+
         <div className="space-y-2 md:col-span-2">
           <Label>Unidad base</Label>
           {unitLocked ? (
@@ -477,6 +536,11 @@ function ProductForm({
           </p>
         </div>
 
+        <div className="md:col-span-2 border-b border-border/60 pb-2 pt-3">
+          <p className="text-sm font-semibold">Inventario</p>
+          <p className="text-xs text-muted-foreground">El stock actual se modifica únicamente desde Ajustar stock.</p>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor={`${mode}-stock-min`}>Stock minimo</Label>
           <Input
@@ -544,6 +608,11 @@ function ProductForm({
               }}
             />
           ) : null}
+        </div>
+
+        <div className="md:col-span-2 border-b border-border/60 pb-2 pt-3">
+          <p className="text-sm font-semibold">Información comercial</p>
+          <p className="text-xs text-muted-foreground">Descripción, fotografía y uso en el catálogo.</p>
         </div>
 
         <div className="space-y-2">
@@ -849,6 +918,7 @@ export function ProductManagement({
   categories,
   units,
   productIdsWithMovements,
+  movementHistory,
   filters,
   qbUnits,
   qbProductUnitSettings,
@@ -950,13 +1020,9 @@ export function ProductManagement({
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead>Producto</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Unidad</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead className="text-right">Minimo</TableHead>
-                  <TableHead className="text-right">Compra</TableHead>
-                  <TableHead className="text-right">Venta</TableHead>
-                  <TableHead className="text-right">Margen</TableHead>
+                  <TableHead>Categoria / unidad</TableHead>
+                  <TableHead className="text-right">Stock actual</TableHead>
+                  <TableHead className="text-right">Stock mínimo</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
@@ -986,23 +1052,14 @@ export function ProductManagement({
                       </div>
                     </TableCell>
                     <TableCell>
-                      {product.category?.name ?? "Sin categoria"}
+                      <p>{product.category?.name ?? "Sin categoria"}</p>
+                      <p className="text-xs text-muted-foreground">{effectiveUnit(product)}</p>
                     </TableCell>
-                    <TableCell>{effectiveUnit(product)}</TableCell>
                     <TableCell className="text-right">
-                      {formatNumber(product.stock_current)}
+                      <span className={cn("font-semibold", Number(product.stock_current) < 0 ? "text-rose-700" : Number(product.stock_current) === 0 ? "text-rose-600" : Number(product.stock_current) <= Number(product.stock_min) ? "text-amber-700" : "text-emerald-700")}>{formatNumber(product.stock_current)}</span> <span className="text-xs text-muted-foreground">{effectiveUnit(product)}</span>
                     </TableCell>
                     <TableCell className="text-right">
                       {formatNumber(product.stock_min)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(product.purchase_price)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(product.sale_price)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {product.margin_percentage.toFixed(1)}%
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1.5">
@@ -1051,6 +1108,7 @@ export function ProductManagement({
                       <div className="flex justify-end gap-2">
                         {canManage ? (
                           <>
+                            <StockAdjustmentDialog product={product} history={movementHistory[product.id] ?? []} canManage={canManage} />
                             <Dialog
                               defaultOpen={
                                 filters.q?.trim().toLocaleLowerCase("es") ===

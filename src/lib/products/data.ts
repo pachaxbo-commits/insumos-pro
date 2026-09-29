@@ -47,6 +47,17 @@ export type ProductsCatalogData = {
   categories: ProductCategory[];
   units: UnitOfMeasure[];
   productIdsWithMovements: string[];
+  movementHistory: Record<string, Array<{
+    id: string;
+    movement_type: string;
+    quantity: number;
+    stock_before: number;
+    stock_after: number;
+    reason: string;
+    created_at: string;
+    created_by: string | null;
+    created_by_name: string | null;
+  }>>;
   pagination: {
     page: number;
     pageSize: number;
@@ -273,6 +284,7 @@ export async function getProductsCatalogData(
       categories: [],
       units: [],
       productIdsWithMovements: [],
+      movementHistory: {},
       pagination: { page: requestedPage, pageSize, total: 0, totalPages: 1 },
       summary: { activeProducts: 0, lowStockProducts: 0, publicProducts: 0 },
       ...getEmptyQbParametrizationData(),
@@ -373,6 +385,7 @@ export async function getProductsCatalogData(
       categories: [],
       units: [],
       productIdsWithMovements: [],
+      movementHistory: {},
       pagination: { page: requestedPage, pageSize, total: 0, totalPages: 1 },
       summary: { activeProducts: 0, lowStockProducts: 0, publicProducts: 0 },
       ...getEmptyQbParametrizationData(),
@@ -398,7 +411,7 @@ export async function getProductsCatalogData(
         )
       : stockFilteredRows;
   const productIds = rows.map((product) => product.id);
-  const [qbParametrizationData, movementProductsResult] = await Promise.all([
+  const [qbParametrizationData, movementProductsResult, movementHistoryResult] = await Promise.all([
     options.includeQbParametrization
       ? loadQbParametrizationData(
           supabase,
@@ -416,7 +429,29 @@ export async function getProductsCatalogData(
           data: [] as Array<{ product_id: string }>,
           error: null,
         }),
+    productIds.length
+      ? supabase
+          .from("inventory_movements")
+          .select("id, product_id, movement_type, quantity, stock_before, stock_after, reason, created_at, created_by, created_by_profile:profiles!inventory_movements_created_by_fkey(full_name)")
+          .in("product_id", productIds)
+          .order("created_at", { ascending: false })
+          .limit(Math.max(productIds.length * 8, 40))
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  const movementHistory: ProductsCatalogData["movementHistory"] = {};
+  for (const movement of (movementHistoryResult.data ?? []) as Array<{
+    id: string; product_id: string; movement_type: string; quantity: number | string;
+    stock_before: number | string; stock_after: number | string; reason: string; created_at: string; created_by: string | null;
+    created_by_profile: { full_name: string | null } | Array<{ full_name: string | null }> | null;
+  }>) {
+    const history = movementHistory[movement.product_id] ?? [];
+    if (history.length < 8) {
+      const profile = Array.isArray(movement.created_by_profile) ? movement.created_by_profile[0] : movement.created_by_profile;
+      history.push({ ...movement, quantity: Number(movement.quantity), stock_before: Number(movement.stock_before), stock_after: Number(movement.stock_after), created_by_name: profile?.full_name ?? null });
+      movementHistory[movement.product_id] = history;
+    }
+  }
 
   const products = rows.map((product) => ({
     ...product,
@@ -452,8 +487,9 @@ export async function getProductsCatalogData(
                 product_id: string;
               }>
             ).map((row) => row.product_id),
-          ),
-        ],
+        ),
+      ],
+    movementHistory,
     ...qbParametrizationData,
     pagination: {
       page: requestedPage,
