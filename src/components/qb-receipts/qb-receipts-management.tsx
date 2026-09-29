@@ -1012,7 +1012,7 @@ function ReceiptCard({
   );
 
   return (
-    <Card>
+    <Card id={`receipt-${receipt.id}`} className="scroll-mt-24">
       <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="font-mono text-base">
@@ -1075,16 +1075,25 @@ function ReceiptCard({
             voidAction={voidAction} voidPending={voidPending} /> : null}
         {receipt.status === "borrador" ? (
           receipt.pricingMode === "line_cost_markup" ? null :
-          <DraftEditor
-            receipt={receipt}
-            updateAction={updateAction}
-            updatePending={updatePending}
-            emitAction={emitAction}
-            emitPending={emitPending}
-            voidAction={voidAction}
-            voidPending={voidPending}
-            comparisonUnits={comparisonUnits}
-          />
+          <details className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-amber-950">
+              Borrador anterior · abrir editor histórico
+            </summary>
+            <p className="my-2 text-xs text-amber-900">
+              Este borrador se creó antes del cálculo por producto. Sus factores generales
+              pertenecen solo al modelo anterior; los recibos nuevos usan factores por línea.
+            </p>
+            <DraftEditor
+              receipt={receipt}
+              updateAction={updateAction}
+              updatePending={updatePending}
+              emitAction={emitAction}
+              emitPending={emitPending}
+              voidAction={voidAction}
+              voidPending={voidPending}
+              comparisonUnits={comparisonUnits}
+            />
+          </details>
         ) : receipt.status === "emitido" ? (
           <div className="space-y-3">
             {actionMessage(trackingState)}

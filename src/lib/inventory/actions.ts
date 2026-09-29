@@ -6,7 +6,6 @@ import { z } from "zod";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/audit/log";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { INVENTORY_MOVEMENT_TYPES } from "@/types/inventory";
 
 type ActionState = {
   success: boolean;
@@ -17,11 +16,11 @@ const mutationRoles = new Set(["administrador", "inventario"]);
 
 const movementSchema = z.object({
   product_id: z.uuid("Selecciona un producto."),
-  movement_type: z.enum(INVENTORY_MOVEMENT_TYPES),
+  movement_type: z.enum(["entrada", "salida", "ajuste", "merma"]),
   quantity: z.coerce
     .number()
     .finite("La cantidad debe ser valida.")
-    .positive("La cantidad debe ser mayor a cero."),
+    .nonnegative("La cantidad no puede ser negativa."),
   reason: z.string().trim().min(3, "El motivo debe tener al menos 3 caracteres."),
   notes: z.preprocess(
     (value) => {
@@ -31,6 +30,15 @@ const movementSchema = z.object({
     },
     z.string().nullable(),
   ),
+}).superRefine((value, context) => {
+  if (value.movement_type !== "ajuste" && value.quantity === 0) {
+    context.addIssue({ code: "custom", path: ["quantity"],
+      message: "La cantidad debe ser mayor a cero." });
+  }
+  if (Math.abs(value.quantity * 1000 - Math.round(value.quantity * 1000)) > 0.0000001) {
+    context.addIssue({ code: "custom", path: ["quantity"],
+      message: "La cantidad admite como máximo tres decimales." });
+  }
 });
 
 async function assertCanRegisterMovement() {

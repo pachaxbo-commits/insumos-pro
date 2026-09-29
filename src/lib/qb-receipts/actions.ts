@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { requireRoleAccess } from "@/lib/auth/session";
@@ -202,6 +203,9 @@ export async function createQbReceiptDraftAction(
   }
 
   revalidatePath("/recibos");
+  if (typeof data === "string") {
+    redirect(`/recibos?section=borradores#receipt-${data}`);
+  }
   return {
     success: true,
     message: "Recibo QB creado en borrador.",

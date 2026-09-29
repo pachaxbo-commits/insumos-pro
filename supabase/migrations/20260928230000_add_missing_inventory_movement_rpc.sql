@@ -1,5 +1,6 @@
 -- Add the inventory movement RPC required by the Products stock adjustment flow.
 -- This migration intentionally does not recreate tables or apply historical schema files.
+begin;
 
 create or replace function public.register_inventory_movement(
   p_product_id uuid,
@@ -11,7 +12,7 @@ create or replace function public.register_inventory_movement(
 returns uuid
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 declare
   v_user_id uuid := auth.uid();
@@ -39,12 +40,16 @@ begin
     raise exception 'Selecciona un producto.';
   end if;
 
-  if p_movement_type not in ('entrada', 'salida', 'ajuste', 'merma', 'devolucion') then
+  -- Match the existing inventory_movements_type_check constraint.
+  if p_movement_type is null or p_movement_type not in ('entrada', 'salida', 'ajuste', 'merma') then
     raise exception 'Tipo de movimiento invalido.';
   end if;
 
-  if p_quantity is null or p_quantity <= 0 then
-    raise exception 'La cantidad debe ser mayor a cero.';
+  if p_quantity is null or p_quantity::text in ('NaN', 'Infinity', '-Infinity')
+    or p_quantity < 0 or p_quantity > 99999999999.999
+    or p_quantity <> round(p_quantity, 3)
+    or (p_movement_type <> 'ajuste' and p_quantity = 0) then
+    raise exception 'La cantidad debe ser valida y tener como maximo tres decimales.';
   end if;
 
   if p_reason is null or length(btrim(p_reason)) < 3 then
@@ -62,7 +67,7 @@ begin
     raise exception 'Producto no encontrado o inactivo.';
   end if;
 
-  if p_movement_type in ('entrada', 'devolucion') then
+  if p_movement_type = 'entrada' then
     v_stock_after := v_stock_before + p_quantity;
     v_quantity := p_quantity;
   elsif p_movement_type in ('salida', 'merma') then
@@ -105,8 +110,11 @@ begin
 end;
 $$;
 
-revoke all on function public.register_inventory_movement(uuid, text, numeric, text, text) from public;
+revoke all on function public.register_inventory_movement(uuid, text, numeric, text, text)
+  from public, anon, authenticated;
 grant execute on function public.register_inventory_movement(uuid, text, numeric, text, text) to authenticated;
 
 comment on function public.register_inventory_movement(uuid, text, numeric, text, text)
   is 'Registra un movimiento auditado y actualiza stock_current. No crea pedidos, entregas, recibos ni ventas.';
+
+commit;

@@ -26,7 +26,24 @@ function initialDraft(line: QbReceiptLine): Draft {
     notes: line.notes ?? "" };
 }
 
-function linePreview(line: QbReceiptLine, draft: Draft) {
+function linePreview(line: QbReceiptLine, draft: Draft, issuedSnapshot = false) {
+  if (issuedSnapshot && line.costBaseUnitSnapshot !== null
+    && line.costTotalPrecise !== null && line.saleTotalPrecise !== null
+    && line.profitTotalPrecise !== null) {
+    const quantity = new Decimal(line.deliveredBaseQuantity);
+    const saleTotal = new Decimal(line.saleTotalPrecise);
+    const profitTotal = new Decimal(line.profitTotalPrecise);
+    return {
+      factorTotalPct: new Decimal(line.distanceFactorPercent).plus(line.exigencyFactorPercent)
+        .plus(line.weatherFactorPercent).plus(line.extraordinaryFactorPercent).toString(),
+      costBaseUnit: line.costBaseUnitSnapshot,
+      unitSale: quantity.isZero() ? "0" : saleTotal.div(quantity).toString(),
+      unitProfit: line.profitUnitPrecise ?? (quantity.isZero() ? "0" : profitTotal.div(quantity).toString()),
+      costTotal: line.costTotalPrecise,
+      saleTotal: line.saleTotalPrecise,
+      profitTotal: line.profitTotalPrecise,
+    };
+  }
   if (draft.cost.trim() === "") return null;
   try {
     return calculateReceiptLine({ quantity: line.deliveredBaseQuantity, costBaseUnit: draft.cost,
@@ -60,7 +77,8 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
       notes: draft.notes };
   }));
   const previews = useMemo(() => receipt.lines.map((line) =>
-    linePreview(line, drafts[line.id] ?? initialDraft(line))), [drafts, receipt.lines]);
+    linePreview(line, drafts[line.id] ?? initialDraft(line), !editable)),
+    [drafts, editable, receipt.lines]);
   const complete = previews.every(Boolean) && previews.length > 0;
   const totals = complete ? sumReceiptAmounts(previews.map((item) => ({
     costTotal: item!.costTotal, saleTotal: item!.saleTotal,
@@ -120,7 +138,7 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
                     {orderLines.filter((line) => (line.categoryName ?? "Sin categoría") === category)
                       .map((line, index) => {
                         const draft = drafts[line.id] ?? initialDraft(line);
-                        const preview = linePreview(line, draft);
+                        const preview = linePreview(line, draft, !editable);
                         const input = (field: keyof Draft, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}
