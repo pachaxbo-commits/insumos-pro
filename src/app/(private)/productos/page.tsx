@@ -119,6 +119,7 @@ async function ProductsCatalogContent({
         categories={data.categories}
         units={data.units}
         productIdsWithMovements={data.productIdsWithMovements}
+        movementHistory={data.movementHistory}
         filters={filters}
         qbUnits={data.qbUnits}
         qbProductUnitSettings={data.qbProductUnitSettings}
