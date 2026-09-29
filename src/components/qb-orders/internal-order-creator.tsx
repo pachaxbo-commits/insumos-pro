@@ -109,7 +109,6 @@ export function InternalOrderCreator({
   const startingLines = initialDraftLines(editingOrder ?? undefined);
   const [open, setOpen] = useState(initiallyOpen || editing);
   const [step, setStep] = useState<1 | 2>(1);
-  const [locationExpanded, setLocationExpanded] = useState(false);
   const [customerId, setCustomerId] = useState(
     editingOrder?.customerAccountId ?? "",
   );
@@ -130,6 +129,7 @@ export function InternalOrderCreator({
   const [productSearch, setProductSearch] = useState("");
   const [catalogLimit, setCatalogLimit] = useState(PRODUCT_BATCH_SIZE);
   const [selectionMessage, setSelectionMessage] = useState("");
+  const [stepMessage, setStepMessage] = useState("");
   const [state, setState] = useState<QbOrderActionState>(initialState);
   const [pending, startTransition] = useTransition();
   const [historyPending, startHistoryTransition] = useTransition();
@@ -282,7 +282,22 @@ export function InternalOrderCreator({
     return (
       <div
         key={product.id}
-        className={selected ? "rounded-lg border border-emerald-400 bg-emerald-50 p-3" : "rounded-lg border bg-white p-3"}
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        aria-label={`${selected ? "Quitar" : "Seleccionar"} ${product.name}`}
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest("label, input, select, textarea, button")) {
+            toggleProduct(product.id);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            toggleProduct(product.id);
+          }
+        }}
+        className={selected ? "cursor-pointer rounded-lg border border-emerald-400 bg-emerald-50 p-3" : "cursor-pointer rounded-lg border bg-white p-3"}
       >
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
           <input
@@ -290,13 +305,13 @@ export function InternalOrderCreator({
             aria-label={`Seleccionar ${product.name}`}
             checked={selected}
             onChange={() => toggleProduct(product.id)}
-            className="size-4 rounded border-input accent-emerald-700"
+            className="size-5 rounded border-input accent-emerald-700"
           />
           {product.name}
           {!line ? <span className="ml-auto text-xs text-muted-foreground">{visibleUnit?.label ?? "Sin unidad"}</span> : null}
         </label>
         {line ? <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(110px,1fr)_minmax(100px,1fr)]">
-          <label className="space-y-1 text-xs">Unidad
+          <label className="space-y-1 text-xs">Unidad <span className="text-blue-700">*</span>
             <select
               aria-label={`Unidad de ${product.name}`}
               value={line.allowedUnitId}
@@ -313,7 +328,7 @@ export function InternalOrderCreator({
               ))}
             </select>
           </label>
-          <label className="space-y-1 text-xs">Cantidad
+          <label className="space-y-1 text-xs">Cantidad <span className="text-blue-700">*</span>
             <Input
               aria-label={`Cantidad de ${product.name}`}
               type="number"
@@ -347,10 +362,10 @@ export function InternalOrderCreator({
   }
 
   function selectCustomer(value: string) {
+    setStepMessage("");
     resetHistorySelection();
     const customer = customers.find((item) => item.id === value);
     setCustomerId(value);
-    setLocationExpanded(false);
     setLocationId(
       customer?.locations.find((location) => location.isPrimary)?.id ??
         customer?.locations[0]?.id ??
@@ -372,7 +387,7 @@ export function InternalOrderCreator({
 
   function resetAfterConfirmedCreation() {
     setStep(1);
-    setLocationExpanded(false);
+    setStepMessage("");
     setCustomerId("");
     setLocationId("");
     setOperationalDate(boliviaTomorrow());
@@ -452,9 +467,9 @@ export function InternalOrderCreator({
   }
 
   return (
-    <Card className="border-emerald-200">
-      <CardHeader className="flex-row items-center justify-between gap-3">
-        <div>
+    <Card className="gap-0 border-emerald-200">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-x-8 gap-y-3 pb-3">
+        <div className="min-w-0 flex-1">
           <CardTitle>{editing ? "Editar pedido" : "Nuevo pedido"}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {editing
@@ -464,7 +479,8 @@ export function InternalOrderCreator({
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
+          className="min-h-11 shrink-0 border-2 border-blue-600 bg-white px-5 font-semibold text-blue-800 shadow-sm hover:bg-blue-50"
           onClick={() => {
             if (editing) onCancelEdit?.();
             else setOpen(false);
@@ -475,7 +491,7 @@ export function InternalOrderCreator({
         </Button>
       </CardHeader>
       <CardContent>
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="order_mode" value="registered" />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />
           <input type="hidden" name="items" value={itemsPayload} />
@@ -500,16 +516,15 @@ export function InternalOrderCreator({
             </>
           ) : null}
 
-          <div className="flex items-center gap-2 border-b pb-2 text-sm">
-            <span className={step === 1 ? "font-semibold text-emerald-900" : "text-muted-foreground"}>1. Cliente y entrega</span>
-            <span aria-hidden>→</span>
-            <span className={step === 2 ? "font-semibold text-emerald-900" : "text-muted-foreground"}>2. Productos</span>
+          <div className="border-b pb-2 text-sm font-semibold text-emerald-900" aria-live="polite">
+            {step === 1 ? "Datos del pedido" : "Productos del pedido"}
           </div>
 
-          <div className={step === 1 ? "space-y-4" : "hidden"}>
-            <div className="grid gap-4 lg:grid-cols-2">
+          <div className={step === 1 ? "space-y-3" : "hidden"}>
+            <p className="text-sm text-muted-foreground"><span className="font-semibold text-blue-700">*</span> Campos obligatorios</p>
+            <div className="grid gap-3 lg:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="internal-customer">Cliente</Label>
+                <Label htmlFor="internal-customer" className="text-sm font-semibold">Cliente <span className="text-blue-700">*</span></Label>
                 <select
                   id="internal-customer"
                   name={editing ? undefined : "customer_account_id"}
@@ -517,7 +532,7 @@ export function InternalOrderCreator({
                   onChange={(event) => selectCustomer(event.target.value)}
                   required
                   disabled={editing}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  className="h-12 w-full rounded-md border bg-background px-3 text-base"
                 >
                   <option value="">Seleccionar cliente</option>
                   {customers.map((customer) => (
@@ -527,19 +542,20 @@ export function InternalOrderCreator({
                   ))}
                 </select>
               </div>
-              <div className={locationExpanded || !locationId ? "space-y-2" : "hidden"}>
-                <Label htmlFor="internal-location">Ubicación</Label>
+              <div className="space-y-2">
+                <Label htmlFor="internal-location" className="text-sm font-semibold">Ubicación <span className="text-blue-700">*</span></Label>
                 <select
                   id="internal-location"
                   name={editing ? undefined : "customer_location_id"}
                   value={locationId}
                   onChange={(event) => {
+                    setStepMessage("");
                     resetHistorySelection();
                     setLocationId(event.target.value);
                   }}
                   required
                   disabled={editing}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  className="h-12 w-full rounded-md border bg-background px-3 text-base"
                 >
                   <option value="">Seleccionar ubicación</option>
                   {(selectedCustomer?.locations ?? []).map((location) => (
@@ -552,10 +568,10 @@ export function InternalOrderCreator({
               <div className="space-y-2">
                 <Label
                   htmlFor="internal-operational-date"
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 text-sm font-semibold"
                 >
                   <CalendarDays className="size-4 text-emerald-700" />
-                  Fecha de entrega
+                  Fecha de entrega <span className="text-blue-700">*</span>
                 </Label>
                 <Input
                   id="internal-operational-date"
@@ -563,21 +579,18 @@ export function InternalOrderCreator({
                   type="date"
                   min={boliviaToday()}
                   value={operationalDate}
-                  onChange={(event) => setOperationalDate(event.target.value)}
+                  onChange={(event) => {
+                    setStepMessage("");
+                    setOperationalDate(event.target.value);
+                  }}
                   required
+                  className="h-12 text-base"
                 />
                 <p className="text-xs text-muted-foreground">
                   El pedido aparecerá en la planilla de esta fecha.
                 </p>
               </div>
             </div>
-
-            {customerId && locationId && !locationExpanded ? (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>Ubicación: {selectedCustomer?.locations.find((item) => item.id === locationId)?.label}</span>
-                {!editing ? <Button type="button" size="sm" variant="link" onClick={() => setLocationExpanded(true)}>Cambiar ubicación</Button> : null}
-              </div>
-            ) : null}
 
             {customerId && selectedCustomer && selectedCustomer.locations.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -649,8 +662,25 @@ export function InternalOrderCreator({
               <Textarea id="internal-customer-notes" name="customer_notes" value={customerNotes}
                 onChange={(event) => setCustomerNotes(event.target.value)} maxLength={1000} rows={2} />
             </div>
-            <Button type="button" disabled={!customerId || !locationId || !operationalDate}
-              onClick={() => setStep(2)}>Siguiente: Productos</Button>
+            {stepMessage ? <p role="alert" className="text-sm font-medium text-destructive">{stepMessage}</p> : null}
+            <div className="flex justify-end border-t pt-4">
+              <Button
+                type="button"
+                className="min-h-12 w-full border-2 border-blue-800 bg-blue-700 px-6 text-base font-semibold text-white shadow-sm hover:bg-blue-800 sm:w-auto"
+                onClick={() => {
+                  if (!customerId) setStepMessage("Selecciona un cliente");
+                  else if (!locationId) {
+                    setStepMessage("Selecciona una ubicación");
+                  } else if (!operationalDate) setStepMessage("Selecciona una fecha de entrega");
+                  else {
+                    setStepMessage("");
+                    setStep(2);
+                  }
+                }}
+              >
+                Continuar a productos →
+              </Button>
+            </div>
           </div>
 
           <section
@@ -668,11 +698,8 @@ export function InternalOrderCreator({
                   sugeridos por el promedio aparecen primero.
                 </p>
               </div>
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                <span className="font-semibold text-emerald-800">
-                  {lines.length}
-                </span>{" "}
-                de {maxSelectedProducts} seleccionados
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-semibold text-emerald-800" aria-live="polite">
+                {lines.length} {lines.length === 1 ? "producto seleccionado" : "productos seleccionados"}
               </div>
             </div>
 
@@ -690,7 +717,7 @@ export function InternalOrderCreator({
                 }}
                 placeholder="Buscar por producto o categoría"
                 aria-label="Buscar en todos los productos"
-                className="pl-9"
+                className="h-11 border-2 border-slate-300 bg-white pl-9 text-base focus-visible:border-blue-600"
               />
             </div>
 
@@ -719,6 +746,7 @@ export function InternalOrderCreator({
               <Button
                 type="button"
                 variant="outline"
+                className="border-blue-300 font-semibold text-blue-800 hover:bg-blue-50"
                 onClick={() =>
                   setCatalogLimit((current) => current + PRODUCT_BATCH_SIZE)
                 }
@@ -737,19 +765,28 @@ export function InternalOrderCreator({
 
           {state.message ? (
             <div
-              className={`rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
+              role={state.success ? "status" : "alert"}
+              className={state.success && !editing
+                ? "rounded-lg border-2 border-emerald-300 bg-emerald-50 px-5 py-4 text-emerald-900 shadow-sm"
+                : `rounded-md p-3 text-sm ${state.success ? "bg-emerald-50 text-emerald-800" : "bg-destructive/5 text-destructive"}`}
             >
-              {state.message}
-              {state.reference ? ` Referencia: ${state.reference}` : ""}
+              {state.success && !editing ? (
+                <p className="text-base font-bold">✓ Pedido creado correctamente</p>
+              ) : null}
+              <p className={state.success && !editing ? "mt-1 text-sm" : undefined}>
+                {state.message}
+                {state.reference ? ` Referencia: ${state.reference}` : ""}
+              </p>
             </div>
           ) : null}
 
           {step === 2 ? <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
             <span>{selectedCustomer?.label} · {operationalDate} · {lines.length} productos seleccionados</span>
-            <Button type="button" variant="outline" onClick={() => setStep(1)}>Volver</Button>
+            <Button type="button" variant="outline" className="border-2 border-blue-600 px-5 font-semibold text-blue-800 hover:bg-blue-50" onClick={() => setStep(1)}>Volver</Button>
           </div> : null}
           {step === 2 ? <Button
             type="submit"
+            className="min-h-11 border-2 border-blue-800 bg-blue-700 px-5 font-semibold text-white hover:bg-blue-800"
             disabled={
               pending ||
               (!editing && !idempotencyKey) ||
@@ -766,9 +803,7 @@ export function InternalOrderCreator({
                 : "Creando..."
               : editing
                 ? "Guardar cambios"
-                : customerId && locationId && operationalDate && lines.length
-                  ? "Crear pedido"
-                  : "Selecciona productos"}
+                : `Continuar con ${lines.length} productos →`}
           </Button> : null}
         </form>
       </CardContent>

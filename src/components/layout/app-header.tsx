@@ -27,11 +27,11 @@ export function AppHeader({ user }: { user: SessionUser }) {
   );
 
   return (
-    <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-100/95 px-3 py-2 lg:px-5">
+    <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-100/95 px-3 py-2.5 lg:px-5">
       <Link href="/" aria-label="QB Insumos, inicio" className="shrink-0">
         <QbInsumosBrand variant="compact" />
       </Link>
-      <nav aria-label="Navegación principal" className="flex min-w-0 flex-1 gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:thin]">
+      <nav aria-label="Navegación principal" className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:thin]">
         {navigation.map((item) => {
           const active = pathname === item.href ||
             (item.href !== "/matriz-operativa" && pathname.startsWith(`${item.href}/`));
@@ -42,11 +42,11 @@ export function AppHeader({ user }: { user: SessionUser }) {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors",
+                "inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors",
                 active ? "bg-emerald-900 text-white" : "text-slate-700 hover:bg-slate-100",
               )}
             >
-              <Icon className="size-4" aria-hidden="true" />
+              <Icon className="size-4.5" aria-hidden="true" />
               {item.href === "/matriz-operativa" ? "Operación" : item.title}
             </Link>
           );
