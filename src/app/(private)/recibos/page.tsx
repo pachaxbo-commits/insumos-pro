@@ -11,15 +11,15 @@ export default async function RecibosPage({
   await requireRoleAccess("/recibos");
   const { section } = await searchParams;
   const data = await getQbReceiptsData();
-  const initialSection = ["pendientes", "borradores", "emitidos", "historial"].includes(section ?? "")
-    ? (section as "pendientes" | "borradores" | "emitidos" | "historial")
+  const initialSection = ["pendientes", "borradores", "emitidos", "historial", "general"].includes(section ?? "")
+    ? (section as "pendientes" | "borradores" | "emitidos" | "historial" | "general")
     : undefined;
 
   return (
     <div className="space-y-4">
       <PageHeader
         eyebrow={undefined}
-        title="Recibos acumulativos"
+        title="Recibos"
         description=""
       />
       <QbReceiptsManagement

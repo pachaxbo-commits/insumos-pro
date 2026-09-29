@@ -172,17 +172,18 @@ test("PNG and WhatsApp capture only the customer-export receipt", () => {
 test("customer export hides internal factors, base price and fiscal notice", () => {
   assert.match(
     documentSource,
-    /!isExternalDocument \? \(\s*<th[^>]*>Venta antes de ajustes<\/th>/,
+    /!isExternalDocument \? \(\s*<th[^>]*>\{receipt\.pricingMode === "line_cost_markup" \? "Costo base\/UD" : "Venta antes de ajustes"\}<\/th>/,
   );
   assert.match(
     documentSource,
-    /!isExternalDocument \? \(\s*<div>\s*<p[^>]*>\s*Factores aplicados/,
+    /!isExternalDocument \? \(\s*<div>\s*<p[^>]*>[\s\S]*Factores aplicados/,
   );
   assert.match(
     documentSource,
     /!isExternalDocument \? \(\s*<p[^>]*>\s*No constituye factura fiscal/,
   );
-  assert.doesNotMatch(documentSource, /purchaseCost|Costo de compra|Utilidad/);
+  assert.match(documentSource, /!isExternalDocument && receipt\.pricingMode === "line_cost_markup"/);
+  assert.doesNotMatch(documentSource, /isCustomerExport\s*\?\s*[\s\S]{0,150}costBaseUnitSnapshot/);
 });
 
 test("customer export keeps the required customer-facing receipt fields", () => {
@@ -205,7 +206,7 @@ test("customer export keeps the required customer-facing receipt fields", () => 
 test("admin keeps subtotal while customer export exposes only the final total", () => {
   assert.match(
     documentSource,
-    /!isExternalDocument \? \(\s*<div[^>]*>\s*<span>Subtotal<\/span>[\s\S]*receipt\.subtotalAmount/,
+    /!isExternalDocument \? \(\s*<div[^>]*>\s*<span>\{receipt\.pricingMode === "line_cost_markup" \? "Costo total" : "Subtotal"\}<\/span>[\s\S]*receipt\.subtotalAmount/,
   );
   assert.match(documentSource, /<span>Total<\/span>[\s\S]*receipt\.totalAmount/);
   assert.equal((documentSource.match(/receipt\.subtotalAmount/g) ?? []).length, 1);
