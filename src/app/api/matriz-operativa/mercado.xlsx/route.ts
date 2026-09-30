@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Cache-Control": "private, no-store",
-      "Content-Disposition": `attachment; filename="qb-insumos-compras-mercado-${date}.xlsx"`,
+      "Content-Disposition": `attachment; filename="qb-insumos-provisiones-${date}.xlsx"`,
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     },

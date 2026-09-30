@@ -16,10 +16,12 @@ export type MarketSheetRow = {
   productId: string;
   category: string;
   productName: string;
+  stockCurrent: number;
   productColor: string | null;
   unit: string;
   quantities: number[];
   total: number;
+  reserved: number;
 };
 
 export type MarketSheetModel = {
@@ -70,6 +72,10 @@ function lineKey(line: MatrixLine) {
   return `${line.productId}:${line.sourceLabel}`;
 }
 
+function pendingQuantity(line: MatrixLine) {
+  return Math.max(line.requestedQuantity - line.deliveredQuantity, 0);
+}
+
 export function buildMarketSheetModel(
   data: OperationalMatrixData,
 ): MarketSheetModel {
@@ -97,17 +103,21 @@ export function buildMarketSheetModel(
       for (const line of lines) {
         const customerIndex = customerIndexByOrder.get(line.orderId);
         if (customerIndex === undefined) continue;
-        quantities[customerIndex] += line.requestedQuantity;
+        quantities[customerIndex] += pendingQuantity(line);
       }
       return {
         key,
         productId: first.productId,
         category: first.categoryName,
         productName: first.productName,
+        stockCurrent: first.stockCurrent,
         productColor: first.productColor,
         unit: first.sourceLabel,
         quantities: quantities.map((value) => Number(value.toFixed(6))),
         total: Number(
+          quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
+        ),
+        reserved: Number(
           quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
         ),
       } satisfies MarketSheetRow;

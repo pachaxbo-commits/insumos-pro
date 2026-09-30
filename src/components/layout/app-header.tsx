@@ -20,7 +20,7 @@ export function AppHeader({ user }: { user: SessionUser }) {
   const navigation = [
     ...activePaths.map((href) => mainNavigation.find((item) => item.href === href)),
     user.role === "administrador"
-      ? { href: "/matriz-operativa/mercado", title: "Hoja de compras", icon: FileSpreadsheet }
+      ? { href: "/matriz-operativa/mercado", title: "Hoja de provisiones", icon: FileSpreadsheet }
       : undefined,
   ].filter((item): item is NonNullable<typeof item> =>
     Boolean(item && canAccessPath(user.role, item.href)),
