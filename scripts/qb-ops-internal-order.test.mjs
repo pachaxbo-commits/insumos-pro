@@ -22,7 +22,7 @@ test("Nuevo pedido solo se habilita para administrador", () => {
 
 test("la interfaz crea pedidos únicamente para clientes registrados", () => {
   assert.match(creator, /name=\{editing \? undefined : "customer_account_id"\}/);
-  assert.match(creator, />Cliente<\/Label>/);
+  assert.match(creator, />Cliente\s*<span[^>]*>\*<\/span><\/Label>/);
   for (const name of ["business_name", "responsible_name", "phone", "address"]) {
     assert.doesNotMatch(creator, new RegExp(`name="${name}"`));
   }

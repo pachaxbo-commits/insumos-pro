@@ -803,7 +803,7 @@ export function InternalOrderCreator({
                 : "Creando..."
               : editing
                 ? "Guardar cambios"
-                : `Continuar con ${lines.length} productos →`}
+                : `Crear pedido · ${lines.length} ${lines.length === 1 ? "producto" : "productos"}`}
           </Button> : null}
         </form>
       </CardContent>

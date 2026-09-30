@@ -325,18 +325,19 @@ revoke all on function public.set_qb_receipt_manual_tracking(uuid,boolean,text)
 grant execute on function public.set_qb_receipt_manual_tracking(uuid,boolean,text)
   to authenticated;
 
--- Internal cost and margin snapshots are administrator-only at the data layer.
+-- Preserve the existing read roles; route and Server Action access to the
+-- administrative receipt workspace remain limited to administrators.
 drop policy if exists "Internal roles can view QB receipts" on public.qb_receipts;
 create policy "Internal roles can view QB receipts" on public.qb_receipts for select
-  using (public.current_user_role() in ('admin','administrador'));
+  using (public.current_user_role() in ('admin','administrador','inventario'));
 drop policy if exists "Internal roles can view QB receipt orders" on public.qb_receipt_orders;
 create policy "Internal roles can view QB receipt orders" on public.qb_receipt_orders for select
-  using (public.current_user_role() in ('admin','administrador'));
+  using (public.current_user_role() in ('admin','administrador','inventario'));
 drop policy if exists "Internal roles can view QB receipt lines" on public.qb_receipt_lines;
 create policy "Internal roles can view QB receipt lines" on public.qb_receipt_lines for select
-  using (public.current_user_role() in ('admin','administrador'));
+  using (public.current_user_role() in ('admin','administrador','inventario'));
 drop policy if exists "Internal roles can view QB receipt events" on public.qb_receipt_events;
 create policy "Internal roles can view QB receipt events" on public.qb_receipt_events for select
-  using (public.current_user_role() in ('admin','administrador'));
+  using (public.current_user_role() in ('admin','administrador','inventario'));
 
 commit;

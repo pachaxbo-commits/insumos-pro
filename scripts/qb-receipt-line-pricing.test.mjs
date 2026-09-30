@@ -128,5 +128,5 @@ test("migración conserva modo histórico, factores por línea y RPCs con rol", 
   assert.match(sql, /cost_base_unit_snapshot is null or cost_total_precise is null/);
   assert.match(sql, /QB_AMOUNT_RECEIPT_FIXED_SALE/);
   assert.match(sql, /sum\(cost_total_precise\), sum\(sale_total_precise\), sum\(profit_total_precise\)/);
-  assert.match(sql, /on public\.qb_receipt_lines for select\s+using \(public\.current_user_role\(\) in \('admin','administrador'\)\)/);
+  assert.match(sql, /on public\.qb_receipt_lines for select\s+using \(public\.current_user_role\(\) in \('admin','administrador','inventario'\)\)/);
 });
