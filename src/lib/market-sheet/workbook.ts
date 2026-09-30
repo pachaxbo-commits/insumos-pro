@@ -26,7 +26,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   workbook.created = new Date();
   workbook.modified = new Date();
 
-  const sheet = workbook.addWorksheet("Compras mercado", {
+  const sheet = workbook.addWorksheet("Provisiones", {
     views: [{ state: "frozen", xSplit: 3, ySplit: 5 }],
     pageSetup: {
       paperSize: 9,

@@ -7,7 +7,7 @@ export function MarketSheetActions({ date }: { date: string }) {
   const encodedDate = encodeURIComponent(date);
 
   return (
-    <section id="hoja-mercado" aria-label="Acciones de hoja de compras" className="print:hidden">
+    <section id="hoja-provisiones" aria-label="Acciones de hoja de provisiones" className="print:hidden">
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline" className="bg-white">
             <Link href={`/matriz-operativa/mercado?date=${encodedDate}`}>

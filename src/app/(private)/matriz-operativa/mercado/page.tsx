@@ -59,7 +59,7 @@ export default async function MarketPrintPage({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 print:hidden">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">Hoja de compras</h1>
+          <h1 className="text-xl font-semibold">Hoja de provisiones</h1>
         <Button asChild variant="outline">
           <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
             <ArrowLeft className="size-4" />
@@ -73,11 +73,11 @@ export default async function MarketPrintPage({
         </div>
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 print:hidden">
-        <label className="text-sm">Fecha de compras
+        <label className="text-sm">Fecha de provisiones
           <input type="date" name="date" defaultValue={date} className="mt-1 block rounded-md border p-2" />
         </label>
         <Button type="submit">Ver fecha</Button>
-        <p className="text-sm text-muted-foreground">Anota el precio de compra al imprimir o en Excel. Esta hoja no registra compras ni cambia precios.</p>
+        <p className="text-sm text-muted-foreground">Se genera directamente desde los pedidos. No registra compras ni cambia precios.</p>
       </form>
       {usedLatestDate ? (
         <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 print:hidden">
@@ -113,6 +113,10 @@ export default async function MarketPrintPage({
                     </th>
                   ))}
                   <th className="border border-slate-500 bg-emerald-100 px-2 py-2">TOTAL</th>
+                  <th className="border border-slate-500 bg-sky-100 px-2 py-2">STOCK FÍSICO</th>
+                  <th className="border border-slate-500 bg-amber-100 px-2 py-2">RESERVADO</th>
+                  <th className="border border-slate-500 bg-emerald-100 px-2 py-2">DISPONIBLE</th>
+                  <th className="border border-slate-500 bg-rose-100 px-2 py-2">FALTANTE / COMPRAR</th>
                   <th className="min-w-28 border border-slate-500 px-2 py-2">PRECIO COMPRA (Bs/UD)</th>
                 </tr>
               </thead>
@@ -128,6 +132,10 @@ export default async function MarketPrintPage({
                       </td>
                     ))}
                     <td className="border-b border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold">{quantity(row.total)}</td>
+                    <td className="border-b border-r border-slate-300 bg-sky-50 px-2 py-1 text-center">{quantity(row.stockCurrent)}</td>
+                    <td className="border-b border-r border-slate-300 bg-amber-50 px-2 py-1 text-center">{quantity(row.reserved)}</td>
+                    <td className={`border-b border-r border-slate-300 px-2 py-1 text-center font-semibold ${row.stockCurrent - row.reserved <= 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{quantity(Math.max(row.stockCurrent - row.reserved, 0))}</td>
+                    <td className={`border-b border-r border-slate-300 px-2 py-1 text-center font-semibold ${row.total > row.stockCurrent ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{quantity(Math.max(row.total - row.stockCurrent, 0))}</td>
                     <td className="border border-slate-300 bg-white px-2 py-1" aria-label={`Precio de compra de ${row.productName} por ${row.unit}`} />
                   </tr>
                 ))}

@@ -133,7 +133,7 @@ export function AppSidebar({
                   <FileSpreadsheet className="size-4" />
                 </span>
                 <span>
-                  <span className="block text-sm font-semibold">Hoja de compras</span>
+                  <span className="block text-sm font-semibold">Hoja de provisiones</span>
                   <span className="block text-xs text-sidebar-foreground/65">Vista para imprimir y Excel</span>
                 </span>
               </Link>
