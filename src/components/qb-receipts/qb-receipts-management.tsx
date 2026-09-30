@@ -1368,6 +1368,9 @@ export function QbReceiptsManagement({
   const draftCount = receipts.filter(
     (receipt) => receipt.status === "borrador",
   ).length;
+  const legacyDraftCount = receipts.filter(
+    (receipt) => receipt.status === "borrador" && receipt.pricingMode === "legacy",
+  ).length;
   const issuedReceipts = receipts.filter((receipt) => receipt.status !== "borrador");
   const customerOptions = [...new Map([
     ...receipts.map((receipt) => [receipt.customerId, receipt.customerName] as const),
@@ -1471,6 +1474,12 @@ export function QbReceiptsManagement({
           <p className="text-sm text-muted-foreground">
             Completa precios y costos, revisa el documento y emítelo cuando esté listo.
           </p>
+          {legacyDraftCount > 0 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              {legacyDraftCount} {legacyDraftCount === 1 ? "borrador es anterior" : "borradores son anteriores"} al cálculo por producto.
+              Conservan su editor histórico. Los recibos creados desde Por crear muestran la nueva tabla por producto.
+            </p>
+          ) : null}
           {receiptCards(receipts.filter((receipt) => receipt.status === "borrador"), "No hay borradores pendientes.")}
         </TabsContent>
 

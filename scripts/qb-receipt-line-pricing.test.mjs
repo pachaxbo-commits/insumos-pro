@@ -130,3 +130,18 @@ test("migración conserva modo histórico, factores por línea y RPCs con rol", 
   assert.match(sql, /sum\(cost_total_precise\), sum\(sale_total_precise\), sum\(profit_total_precise\)/);
   assert.match(sql, /on public\.qb_receipt_lines for select\s+using \(public\.current_user_role\(\) in \('admin','administrador','inventario'\)\)/);
 });
+
+test("borradores nuevos aceptan entregas históricas sin depender del editor legacy", () => {
+  const sql = readFileSync(
+    "supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql",
+    "utf8",
+  );
+  assert.doesNotMatch(sql, /public\.create_qb_receipt_draft\(/);
+  assert.match(sql, /pricing_mode\s*\)[\s\S]*'line_cost_markup'/);
+  assert.match(sql, /join public\.qb_order_delivery_movements movement/);
+  assert.match(sql, /movement\.delivered_base_quantity > 0/);
+  assert.match(sql, /coalesce\(product\.is_qb_loss_product, false\) = true/);
+  assert.doesNotMatch(sql, /product\.is_active = false/);
+  assert.match(sql, /left join public\.qb_product_unit_settings settings/);
+  assert.match(sql, /perform public\.recalculate_qb_receipt_totals\(v_receipt_id\)/);
+});
