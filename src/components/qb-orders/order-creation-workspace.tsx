@@ -3,15 +3,11 @@
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import {
-  ArrowRight,
   CalendarDays,
-  Check,
   Clock3,
   Filter,
-  PackageCheck,
   Pencil,
   TableProperties,
-  Truck,
   X,
 } from "lucide-react";
 
@@ -84,48 +80,12 @@ export function OrderCreationWorkspace({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
-        <Card className="border-emerald-200 bg-emerald-50/80 shadow-none">
-          <CardContent className="flex gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white">
-              <Check className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                Paso 1 · Administrador
-              </p>
-              <p className="mt-1 font-semibold">Crear pedido</p>
-            </div>
-          </CardContent>
-        </Card>
-        <ArrowRight className="mx-auto hidden size-5 text-muted-foreground lg:block" />
-        <Card className="border-dashed bg-white/55 shadow-none">
-          <CardContent className="flex gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-              <PackageCheck className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Paso 2 · Inventario o Administrador
-              </p>
-              <p className="mt-1 font-semibold">Preparar pedido</p>
-            </div>
-          </CardContent>
-        </Card>
-        <ArrowRight className="mx-auto hidden size-5 text-muted-foreground lg:block" />
-        <Card className="border-dashed bg-white/55 shadow-none">
-          <CardContent className="flex gap-3 p-4">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-              <Truck className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Paso 3 · Entregador o Administrador
-              </p>
-              <p className="mt-1 font-semibold">Confirmar cantidades</p>
-            </div>
-          </CardContent>
-        </Card>
+      <section aria-label="Etapas del pedido" className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-white/80 px-4 py-3 text-sm font-semibold sm:text-base">
+        <span className="text-emerald-800">1. Crear pedido</span>
+        <span aria-hidden="true" className="text-slate-400">→</span>
+        <span className="text-slate-700">2. Preparar</span>
+        <span aria-hidden="true" className="text-slate-400">→</span>
+        <span className="text-slate-700">3. Entregar</span>
       </section>
 
       <section ref={editorRef} className="scroll-mt-6 space-y-3">
@@ -134,7 +94,7 @@ export function OrderCreationWorkspace({
             {editingOrder ? "Editar pedido" : "Crear un pedido"}
           </h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Completa cliente, fecha y productos. El formulario ya está abierto y al final encontrarás un único botón para crearlo.
+            Selecciona el cliente y la entrega; después elige los productos.
           </p>
         </div>
         <LazyInternalOrderCreator
@@ -168,7 +128,7 @@ export function OrderCreationWorkspace({
               <Filter className="size-4" />
               Filtrar por fecha
             </Button>
-            <Button asChild size="sm">
+            <Button asChild size="sm" className="min-h-11 bg-blue-700 px-5 text-base font-semibold text-white shadow-sm hover:bg-blue-800">
               <Link href="/matriz-operativa?mode=preparacion">
                 <TableProperties className="size-4" />
                 Abrir preparación y entregas

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { requireRoleAccess } from "@/lib/auth/session";
@@ -14,6 +15,24 @@ const uuidSchema = z.string().uuid();
 const createDraftSchema = z.object({
   customerId: z.string().uuid(),
   orderIds: z.array(z.string().uuid()).min(1),
+});
+
+const lineFactorSchema = z.string().regex(/^\d+(?:\.\d{1,3})?$/)
+  .refine((value) => Number(value) <= 1000, "Factor fuera de rango.");
+const lineCostSchema = z.union([z.literal(""), z.string().regex(/^\d+(?:\.\d{1,8})?$/)
+  .refine((value) => Number(value) <= 99999999, "Costo fuera de rango.")]);
+
+const linePricingSchema = z.object({
+  receiptId: z.string().uuid(),
+  lines: z.array(z.object({
+    lineId: z.string().uuid(),
+    costBaseUnit: lineCostSchema,
+    distanceFactorPercent: lineFactorSchema,
+    exigencyFactorPercent: lineFactorSchema,
+    weatherFactorPercent: lineFactorSchema,
+    extraordinaryFactorPercent: lineFactorSchema,
+    notes: z.string().max(500),
+  })).min(1),
 });
 
 const nullableReceiptPriceSchema = z.preprocess((value) => {
@@ -83,7 +102,7 @@ const updateDraftSchema = z.object({
 const manualTrackingSchema = z.object({
   receiptId: z.string().uuid(),
   receiptSent: z.enum(["true", "false"]).transform((value) => value === "true"),
-  paymentStatus: z.enum(["pendiente", "pagado"]),
+  paymentStatus: z.enum(["pendiente", "pagado", "cobrado"]),
 });
 
 const nullablePurchaseCostSchema = z.preprocess((value) => {
@@ -174,7 +193,7 @@ export async function createQbReceiptDraftAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  const { data, error } = await supabase.rpc("create_qb_receipt_draft", {
+  const { data, error } = await supabase.rpc("create_qb_receipt_line_draft", {
     p_customer_account_id: parsed.data.customerId,
     p_order_ids: parsed.data.orderIds,
   });
@@ -184,11 +203,44 @@ export async function createQbReceiptDraftAction(
   }
 
   revalidatePath("/recibos");
+  if (typeof data === "string") {
+    redirect(`/recibos?section=borradores#receipt-${data}`);
+  }
   return {
     success: true,
     message: "Recibo QB creado en borrador.",
     receiptId: typeof data === "string" ? data : undefined,
   };
+}
+
+export async function setQbReceiptLinePricingAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  await requireRoleAccess("/recibos");
+  let lines: unknown;
+  try { lines = JSON.parse(String(formData.get("lines") ?? "[]")); }
+  catch { return initialFailure("Líneas inválidas."); }
+  const parsed = linePricingSchema.safeParse({ receiptId: formData.get("receipt_id"), lines });
+  if (!parsed.success) return initialFailure("Revisa costos y porcentajes por producto.");
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+  const { error } = await supabase.rpc("set_qb_receipt_line_pricing", {
+    p_receipt_id: parsed.data.receiptId,
+    p_lines: parsed.data.lines.map((line) => ({
+      line_id: line.lineId,
+      cost_base_unit: line.costBaseUnit === "" ? null : line.costBaseUnit,
+      distance_factor_percent: line.distanceFactorPercent,
+      exigency_factor_percent: line.exigencyFactorPercent,
+      weather_factor_percent: line.weatherFactorPercent,
+      extraordinary_factor_percent: line.extraordinaryFactorPercent,
+      notes: line.notes,
+    })),
+  });
+  if (error) return initialFailure(errorMessage(error, "No se pudieron guardar las líneas."));
+  revalidatePath("/recibos");
+  revalidatePath(`/recibos/${parsed.data.receiptId}`);
+  return { success: true, message: "Productos y factores guardados." };
 }
 
 export async function updateQbReceiptDraftAction(

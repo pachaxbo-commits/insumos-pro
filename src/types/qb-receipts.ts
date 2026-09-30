@@ -1,5 +1,6 @@
 export type QbReceiptStatus = "borrador" | "emitido" | "anulado";
-export type QbReceiptPaymentStatus = "pendiente" | "pagado";
+export type QbReceiptPaymentStatus = "pendiente" | "pagado" | "cobrado";
+export type QbReceiptPricingMode = "legacy" | "line_cost_markup";
 
 export type QbReceiptComparisonUnit = {
   id: string;
@@ -15,6 +16,8 @@ export type QbReceiptLine = {
   orderReference: string;
   productId: string;
   productName: string;
+  productCode: string | null;
+  categoryName: string | null;
   deliveredBaseQuantity: number;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
@@ -36,6 +39,16 @@ export type QbReceiptLine = {
   previousBasePrice: number | null;
   previousBasePricePerArroba: number | null;
   purchaseCostTotal: number | null;
+  costBaseUnitSnapshot: string | null;
+  costTotalPrecise: string | null;
+  saleTotalPrecise: string | null;
+  profitUnitPrecise: string | null;
+  profitTotalPrecise: string | null;
+  costSource: "manual" | "purchase_snapshot" | "fifo" | null;
+  distanceFactorPercent: number;
+  exigencyFactorPercent: number;
+  weatherFactorPercent: number;
+  extraordinaryFactorPercent: number;
   purchaseCostReferenceUnitId: string | null;
   purchaseCostReferenceUnitSymbol: string | null;
   purchaseCostReferenceValue: number | null;
@@ -61,6 +74,7 @@ export type QbReceipt = {
   id: string;
   number: string;
   status: QbReceiptStatus;
+  pricingMode: QbReceiptPricingMode;
   customerId: string;
   customerName: string;
   customerEmail: string;
@@ -73,6 +87,9 @@ export type QbReceipt = {
   extraordinaryFactorPercent: number;
   subtotalAmount: number;
   totalAmount: number;
+  costTotalPrecise: string | null;
+  saleTotalPrecise: string | null;
+  profitTotalPrecise: string | null;
   hasPendingPrices: boolean;
   visibleNote: string | null;
   internalNotes: string | null;

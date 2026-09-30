@@ -13,6 +13,7 @@
     "test:matrix-units": "node --experimental-strip-types scripts/qb-matrix-quantity-units.test.mjs",
     "test:delivery-polish": "node --experimental-strip-types scripts/qb-delivery-polish.test.mjs",
     "test:receipt-calculations": "node --experimental-strip-types scripts/qb-receipt-calculations.test.mjs",
+    "test:receipt-line-pricing": "node --experimental-strip-types scripts/qb-receipt-line-pricing.test.mjs",
     "test:main-flow": "node scripts/qb-main-flow-acceptance.test.mjs",
     "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs"
   },
@@ -23,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "decimal.js": "^10.6.0",
     "exceljs": "^4.4.0",
     "html-to-image": "1.11.13",
     "lucide-react": "^1.18.0",

@@ -18,6 +18,10 @@ type ReceiptRow = {
   id: string;
   receipt_number: string;
   status: "borrador" | "emitido" | "anulado";
+  pricing_mode?: "legacy" | "line_cost_markup";
+  cost_total_precise?: number | string | null;
+  sale_total_precise?: number | string | null;
+  profit_total_precise?: number | string | null;
   customer_account_id: string;
   period_start: string | null;
   period_end: string | null;
@@ -32,7 +36,7 @@ type ReceiptRow = {
   issued_at: string | null;
   receipt_sent_at: string | null;
   receipt_sent_by: string | null;
-  payment_status: "pendiente" | "pagado";
+  payment_status: "pendiente" | "pagado" | "cobrado";
   paid_at: string | null;
   paid_by: string | null;
   voided_at: string | null;
@@ -65,6 +69,8 @@ type ReceiptLineRow = {
   order_id: string;
   product_id: string;
   product_name_snapshot: string;
+  product_code_snapshot?: string | null;
+  category_name_snapshot?: string | null;
   delivered_base_quantity: number | string;
   base_unit_symbol: string;
   visible_unit_label: string;
@@ -81,6 +87,16 @@ type ReceiptLineRow = {
   final_unit_price: number | string | null;
   line_total: number | string | null;
   purchase_cost_total: number | string | null;
+  cost_base_unit_snapshot?: number | string | null;
+  cost_total_precise?: number | string | null;
+  sale_total_precise?: number | string | null;
+  profit_unit_precise?: number | string | null;
+  profit_total_precise?: number | string | null;
+  cost_source?: "manual" | "purchase_snapshot" | "fifo" | null;
+  distance_factor_percent?: number | string;
+  exigency_factor_percent?: number | string;
+  weather_factor_percent?: number | string;
+  extraordinary_factor_percent?: number | string;
   purchase_cost_reference_unit_id: string | null;
   purchase_cost_reference_value: number | string | null;
   notes: string | null;
@@ -102,6 +118,9 @@ type ProductPriceRow = {
   base_sale_price: number | string | null;
   base_price_unit_id: string | null;
 };
+
+type ProductMetaRow = { id: string; sku: string | null; category?:
+  { name: string } | { name: string }[] | null };
 
 type UnitSymbolRow = {
   id: string;
@@ -139,6 +158,11 @@ function nullableNumberValue(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nullableDecimalText(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  return Number.isFinite(Number(value)) ? String(value) : null;
 }
 
 function snapshotText(snapshot: Record<string, unknown> | null, key: string) {
@@ -237,6 +261,7 @@ function mapReceipt(
     id: row.id,
     number: row.receipt_number,
     status: row.status,
+    pricingMode: row.pricing_mode ?? "legacy",
     customerId: row.customer_account_id,
     customerName: customerName(customer),
     customerEmail: customer?.email ?? "Sin correo",
@@ -249,8 +274,12 @@ function mapReceipt(
     extraordinaryFactorPercent: numberValue(row.extraordinary_factor_percent),
     subtotalAmount: numberValue(row.subtotal_amount),
     totalAmount: numberValue(row.total_amount),
+    costTotalPrecise: nullableDecimalText(row.cost_total_precise),
+    saleTotalPrecise: nullableDecimalText(row.sale_total_precise),
+    profitTotalPrecise: nullableDecimalText(row.profit_total_precise),
     hasPendingPrices: lines.some(
       (line) =>
+        (row.pricing_mode === "line_cost_markup" && line.costBaseUnitSnapshot === null) ||
         line.deliveredBaseQuantity <= 0 ||
         (line.inputMode === "quantity" &&
           (line.basePriceUsed === null ||
@@ -306,7 +335,7 @@ async function getReceiptParts(
     supabase
       .from("qb_receipt_lines")
       .select(
-        "id, receipt_id, order_id, product_id, product_name_snapshot, delivered_base_quantity, base_unit_symbol, visible_unit_label, order_input_mode, requested_amount_bs, currency_snapshot, pricing_unit_id, estimated_base_quantity, fixed_line_amount, original_base_price, base_price_used, base_price_edited, save_as_new_base_price, final_unit_price, line_total, purchase_cost_total, purchase_cost_reference_unit_id, purchase_cost_reference_value, notes, order:qb_orders(id, public_reference)",
+        "*, order:qb_orders(id, public_reference)",
       )
       .in("receipt_id", receiptIds)
       .order("created_at", { ascending: true }),
@@ -320,6 +349,7 @@ async function getReceiptParts(
   const lineRows = (linesResult.data ?? []) as ReceiptLineRow[];
   const productIds = [...new Set(lineRows.map((line) => line.product_id))];
   const priceByProduct = new Map<string, ProductPriceRow>();
+  const metaByProduct = new Map<string, ProductMetaRow>();
   const unitById = new Map<string, UnitSymbolRow>();
   let arrobaUnit: UnitSymbolRow | undefined;
 
@@ -332,6 +362,11 @@ async function getReceiptParts(
     for (const price of (priceData ?? []) as ProductPriceRow[]) {
       priceByProduct.set(price.product_id, price);
     }
+
+    const { data: metaData } = await supabase.from("products")
+      .select("id, sku, category:product_categories(name)")
+      .in("id", productIds);
+    for (const item of (metaData ?? []) as ProductMetaRow[]) metaByProduct.set(item.id, item);
 
     const unitIds = [
       ...new Set([
@@ -395,6 +430,8 @@ async function getReceiptParts(
         orderReference: order?.public_reference ?? "Pedido",
         productId: row.product_id,
         productName: row.product_name_snapshot,
+        productCode: row.product_code_snapshot ?? metaByProduct.get(row.product_id)?.sku ?? null,
+        categoryName: row.category_name_snapshot ?? single(metaByProduct.get(row.product_id)?.category)?.name ?? null,
         deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
@@ -424,6 +461,16 @@ async function getReceiptParts(
         previousBasePrice: null,
         previousBasePricePerArroba: null,
         purchaseCostTotal: nullableNumberValue(row.purchase_cost_total),
+        costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
+        costTotalPrecise: nullableDecimalText(row.cost_total_precise),
+        saleTotalPrecise: nullableDecimalText(row.sale_total_precise),
+        profitUnitPrecise: nullableDecimalText(row.profit_unit_precise),
+        profitTotalPrecise: nullableDecimalText(row.profit_total_precise),
+        costSource: row.cost_source ?? null,
+        distanceFactorPercent: numberValue(row.distance_factor_percent),
+        exigencyFactorPercent: numberValue(row.exigency_factor_percent),
+        weatherFactorPercent: numberValue(row.weather_factor_percent),
+        extraordinaryFactorPercent: numberValue(row.extraordinary_factor_percent),
         purchaseCostReferenceUnitId:
           row.purchase_cost_reference_unit_id,
         purchaseCostReferenceUnitSymbol: row.purchase_cost_reference_unit_id
@@ -536,7 +583,7 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
   const { data, error } = await supabase
     .from("qb_receipts")
     .select(
-      "id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, receipt_sent_at, receipt_sent_by, payment_status, paid_at, paid_by, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)",
+      "*, customer:customer_accounts(id, email, full_name, phone)",
     )
     .order("created_at", { ascending: false });
 
@@ -606,7 +653,7 @@ export async function getQbReceiptDetailData(
   const { data, error } = await supabase
     .from("qb_receipts")
     .select(
-      "id, receipt_number, status, customer_account_id, period_start, period_end, distance_factor_percent, exigency_factor_percent, weather_factor_percent, extraordinary_factor_percent, subtotal_amount, total_amount, visible_note, internal_notes, issued_at, receipt_sent_at, receipt_sent_by, payment_status, paid_at, paid_by, voided_at, void_reason, created_at, customer:customer_accounts(id, email, full_name, phone)",
+      "*, customer:customer_accounts(id, email, full_name, phone)",
     )
     .eq("id", receiptId)
     .maybeSingle<ReceiptRow>();

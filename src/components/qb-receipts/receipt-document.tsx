@@ -4,13 +4,13 @@ import type { QbReceipt } from "@/types/qb-receipts";
 
 type ReceiptDocumentVariant = "admin" | "customer-export" | "delivery-note";
 
-function money(value: number | null) {
-  if (value === null || value <= 0) return "Precio pendiente";
+function money(value: number | string | null) {
+  if (value === null) return "Precio pendiente";
   return new Intl.NumberFormat("es-BO", {
     style: "currency",
     currency: "BOB",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(Number(value));
 }
 
 function quantity(value: number) {
@@ -150,7 +150,10 @@ export function ReceiptDocument({
               {!isExternalDocument ? <th className="py-2 pr-3">Pedido</th> : null}
               <th className="py-2 pr-3 text-right">Cantidad</th>
               {!isExternalDocument ? (
-                <th className="py-2 pr-3 text-right">Venta antes de ajustes</th>
+                <th className="py-2 pr-3 text-right">{receipt.pricingMode === "line_cost_markup" ? "Costo base/UD" : "Venta antes de ajustes"}</th>
+              ) : null}
+              {!isExternalDocument && receipt.pricingMode === "line_cost_markup" ? (
+                <th className="py-2 pr-3 text-right">D/E/C/X %</th>
               ) : null}
               {showsPrices ? (
                 <>
@@ -176,9 +179,16 @@ export function ReceiptDocument({
                 </td>
                 {!isExternalDocument ? (
                   <td className="py-3 pr-3 text-right">
-                    {line.inputMode === "amount_bs"
+                    {receipt.pricingMode === "line_cost_markup"
+                      ? money(line.costBaseUnitSnapshot)
+                      : line.inputMode === "amount_bs"
                       ? `${money(line.originalBasePrice)} (referencia)`
                       : money(line.basePriceUsed)}
+                  </td>
+                ) : null}
+                {!isExternalDocument && receipt.pricingMode === "line_cost_markup" ? (
+                  <td className="py-3 pr-3 text-right text-xs">
+                    {line.distanceFactorPercent}/{line.exigencyFactorPercent}/{line.weatherFactorPercent}/{line.extraordinaryFactorPercent}%
                   </td>
                 ) : null}
                 {showsPrices ? (
@@ -207,20 +217,22 @@ export function ReceiptDocument({
         {!isExternalDocument ? (
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
-              Factores aplicados
+              {receipt.pricingMode === "line_cost_markup" ? "Costo y utilidad" : "Factores aplicados"}
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Distancia {receipt.distanceFactorPercent}% · Exigencia{" "}
+              {receipt.pricingMode === "line_cost_markup" ?
+                `Costo ${money(receipt.costTotalPrecise)} · Utilidad ${money(receipt.profitTotalPrecise)}` :
+              <>Distancia {receipt.distanceFactorPercent}% · Exigencia{" "}
               {receipt.exigencyFactorPercent}% · Clima{" "}
               {receipt.weatherFactorPercent}% · Extraordinario{" "}
-              {receipt.extraordinaryFactorPercent}%
+              {receipt.extraordinaryFactorPercent}%</>}
             </p>
           </div>
         ) : null}
         <div className="w-[280px] space-y-2 rounded-lg border p-4">
           {!isExternalDocument ? (
             <div className="flex justify-between text-sm">
-              <span>Subtotal</span>
+              <span>{receipt.pricingMode === "line_cost_markup" ? "Costo total" : "Subtotal"}</span>
               <span>
                 {receipt.hasPendingPrices
                   ? "Precio pendiente"

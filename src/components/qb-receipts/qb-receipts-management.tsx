@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ReceiptLineWorkspace } from "@/components/qb-receipts/receipt-line-workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import {
   voidQbReceiptAction,
 } from "@/lib/qb-receipts/actions";
 import { formatBoliviaDate } from "@/lib/date-time";
+import { summarizeReceipts } from "@/lib/qb-receipts/line-pricing";
 import type {
   QbReceipt,
   QbReceiptActionState,
@@ -985,6 +987,7 @@ function DraftEditor({
 
 function ReceiptCard({
   receipt,
+  relatedReceipts,
   comparisonUnits,
   updateAction,
   updatePending,
@@ -994,6 +997,7 @@ function ReceiptCard({
   voidPending,
 }: {
   receipt: QbReceipt;
+  relatedReceipts: QbReceipt[];
   comparisonUnits: QbReceiptComparisonUnit[];
   updateAction: (formData: FormData) => void;
   updatePending: boolean;
@@ -1008,7 +1012,7 @@ function ReceiptCard({
   );
 
   return (
-    <Card>
+    <Card id={`receipt-${receipt.id}`} className="scroll-mt-24">
       <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="font-mono text-base">
@@ -1059,23 +1063,37 @@ function ReceiptCard({
             <p className="text-xs text-muted-foreground">Total</p>
             <p className="text-xl font-semibold">
               {receipt.hasPendingPrices
-                ? "Precio pendiente"
+                ? receipt.pricingMode === "line_cost_markup" ? "Costo pendiente" : "Precio pendiente"
                 : money(receipt.totalAmount)}
             </p>
           </div>
         </div>
 
+        {receipt.pricingMode === "line_cost_markup" ?
+          <ReceiptLineWorkspace receipt={receipt} relatedReceipts={relatedReceipts}
+            emitAction={emitAction} emitPending={emitPending}
+            voidAction={voidAction} voidPending={voidPending} /> : null}
         {receipt.status === "borrador" ? (
-          <DraftEditor
-            receipt={receipt}
-            updateAction={updateAction}
-            updatePending={updatePending}
-            emitAction={emitAction}
-            emitPending={emitPending}
-            voidAction={voidAction}
-            voidPending={voidPending}
-            comparisonUnits={comparisonUnits}
-          />
+          receipt.pricingMode === "line_cost_markup" ? null :
+          <details className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-amber-950">
+              Borrador anterior · abrir editor histórico
+            </summary>
+            <p className="my-2 text-xs text-amber-900">
+              Este borrador se creó antes del cálculo por producto. Sus factores generales
+              pertenecen solo al modelo anterior; los recibos nuevos usan factores por línea.
+            </p>
+            <DraftEditor
+              receipt={receipt}
+              updateAction={updateAction}
+              updatePending={updatePending}
+              emitAction={emitAction}
+              emitPending={emitPending}
+              voidAction={voidAction}
+              voidPending={voidPending}
+              comparisonUnits={comparisonUnits}
+            />
+          </details>
         ) : receipt.status === "emitido" ? (
           <div className="space-y-3">
             {actionMessage(trackingState)}
@@ -1093,6 +1111,7 @@ function ReceiptCard({
                 <select name="payment_status" defaultValue={receipt.paymentStatus} className="block h-10 w-full rounded-md border bg-white px-3 text-sm">
                   <option value="pendiente">Pendiente</option>
                   <option value="pagado">Pagado</option>
+                  <option value="cobrado">Cobrado</option>
                 </select>
               </label>
               <Button type="submit" disabled={trackingPending}>
@@ -1139,6 +1158,74 @@ function currentBoliviaMonth() {
   }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}`;
+}
+
+function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
+  const [customerId, setCustomerId] = useState("all");
+  const [month, setMonth] = useState("all");
+  const [year, setYear] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const customers = [...new Map(receipts.map((receipt) =>
+    [receipt.customerId, receipt.customerName])).entries()];
+  const withKnownCosts = receipts.filter((receipt) => receipt.costTotalPrecise !== null
+    || (receipt.lines.length > 0 && receipt.lines.every((line) => line.purchaseCostTotal !== null)));
+  const rows = withKnownCosts.map((receipt) => ({
+    customerId: receipt.customerId,
+    date: (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 10),
+    status: receipt.status,
+    costTotal: receipt.costTotalPrecise ?? receipt.lines.reduce((sum, line) => sum + (line.purchaseCostTotal ?? 0), 0),
+    saleTotal: receipt.saleTotalPrecise ?? receipt.totalAmount,
+  }));
+  const summary = summarizeReceipts(rows, {
+    customerId: customerId === "all" ? undefined : customerId,
+    month: month === "all" ? undefined : Number(month),
+    year: year === "all" ? undefined : Number(year),
+    startDate: startDate || undefined, endDate: endDate || undefined,
+  });
+  const years = [...new Set(receipts.map((receipt) =>
+    (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 4)))].sort().reverse();
+  return <div className="space-y-3 rounded-lg border bg-white p-3">
+    <div className="flex flex-wrap items-end gap-2 text-xs">
+      <label>Cliente<select className="ml-1 h-8 rounded border px-2" value={customerId}
+        onChange={(event) => setCustomerId(event.target.value)}>
+        <option value="all">Todos</option>{customers.map(([id,name]) =>
+          <option key={id} value={id}>{name}</option>)}</select></label>
+      <label>Año<select className="ml-1 h-8 rounded border px-2" value={year}
+        onChange={(event) => setYear(event.target.value)}><option value="all">Todos</option>
+        {years.map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>Mes<select className="ml-1 h-8 rounded border px-2" value={month}
+        onChange={(event) => setMonth(event.target.value)}><option value="all">Todos</option>
+        {Array.from({length: 12},(_,index) => index + 1).map((item) =>
+          <option key={item} value={item}>{item}</option>)}</select></label>
+      <label>Desde<input type="date" className="ml-1 h-8 rounded border px-2" value={startDate}
+        onChange={(event) => setStartDate(event.target.value)} /></label>
+      <label>Hasta<input type="date" className="ml-1 h-8 rounded border px-2" value={endDate}
+        onChange={(event) => setEndDate(event.target.value)} /></label>
+    </div>
+    <p className="text-xs text-muted-foreground">Solo recibos emitidos con costo conocido. Los históricos sin costo no se incluyen en utilidad.</p>
+    <div className="overflow-x-auto"><table className="w-full text-sm">
+      <thead className="bg-slate-100 text-left text-xs"><tr>
+        <th className="px-2 py-2">Cliente</th><th className="px-2 py-2 text-right">Recibos</th>
+        <th className="px-2 py-2 text-right">Costo Bs</th><th className="px-2 py-2 text-right">Venta Bs</th>
+        <th className="px-2 py-2 text-right">Utilidad Bs</th><th className="px-2 py-2 text-right">% Utilidad</th>
+      </tr></thead><tbody>
+      {summary.customers.map((item) => <tr key={item.customerId} className="border-t">
+        <td className="px-2 py-2">{customers.find(([id]) => id === item.customerId)?.[1] ?? "Cliente"}</td>
+        <td className="px-2 py-2 text-right">{item.count}</td>
+        <td className="px-2 py-2 text-right">{money(Number(item.costTotal))}</td>
+        <td className="px-2 py-2 text-right">{money(Number(item.saleTotal))}</td>
+        <td className="px-2 py-2 text-right">{money(Number(item.profitTotal))}</td>
+        <td className="px-2 py-2 text-right">{Number(item.marginPercent).toFixed(2)}%</td>
+      </tr>)}
+      </tbody><tfoot className="border-t bg-emerald-50 font-semibold"><tr>
+        <td className="px-2 py-2">TOTAL GENERAL</td><td className="px-2 py-2 text-right">{summary.selected.length}</td>
+        <td className="px-2 py-2 text-right">{money(Number(summary.total.costTotal))}</td>
+        <td className="px-2 py-2 text-right">{money(Number(summary.total.saleTotal))}</td>
+        <td className="px-2 py-2 text-right">{money(Number(summary.total.profitTotal))}</td>
+        <td className="px-2 py-2 text-right">{Number(summary.total.marginPercent).toFixed(2)}%</td>
+      </tr></tfoot></table></div>
+  </div>;
 }
 
 function ReceiptHistoryPanel({
@@ -1223,7 +1310,7 @@ function ReceiptHistoryPanel({
                   <td className="max-w-80 px-3 py-2 font-mono text-xs">{receipt.orders.map((order) => order.orderReference).join(", ")}</td>
                   <td className="px-3 py-2 text-right font-semibold">{receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.totalAmount)}</td>
                   <td className="px-3 py-2">{receipt.receiptSentAt ? "Enviado" : "No enviado"}</td>
-                  <td className="px-3 py-2">{receipt.paymentStatus === "pagado" ? "Pagado" : "Pendiente"}</td>
+                  <td className="px-3 py-2">{receipt.paymentStatus === "cobrado" ? "Cobrado" : receipt.paymentStatus === "pagado" ? "Pagado" : "Pendiente"}</td>
                 </tr>
               ))}
               {!pendingRows.length && !receiptRows.length ? (
@@ -1258,9 +1345,10 @@ export function QbReceiptsManagement({
   receipts: QbReceipt[];
   pendingGroups: QbReceiptCustomerGroup[];
   comparisonUnits: QbReceiptComparisonUnit[];
-  initialSection?: "pendientes" | "borradores" | "emitidos" | "historial";
+  initialSection?: "pendientes" | "borradores" | "emitidos" | "historial" | "general";
   error?: string;
 }) {
+  const [focusedCustomerId, setFocusedCustomerId] = useState("all");
   const [createState, createAction, createPending] = useActionState(
     createQbReceiptDraftAction,
     initialState,
@@ -1280,7 +1368,14 @@ export function QbReceiptsManagement({
   const draftCount = receipts.filter(
     (receipt) => receipt.status === "borrador",
   ).length;
+  const legacyDraftCount = receipts.filter(
+    (receipt) => receipt.status === "borrador" && receipt.pricingMode === "legacy",
+  ).length;
   const issuedReceipts = receipts.filter((receipt) => receipt.status !== "borrador");
+  const customerOptions = [...new Map([
+    ...receipts.map((receipt) => [receipt.customerId, receipt.customerName] as const),
+    ...pendingGroups.map((group) => [group.customerId, group.customerName] as const),
+  ]).entries()].sort((a,b) => a[1].localeCompare(b[1], "es"));
   const issuedCount = receipts.filter((receipt) => receipt.status === "emitido").length;
   const pendingCount = pendingGroups.reduce(
     (total, group) => total + group.orders.length,
@@ -1291,7 +1386,9 @@ export function QbReceiptsManagement({
     (pendingCount > 0 ? "pendientes" : draftCount > 0 ? "borradores" : "emitidos");
 
   function receiptCards(items: QbReceipt[], emptyMessage: string) {
-    if (!items.length) {
+    const visibleItems = items.filter((receipt) => focusedCustomerId === "all"
+      || receipt.customerId === focusedCustomerId);
+    if (!visibleItems.length) {
       return (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -1301,10 +1398,11 @@ export function QbReceiptsManagement({
       );
     }
 
-    return items.map((receipt) => (
+    return visibleItems.map((receipt) => (
       <ReceiptCard
         key={receipt.id}
         receipt={receipt}
+        relatedReceipts={receipts}
         comparisonUnits={comparisonUnits}
         updateAction={updateAction}
         updatePending={updatePending}
@@ -1333,6 +1431,14 @@ export function QbReceiptsManagement({
         {actionMessage(voidState)}
       </div>
 
+      <label className="inline-flex items-center gap-2 text-sm">Cliente
+        <select className="h-9 max-w-72 rounded border bg-white px-2" value={focusedCustomerId}
+          onChange={(event) => setFocusedCustomerId(event.target.value)}>
+          <option value="all">Todos los clientes</option>
+          {customerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+      </label>
+
       <Tabs defaultValue={defaultSection} className="space-y-5">
         <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1">
           <TabsTrigger value="pendientes" className="min-h-11 flex-none px-4">
@@ -1354,6 +1460,7 @@ export function QbReceiptsManagement({
             <History className="size-4" />
             Historial por cliente
           </TabsTrigger>
+          <TabsTrigger value="general" className="min-h-11 flex-none px-4">Resumen general</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pendientes" className="space-y-4">
@@ -1367,6 +1474,12 @@ export function QbReceiptsManagement({
           <p className="text-sm text-muted-foreground">
             Completa precios y costos, revisa el documento y emítelo cuando esté listo.
           </p>
+          {legacyDraftCount > 0 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              {legacyDraftCount} {legacyDraftCount === 1 ? "borrador es anterior" : "borradores son anteriores"} al cálculo por producto.
+              Conservan su editor histórico. Los recibos creados desde Por crear muestran la nueva tabla por producto.
+            </p>
+          ) : null}
           {receiptCards(receipts.filter((receipt) => receipt.status === "borrador"), "No hay borradores pendientes.")}
         </TabsContent>
 
@@ -1380,6 +1493,7 @@ export function QbReceiptsManagement({
         <TabsContent value="historial">
           <ReceiptHistoryPanel receipts={receipts} pendingGroups={pendingGroups} />
         </TabsContent>
+        <TabsContent value="general"><ReceiptGeneralSummary receipts={receipts} /></TabsContent>
       </Tabs>
     </div>
   );

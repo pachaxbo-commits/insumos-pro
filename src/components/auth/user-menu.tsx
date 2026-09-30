@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck, UserRound } from "lucide-react";
 
 import { logoutAction } from "@/lib/auth/actions";
 import { getRoleLabel } from "@/lib/auth/roles";
@@ -19,17 +19,6 @@ type UserMenuProps = {
   user: SessionUser;
 };
 
-function getInitials(user: SessionUser) {
-  const source = user.fullName?.trim() || user.email || "QB";
-
-  return source
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export function UserMenu({ user }: UserMenuProps) {
   return (
     <DropdownMenu>
@@ -39,8 +28,8 @@ export function UserMenu({ user }: UserMenuProps) {
           className="size-9 rounded-full border-slate-200 bg-white p-0 hover:bg-slate-50"
           aria-label="Abrir menú de usuario"
         >
-          <span className="flex size-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold text-white">
-            {getInitials(user)}
+          <span className="flex size-8 items-center justify-center rounded-xl bg-slate-900 text-white">
+            <UserRound className="size-4.5" aria-hidden="true" />
           </span>
         </Button>
       </DropdownMenuTrigger>
