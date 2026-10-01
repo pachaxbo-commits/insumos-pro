@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireRoleAccess } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { testDataResetEnabled } from "@/lib/test-data-reset/config";
 
 export type ResetMode = "receipts" | "orders";
@@ -22,9 +23,9 @@ export type ResetPreview = {
 
 export async function getTestDataResetPreview(mode: ResetMode) {
   await requireRoleAccess("/configuracion/datos-prueba");
-  const admin = createSupabaseAdminClient();
-  if (!admin) return { data: null, error: "Falta la configuración privada de mantenimiento." };
-  const { data, error } = await admin.rpc("preview_qb_test_data_reset", { p_mode: mode });
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return { data: null, error: "Supabase no está disponible." };
+  const { data, error } = await supabase.rpc("preview_qb_test_data_reset", { p_mode: mode });
   return { data: data as ResetPreview | null, error: error?.message ?? null };
 }
 
