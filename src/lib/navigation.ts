@@ -18,13 +18,13 @@ export const mainNavigation: NavItem[] = [
     title: "Inicio",
     href: "/",
     icon: LayoutDashboard,
-    description: "Resumen de la operación.",
+    description: "Accesos a las funciones disponibles.",
   },
   {
-    title: "Productos",
-    href: "/productos",
+    title: "Stock",
+    href: "/stock",
     icon: Package,
-    description: "Catálogo y configuración.",
+    description: "Existencias y movimientos.",
   },
   {
     title: "Ingresos",

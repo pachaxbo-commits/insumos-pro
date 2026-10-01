@@ -162,11 +162,13 @@ assert.match(
   roles,
   /administrador: \[[\s\S]*"\/pedidos"[\s\S]*"\/matriz-operativa"/,
 );
-assert.match(roles, /inventario: \["\/", "\/matriz-operativa"\]/);
+assert.match(roles, /inventario: \["\/", "\/matriz-operativa", "\/stock"\]/);
 assert.match(roles, /entregador: \["\/", "\/matriz-operativa"\]/);
 assert.doesNotMatch(roles, /inventario: \[[^\]]*"\/pedidos"/);
-assert.match(home, /getFocusedWorkspace\(auth\.user\.role\)/);
-assert.match(home, /redirect\(workspace\.href\)/);
+assert.match(home, /requireRoleAccess\("\/"\)/);
+assert.match(home, /sections\.filter\(\(section\) =>/);
+assert.match(home, /section\.href !== "\/matriz-operativa\/mercado" \|\| auth\.user\.role === "administrador"/);
+assert.match(home, /title="Inicio"/);
 assert.match(ordersManagement, /date=\$\{order\.operationalDate\}/);
 assert.match(ordersManagement, /mode=\$\{[\s\S]*"entrega"[\s\S]*"preparacion"/);
 assert.match(ordersManagement, /order=\$\{order\.id\}/);
@@ -269,8 +271,8 @@ assert.match(
   appSidebar,
   /adminAvailablePaths[\s\S]*"\/matriz-operativa"/,
 );
-assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/productos"/);
-assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/parametrizacion"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/stock"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/configuracion"/);
 assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/clientes"/);
 assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/recibos"/);
 assert.match(navigation, /title: "Abrir preparación y entregas"/);

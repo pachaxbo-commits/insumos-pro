@@ -37,6 +37,7 @@ export type MatrixLine = {
   orderId: string;
   productId: string;
   productName: string;
+  stockCurrent: number;
   productColor: string | null;
   controlsActualWeight: boolean;
   categoryName: string;

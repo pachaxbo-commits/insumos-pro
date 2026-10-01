@@ -209,7 +209,7 @@ function FormMessage({ state }: { state: ActionState }) {
   );
 }
 
-function StockAdjustmentDialog({
+export function StockAdjustmentDialog({
   product,
   history,
   canManage,
@@ -918,7 +918,6 @@ export function ProductManagement({
   categories,
   units,
   productIdsWithMovements,
-  movementHistory,
   filters,
   qbUnits,
   qbProductUnitSettings,
@@ -1108,7 +1107,6 @@ export function ProductManagement({
                       <div className="flex justify-end gap-2">
                         {canManage ? (
                           <>
-                            <StockAdjustmentDialog product={product} history={movementHistory[product.id] ?? []} canManage={canManage} />
                             <Dialog
                               defaultOpen={
                                 filters.q?.trim().toLocaleLowerCase("es") ===

@@ -10,17 +10,25 @@ import { canAccessPath } from "@/lib/auth/roles";
 import { mainNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types/auth";
+import type { AppAppearance } from "@/lib/app-appearance/data";
+import type { MenuKey } from "@/lib/app-appearance/model";
 
-export function AppHeader({ user }: { user: SessionUser }) {
+const keyByPath: Record<string, MenuKey> = {
+  "/": "home", "/pedidos": "orders", "/matriz-operativa": "operation",
+  "/stock": "stock", "/recibos": "receipts", "/clientes": "customers",
+  "/matriz-operativa/mercado": "provision", "/configuracion": "settings",
+};
+
+export function AppHeader({ user, appearance }: { user: SessionUser; appearance: AppAppearance }) {
   const pathname = usePathname();
   const activePaths = [
-    "/productos", "/pedidos", "/matriz-operativa", "/recibos",
-    "/parametrizacion", "/clientes", "/historial",
+    "/", "/pedidos", "/matriz-operativa", "/stock", "/recibos",
+    "/clientes", "/configuracion",
   ];
   const navigation = [
     ...activePaths.map((href) => mainNavigation.find((item) => item.href === href)),
     user.role === "administrador"
-      ? { href: "/matriz-operativa/mercado", title: "Hoja de compras", icon: FileSpreadsheet }
+      ? { href: "/matriz-operativa/mercado", title: "Hoja de Provisión", icon: FileSpreadsheet }
       : undefined,
   ].filter((item): item is NonNullable<typeof item> =>
     Boolean(item && canAccessPath(user.role, item.href)),
@@ -28,8 +36,8 @@ export function AppHeader({ user }: { user: SessionUser }) {
 
   return (
     <header className="sticky top-0 z-50 flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-100/95 px-3 py-2.5 lg:px-5">
-      <Link href="/" aria-label="QB Insumos, inicio" className="shrink-0">
-        <QbInsumosBrand variant="compact" />
+      <Link href="/" aria-label={`${appearance.systemName}, inicio`} className="shrink-0">
+        <QbInsumosBrand variant="compact" systemName={appearance.systemName} logoUrl={appearance.logoUrl} />
       </Link>
       <nav aria-label="Navegación principal" className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:thin]">
         {navigation.map((item) => {
@@ -47,7 +55,7 @@ export function AppHeader({ user }: { user: SessionUser }) {
               )}
             >
               <Icon className="size-4.5" aria-hidden="true" />
-              {item.href === "/matriz-operativa" ? "Operación" : item.title}
+              {keyByPath[item.href] ? appearance.menuLabels[keyByPath[item.href]] : item.title}
             </Link>
           );
         })}

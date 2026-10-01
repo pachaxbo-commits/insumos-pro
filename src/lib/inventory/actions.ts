@@ -108,6 +108,7 @@ export async function createInventoryMovementAction(
 
   revalidatePath("/inventario");
   revalidatePath("/productos");
+  revalidatePath("/stock");
   revalidatePath("/catalogo");
 
   return { success: true, message: "Movimiento registrado correctamente." };
