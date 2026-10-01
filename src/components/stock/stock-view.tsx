@@ -156,7 +156,7 @@ export function StockView({
   return (
     <div className="space-y-4">
       {/* Controles superiores: Buscador y Filtros */}
-      <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-white/95 p-3.5 shadow-sm sm:p-4">
+      <div className="w-full min-w-0 space-y-3 rounded-2xl border border-slate-200/80 bg-white/95 p-3.5 shadow-sm sm:p-4">
         {/* Buscador */}
         <div className="relative">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -178,19 +178,35 @@ export function StockView({
           ) : null}
         </div>
 
-        {/* Chips de Categorías con scroll horizontal suave en móvil */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Chips de Categorías con scroll horizontal fluido y consistente */}
+        <div
+          className="flex w-full min-w-0 items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin -mx-1 px-1 touch-pan-x"
+          role="tablist"
+          aria-label="Filtrar por categoría"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={selectedCategory === "all"}
             onClick={() => handleCategoryChange("all")}
             className={cn(
-              "shrink-0 rounded-lg px-3 py-1.5 font-medium transition-colors touch-manipulation",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px] whitespace-nowrap touch-manipulation",
               selectedCategory === "all"
-                ? "bg-emerald-800 text-white shadow-sm"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                ? "bg-emerald-700 text-white shadow-xs"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
             )}
           >
-            Todos ({products.length})
+            Todas
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                selectedCategory === "all"
+                  ? "bg-emerald-800 text-emerald-100"
+                  : "bg-slate-200 text-slate-600",
+              )}
+            >
+              {products.length}
+            </span>
           </button>
 
           {categories.map((cat) => {
@@ -202,15 +218,27 @@ export function StockView({
               <button
                 key={cat.id}
                 type="button"
+                role="tab"
+                aria-selected={isSelected}
                 onClick={() => handleCategoryChange(cat.id)}
                 className={cn(
-                  "shrink-0 rounded-lg px-3 py-1.5 font-medium transition-colors touch-manipulation",
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px] whitespace-nowrap touch-manipulation",
                   isSelected
-                    ? "bg-emerald-800 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                    ? "bg-emerald-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
                 )}
               >
-                {cat.name} ({count})
+                {cat.name}
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                    isSelected
+                      ? "bg-emerald-800 text-emerald-100"
+                      : "bg-slate-200 text-slate-600",
+                  )}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}
@@ -218,15 +246,27 @@ export function StockView({
           {(categoryCounts.get("none") || 0) > 0 ? (
             <button
               type="button"
+              role="tab"
+              aria-selected={selectedCategory === "none"}
               onClick={() => handleCategoryChange("none")}
               className={cn(
-                "shrink-0 rounded-lg px-3 py-1.5 font-medium transition-colors touch-manipulation",
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px] whitespace-nowrap touch-manipulation",
                 selectedCategory === "none"
-                  ? "bg-emerald-800 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                  ? "bg-emerald-700 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
               )}
             >
-              Sin categoría ({categoryCounts.get("none")})
+              Sin categoría
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                  selectedCategory === "none"
+                    ? "bg-emerald-800 text-emerald-100"
+                    : "bg-slate-200 text-slate-600",
+                )}
+              >
+                {categoryCounts.get("none")}
+              </span>
             </button>
           ) : null}
         </div>
