@@ -29,6 +29,8 @@ import {
 } from "@/lib/qb-orders/actions";
 import { getAverageRepeatableOrderAction } from "@/lib/qb-orders/creation-actions";
 import { serializeOrderItems } from "@/lib/qb-orders/draft-payload";
+import { cn } from "@/lib/utils";
+import type { QbCatalogProduct } from "@/types/qb-catalog";
 import type {
   QbInternalOrder,
   QbInternalOrderCreationData,
@@ -127,6 +129,7 @@ export function InternalOrderCreator({
   const [nextLineKey, setNextLineKey] = useState(startingLines.length + 1);
   const [lines, setLines] = useState<DraftLine[]>(startingLines);
   const [productSearch, setProductSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [catalogLimit, setCatalogLimit] = useState(PRODUCT_BATCH_SIZE);
   const [selectionMessage, setSelectionMessage] = useState("");
   const [stepMessage, setStepMessage] = useState("");
@@ -139,6 +142,8 @@ export function InternalOrderCreator({
   const formRef = useRef<HTMLFormElement>(null);
   const submissionInFlightRef = useRef(false);
   const historyRequestRef = useRef(0);
+  const catalogSentinelRef = useRef<HTMLDivElement>(null);
+  const catalogScrollContainerRef = useRef<HTMLDivElement>(null);
   const selectedCustomer = customers.find(
     (customer) => customer.id === customerId,
   );
@@ -150,26 +155,54 @@ export function InternalOrderCreator({
     () => new Map(products.map((product) => [product.id, product])),
     [products],
   );
+
+  const categoryFilters = useMemo(() => {
+    const counts = new Map<string, number>();
+    const names = new Map<string, string>();
+    let noneCount = 0;
+    for (const p of products) {
+      if (p.categoryId && p.categoryName) {
+        counts.set(p.categoryId, (counts.get(p.categoryId) || 0) + 1);
+        names.set(p.categoryId, p.categoryName);
+      } else {
+        noneCount += 1;
+      }
+    }
+    const list = Array.from(counts.entries())
+      .map(([id, count]) => ({ id, name: names.get(id)!, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+    return { list, noneCount };
+  }, [products]);
+
   const catalogGroups = useMemo(() => {
     const query = normalizeSearch(productSearch);
-    const matchesSearch = (productId: string) => {
-      const product = productIndex.get(productId);
-      if (!product) return false;
+    const matchesSearch = (product: QbCatalogProduct) => {
       if (!query) return true;
       return normalizeSearch(
         `${product.name} ${product.categoryName ?? ""}`,
       ).includes(query);
+    };
+    const matchesCategory = (product: QbCatalogProduct) => {
+      if (selectedCategory === "all") return true;
+      if (selectedCategory === "none") return !product.categoryId;
+      return product.categoryId === selectedCategory;
     };
     const lastOrderIds = [
       ...new Set(history?.lines.map((line) => line.productId) ?? []),
     ].filter((productId) => productIndex.has(productId));
     const lastOrderSet = new Set(lastOrderIds);
     const latest = lastOrderIds
-      .filter(matchesSearch)
-      .map((productId) => productIndex.get(productId)!);
+      .map((productId) => productIndex.get(productId)!)
+      .filter(
+        (product) =>
+          product && matchesSearch(product) && matchesCategory(product),
+      );
     const alphabetical = products
       .filter(
-        (product) => !lastOrderSet.has(product.id) && matchesSearch(product.id),
+        (product) =>
+          !lastOrderSet.has(product.id) &&
+          matchesSearch(product) &&
+          matchesCategory(product),
       )
       .sort((left, right) => left.name.localeCompare(right.name, "es"));
 
@@ -178,7 +211,60 @@ export function InternalOrderCreator({
       alphabetical,
       visibleAlphabetical: alphabetical.slice(0, catalogLimit),
     };
-  }, [catalogLimit, history, productIndex, productSearch, products]);
+  }, [
+    catalogLimit,
+    history,
+    productIndex,
+    productSearch,
+    products,
+    selectedCategory,
+  ]);
+
+  const handleProductSearchChange = (val: string) => {
+    setProductSearch(val);
+    setCatalogLimit(PRODUCT_BATCH_SIZE);
+  };
+
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategory(catId);
+    setCatalogLimit(PRODUCT_BATCH_SIZE);
+  };
+
+  const handleCatalogScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 300) {
+      setCatalogLimit((current) => {
+        if (current >= catalogGroups.alphabetical.length) return current;
+        return Math.min(
+          current + PRODUCT_BATCH_SIZE,
+          catalogGroups.alphabetical.length,
+        );
+      });
+    }
+  };
+
+  useEffect(() => {
+    const target = catalogSentinelRef.current;
+    const root = catalogScrollContainerRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setCatalogLimit((current) =>
+            Math.min(
+              current + PRODUCT_BATCH_SIZE,
+              catalogGroups.alphabetical.length,
+            ),
+          );
+        }
+      },
+      { root: root ?? null, rootMargin: "300px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [catalogGroups.alphabetical.length]);
 
   useEffect(() => {
     const request = ++historyRequestRef.current;
@@ -297,66 +383,91 @@ export function InternalOrderCreator({
             toggleProduct(product.id);
           }
         }}
-        className={selected ? "cursor-pointer rounded-lg border border-emerald-400 bg-emerald-50 p-3" : "cursor-pointer rounded-lg border bg-white p-3"}
+        className={cn(
+          "cursor-pointer rounded-xl transition-all duration-150 touch-manipulation",
+          selected
+            ? "border-2 border-emerald-500 bg-emerald-50/80 p-3 shadow-sm ring-1 ring-emerald-500/20"
+            : "border border-slate-200/90 bg-white p-2.5 hover:border-emerald-300 hover:bg-slate-50/50 shadow-xs",
+        )}
       >
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+        <div className="flex items-start gap-2.5">
           <input
             type="checkbox"
             aria-label={`Seleccionar ${product.name}`}
             checked={selected}
             onChange={() => toggleProduct(product.id)}
-            className="size-5 rounded border-input accent-emerald-700"
+            className="mt-0.5 size-4.5 shrink-0 rounded border-slate-300 accent-emerald-700 focus:ring-emerald-500"
           />
-          {product.name}
-          {!line ? <span className="ml-auto text-xs text-muted-foreground">{visibleUnit?.label ?? "Sin unidad"}</span> : null}
-        </label>
-        {line ? <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(110px,1fr)_minmax(100px,1fr)]">
-          <label className="space-y-1 text-xs">Unidad <span className="text-blue-700">*</span>
-            <select
-              aria-label={`Unidad de ${product.name}`}
-              value={line.allowedUnitId}
-              onChange={(event) =>
-                updateLine(line.key, { allowedUnitId: event.target.value })
-              }
-              required
-              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "text-sm leading-snug break-words",
+                selected
+                  ? "font-semibold text-emerald-950"
+                  : "font-medium text-slate-800",
+              )}
             >
-              {product.allowedUnits.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-xs">Cantidad <span className="text-blue-700">*</span>
-            <Input
-              aria-label={`Cantidad de ${product.name}`}
-              type="number"
-              min={Math.max(allowedUnit?.minQuantity ?? 0.5, 0.5)}
-              step="0.5"
-              value={line.quantity}
-              onChange={(event) =>
-                updateLine(line.key, { quantity: event.target.value })
-              }
-              required
-              className="h-9"
-            />
-          </label>
-          <label className="space-y-1 text-xs sm:col-span-2">Observación
-            <Textarea
-              aria-label={`Nota de ${product.name}`}
-              value={line.notes}
-              onChange={(event) =>
-                updateLine(line.key, { notes: event.target.value })
-              }
-              placeholder="Nota opcional"
-              maxLength={500}
-              rows={1}
-              className="min-h-9 resize-y whitespace-pre-wrap"
-              onKeyDown={(event) => event.stopPropagation()}
-            />
-          </label>
-        </div> : null}
+              {product.name}
+            </span>
+          </div>
+          {!line && visibleUnit?.label ? (
+            <span className="shrink-0 text-[11px] font-medium text-slate-400">
+              {visibleUnit.label}
+            </span>
+          ) : null}
+        </div>
+        {line ? (
+          <div className="mt-2.5 grid gap-2 border-t border-emerald-200/70 pt-2 sm:grid-cols-[minmax(110px,1fr)_minmax(100px,1fr)]">
+            <label className="space-y-1 text-xs font-medium text-slate-700">
+              Unidad <span className="text-blue-700">*</span>
+              <select
+                aria-label={`Unidad de ${product.name}`}
+                value={line.allowedUnitId}
+                onChange={(event) =>
+                  updateLine(line.key, { allowedUnitId: event.target.value })
+                }
+                required
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm shadow-xs focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+              >
+                {product.allowedUnits.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-700">
+              Cantidad <span className="text-blue-700">*</span>
+              <Input
+                aria-label={`Cantidad de ${product.name}`}
+                type="number"
+                min={Math.max(allowedUnit?.minQuantity ?? 0.5, 0.5)}
+                step="0.5"
+                value={line.quantity}
+                onChange={(event) =>
+                  updateLine(line.key, { quantity: event.target.value })
+                }
+                required
+                className="h-9 border-slate-300 bg-white shadow-xs focus-visible:border-emerald-600 focus-visible:ring-emerald-600"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-slate-700 sm:col-span-2">
+              Observación
+              <Textarea
+                aria-label={`Nota de ${product.name}`}
+                value={line.notes}
+                onChange={(event) =>
+                  updateLine(line.key, { notes: event.target.value })
+                }
+                placeholder="Nota opcional"
+                maxLength={500}
+                rows={1}
+                className="min-h-9 resize-y whitespace-pre-wrap border-slate-300 bg-white shadow-xs focus-visible:border-emerald-600 focus-visible:ring-emerald-600"
+                onKeyDown={(event) => event.stopPropagation()}
+              />
+            </label>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -684,23 +795,163 @@ export function InternalOrderCreator({
           </div>
 
           <section
-            className={step === 2 ? "space-y-3" : "hidden"}
+            className={step === 2 ? "space-y-3 pb-20 sm:pb-2" : "hidden"}
             aria-labelledby="order-products-title"
             data-product-order-table
           >
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h3 id="order-products-title" className="font-medium">
-                  Productos
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Marca el producto y escribe su cantidad en la misma fila. Los
-                  sugeridos por el promedio aparecen primero.
+            {/* Sticky Action Toolbar on Desktop / Tablet */}
+            <div className="sticky top-0 z-10 -mx-4 -mt-2 mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-white/95 px-4 py-2.5 backdrop-blur-xs sm:-mx-6 sm:px-6">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-emerald-950">
+                    {lines.length} {lines.length === 1 ? "producto seleccionado" : "productos seleccionados"}
+                  </span>
+                  {lines.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={resetProductSelection}
+                      className="text-xs text-muted-foreground underline hover:text-destructive"
+                    >
+                      Limpiar
+                    </button>
+                  ) : null}
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  {selectedCustomer?.label} · {operationalDate}
                 </p>
               </div>
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-semibold text-emerald-800" aria-live="polite">
-                {lines.length} {lines.length === 1 ? "producto seleccionado" : "productos seleccionados"}
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-300 font-medium text-slate-700 hover:bg-slate-100"
+                  onClick={() => setStep(1)}
+                >
+                  Volver
+                </Button>
+                <Button
+                  type="submit"
+                  className="hidden min-h-10 border-2 border-blue-800 bg-blue-700 px-4 font-semibold text-white shadow-sm hover:bg-blue-800 sm:inline-flex"
+                  disabled={
+                    pending ||
+                    (!editing && !idempotencyKey) ||
+                    !customerId ||
+                    !locationId ||
+                    !operationalDate ||
+                    lines.length === 0
+                  }
+                >
+                  <Send className="size-4" />
+                  {pending
+                    ? editing
+                      ? "Guardando..."
+                      : "Creando..."
+                    : editing
+                      ? "Guardar cambios"
+                      : `Crear pedido (${lines.length})`}
+                </Button>
               </div>
+            </div>
+
+            <div>
+              <h3 id="order-products-title" className="font-medium text-slate-900">
+                Productos
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Marca el producto y escribe su cantidad. Los sugeridos por pedidos anteriores aparecen primero.
+              </p>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div
+              className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin -mx-1 px-1 touch-pan-x"
+              role="tablist"
+              aria-label="Filtrar por categoría"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedCategory === "all"}
+                onClick={() => handleSelectCategory("all")}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px]",
+                  selectedCategory === "all"
+                    ? "bg-emerald-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
+                )}
+              >
+                Todas
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                    selectedCategory === "all"
+                      ? "bg-emerald-800 text-emerald-100"
+                      : "bg-slate-200 text-slate-600",
+                  )}
+                >
+                  {products.length}
+                </span>
+              </button>
+
+              {categoryFilters.list.map((cat) => {
+                const isActive = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => handleSelectCategory(cat.id)}
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px]",
+                      isActive
+                        ? "bg-emerald-700 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
+                    )}
+                  >
+                    {cat.name}
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                        isActive
+                          ? "bg-emerald-800 text-emerald-100"
+                          : "bg-slate-200 text-slate-600",
+                      )}
+                    >
+                      {cat.count}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {categoryFilters.noneCount > 0 ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedCategory === "none"}
+                  onClick={() => handleSelectCategory("none")}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors min-h-[36px] sm:min-h-[30px]",
+                    selectedCategory === "none"
+                      ? "bg-emerald-700 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200/80",
+                  )}
+                >
+                  Sin categoría
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
+                      selectedCategory === "none"
+                        ? "bg-emerald-800 text-emerald-100"
+                        : "bg-slate-200 text-slate-600",
+                    )}
+                  >
+                    {categoryFilters.noneCount}
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             <div className="relative max-w-xl">
@@ -711,10 +962,7 @@ export function InternalOrderCreator({
               <Input
                 type="search"
                 value={productSearch}
-                onChange={(event) => {
-                  setProductSearch(event.target.value);
-                  setCatalogLimit(PRODUCT_BATCH_SIZE);
-                }}
+                onChange={(event) => handleProductSearchChange(event.target.value)}
                 placeholder="Buscar por producto o categoría"
                 aria-label="Buscar en todos los productos"
                 className="h-11 border-2 border-slate-300 bg-white pl-9 text-base focus-visible:border-blue-600"
@@ -727,7 +975,11 @@ export function InternalOrderCreator({
               </p>
             ) : null}
 
-            <div className="max-h-[36rem] space-y-2 overflow-y-auto rounded-xl border p-2 overscroll-contain">
+            <div
+              ref={catalogScrollContainerRef}
+              onScroll={handleCatalogScroll}
+              className="max-h-[36rem] space-y-2 overflow-y-auto rounded-xl border p-2 overscroll-contain"
+            >
               {catalogGroups.latest.length ? <h4 className="px-1 text-xs font-bold uppercase text-emerald-900">Sugeridos por pedidos anteriores</h4> : null}
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 {catalogGroups.latest.map((product) => productRow(product.id))}
@@ -739,28 +991,52 @@ export function InternalOrderCreator({
               {!catalogGroups.latest.length && !catalogGroups.visibleAlphabetical.length ? (
                 <p className="p-6 text-center text-sm text-muted-foreground">No encontramos productos con esa búsqueda.</p>
               ) : null}
+
+              {catalogGroups.visibleAlphabetical.length <
+              catalogGroups.alphabetical.length ? (
+                <div
+                  ref={catalogSentinelRef}
+                  className="py-3 text-center text-xs font-medium text-muted-foreground animate-pulse"
+                >
+                  Cargando más productos…
+                </div>
+              ) : null}
             </div>
 
-            {catalogGroups.visibleAlphabetical.length <
-            catalogGroups.alphabetical.length ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="border-blue-300 font-semibold text-blue-800 hover:bg-blue-50"
-                onClick={() =>
-                  setCatalogLimit((current) => current + PRODUCT_BATCH_SIZE)
-                }
-              >
-                <Plus className="size-4" />
-                Mostrar{" "}
-                {Math.min(
-                  PRODUCT_BATCH_SIZE,
-                  catalogGroups.alphabetical.length -
-                    catalogGroups.visibleAlphabetical.length,
-                )}{" "}
-                productos más
-              </Button>
-            ) : null}
+            {/* Mobile Floating Bottom Bar */}
+            <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur-xs sm:hidden">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-900 truncate">
+                    {lines.length} {lines.length === 1 ? "producto" : "productos"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {selectedCustomer?.label}
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  className="min-h-10 shrink-0 border-2 border-blue-800 bg-blue-700 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-800"
+                  disabled={
+                    pending ||
+                    (!editing && !idempotencyKey) ||
+                    !customerId ||
+                    !locationId ||
+                    !operationalDate ||
+                    lines.length === 0
+                  }
+                >
+                  <Send className="size-4" />
+                  {pending
+                    ? editing
+                      ? "Guardando..."
+                      : "Creando..."
+                    : editing
+                      ? "Guardar cambios"
+                      : `Crear (${lines.length})`}
+                </Button>
+              </div>
+            </div>
           </section>
 
           {state.message ? (

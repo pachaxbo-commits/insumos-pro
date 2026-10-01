@@ -145,14 +145,11 @@ export function NewProductDialog({
               <Label>Categoría</Label>
               <select
                 name="category_id"
-                required
                 value={categoryId}
                 onChange={(event) => selectCategory(event.target.value)}
                 className={selectClassName}
               >
-                <option value="" disabled>
-                  Seleccionar
-                </option>
+                <option value="">Sin categoría</option>
                 {activeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}

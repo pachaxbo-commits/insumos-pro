@@ -15,6 +15,7 @@ import {
   Tags,
   History,
   ArrowRightLeft,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -22,6 +23,7 @@ import {
   createProductAction,
   createUnitAction,
   deactivateProductAction,
+  deleteCategoryAction,
   updateCategoryAction,
   updateProductAction,
   updateUnitAction,
@@ -213,10 +215,12 @@ export function StockAdjustmentDialog({
   product,
   history,
   canManage,
+  compact = false,
 }: {
   product: ProductWithRelations;
   history: Array<{ id: string; movement_type: string; quantity: number; stock_before: number; stock_after: number; reason: string; created_at: string; created_by: string | null; created_by_name: string | null }>;
   canManage: boolean;
+  compact?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(createInventoryMovementAction, initialState);
   const [type, setType] = useState("entrada");
@@ -229,7 +233,22 @@ export function StockAdjustmentDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="rounded-lg"><ArrowRightLeft className="size-3.5" /> Ajustar stock</Button>
+        {compact ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="size-10 min-w-10 rounded-lg p-0 text-slate-700 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-600 touch-manipulation"
+            title="Ajustar stock"
+            aria-label={`Ajustar stock de ${product.name}`}
+          >
+            <ArrowRightLeft className="size-4" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="rounded-lg">
+            <ArrowRightLeft className="size-3.5" /> Ajustar stock
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader><DialogTitle>Ajustar stock · {product.name}</DialogTitle><DialogDescription>El movimiento queda registrado y no modifica costos ni lotes de compras.</DialogDescription></DialogHeader>
@@ -423,7 +442,7 @@ function ProductForm({
             name="category_id"
             defaultValue={product?.category_id ?? ""}
           >
-            <option value="">Seleccionar</option>
+            <option value="">Sin categoría</option>
             {categories
               .filter(
                 (category) =>
@@ -808,6 +827,66 @@ function CatalogForm({
   );
 }
 
+function CategoryDeleteDialog({ category }: { category: ProductCategory }) {
+  const [state, formAction, pending] = useActionState(
+    deleteCategoryAction,
+    initialState,
+  );
+  useActionToast(state);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-4" />
+          <span className="sr-only">Eliminar categoria</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Eliminar categoria</DialogTitle>
+          <DialogDescription>
+            ¿Estás seguro de que deseas eliminar la categoria &ldquo;{category.name}&rdquo;?
+            Los productos asociados <strong>no se eliminaran</strong>; quedaran asignados como <strong>Sin categoria</strong>.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          action={async (formData) => {
+            await formAction(formData);
+            setOpen(false);
+          }}
+          className="space-y-4"
+        >
+          <input type="hidden" name="id" value={category.id} />
+          <FormMessage state={state} />
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={pending}
+            >
+              {pending ? "Eliminando..." : "Eliminar categoria"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CatalogList({
   title,
   icon,
@@ -867,25 +946,30 @@ function CatalogList({
             <div className="flex shrink-0 items-center gap-2">
               <StatusBadge active={item.is_active} />
               {canManage ? (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon-sm">
-                      <Edit3 className="size-4" />
-                      <span className="sr-only">Editar</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                      <DialogTitle>
-                        Editar {type === "category" ? "categoria" : "unidad"}
-                      </DialogTitle>
-                      <DialogDescription>
-                        Actualiza el registro seleccionado.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <CatalogForm type={type} item={item} />
-                  </DialogContent>
-                </Dialog>
+                <>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="icon-sm">
+                        <Edit3 className="size-4" />
+                        <span className="sr-only">Editar</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>
+                          Editar {type === "category" ? "categoria" : "unidad"}
+                        </DialogTitle>
+                        <DialogDescription>
+                          Actualiza el registro seleccionado.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <CatalogForm type={type} item={item} />
+                    </DialogContent>
+                  </Dialog>
+                  {type === "category" ? (
+                    <CategoryDeleteDialog category={item as ProductCategory} />
+                  ) : null}
+                </>
               ) : null}
             </div>
           </div>

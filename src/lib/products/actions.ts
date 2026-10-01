@@ -53,7 +53,11 @@ const productSchema = z.object({
     .trim()
     .regex(/^#[0-9a-fA-F]{6}$/, "Selecciona un color válido."),
   controls_actual_weight: booleanField,
-  category_id: z.uuid("Selecciona una categoria."),
+  category_id: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length ? value.trim() : null,
+    z.string().uuid("Selecciona una categoria valida.").nullable().optional(),
+  ),
   base_unit_id: z.uuid("Selecciona la unidad base."),
   inventory_unit_id: z.uuid("Selecciona la unidad de inventario."),
   price_unit_id: z.uuid("Selecciona la unidad de precio."),
@@ -529,7 +533,7 @@ export async function createProductAction(
     p_create: true,
     p_name: parsed.data.name,
     p_sku: parsed.data.sku,
-    p_category_id: parsed.data.category_id,
+    p_category_id: parsed.data.category_id ?? null,
     p_base_unit_id: parsed.data.base_unit_id,
     p_inventory_unit_id: parsed.data.inventory_unit_id,
     p_price_unit_id: parsed.data.price_unit_id,
@@ -633,7 +637,7 @@ export async function updateProductAction(
     p_create: false,
     p_name: parsed.data.name,
     p_sku: parsed.data.sku,
-    p_category_id: parsed.data.category_id,
+    p_category_id: parsed.data.category_id ?? null,
     p_base_unit_id: parsed.data.base_unit_id,
     p_inventory_unit_id: parsed.data.inventory_unit_id,
     p_price_unit_id: parsed.data.price_unit_id,
@@ -767,6 +771,47 @@ export async function updateCategoryAction(
 
   revalidateProducts();
   return { success: true, message: "Categoria actualizada correctamente." };
+}
+
+export async function deleteCategoryAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const id = parseId(formData);
+
+  if (!z.string().uuid().safeParse(id).success) {
+    return { success: false, message: "Categoria invalida." };
+  }
+
+  // Desasociar productos explicitamente para que queden como Sin categoria
+  const { error: updateError } = await access.supabase
+    .from("products")
+    .update({ category_id: null })
+    .eq("category_id", id);
+
+  if (updateError) {
+    return {
+      success: false,
+      message: "No se pudieron desasociar los productos de la categoria.",
+    };
+  }
+
+  const { error } = await access.supabase
+    .from("product_categories")
+    .delete()
+    .eq("id", id);
+
+  if (error) return { success: false, message: error.message };
+
+  revalidateProducts();
+  return {
+    success: true,
+    message: "Categoria eliminada correctamente. Los productos quedaron sin categoria.",
+  };
 }
 
 export async function createUnitAction(
