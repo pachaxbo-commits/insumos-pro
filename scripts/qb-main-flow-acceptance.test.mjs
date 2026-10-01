@@ -165,8 +165,10 @@ assert.match(
 assert.match(roles, /inventario: \["\/", "\/matriz-operativa", "\/stock"\]/);
 assert.match(roles, /entregador: \["\/", "\/matriz-operativa"\]/);
 assert.doesNotMatch(roles, /inventario: \[[^\]]*"\/pedidos"/);
-assert.match(home, /getFocusedWorkspace\(auth\.user\.role\)/);
-assert.match(home, /redirect\(workspace\.href\)/);
+assert.match(home, /requireRoleAccess\("\/"\)/);
+assert.match(home, /sections\.filter\(\(section\) =>/);
+assert.match(home, /section\.href !== "\/matriz-operativa\/mercado" \|\| auth\.user\.role === "administrador"/);
+assert.match(home, /title="Inicio"/);
 assert.match(ordersManagement, /date=\$\{order\.operationalDate\}/);
 assert.match(ordersManagement, /mode=\$\{[\s\S]*"entrega"[\s\S]*"preparacion"/);
 assert.match(ordersManagement, /order=\$\{order\.id\}/);

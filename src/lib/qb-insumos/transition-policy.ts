@@ -18,7 +18,7 @@ export const transitionModules: TransitionModule[] = [
     title: "Inicio",
     href: "/",
     status: "active_transitional",
-    reason: "Consulta un resumen de pedidos, ingresos, inventario y recibos.",
+    reason: "Abre las funciones disponibles para tu rol desde un solo lugar.",
     visibleInNavigation: true,
   },
   {
