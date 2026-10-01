@@ -7,7 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { testDataResetEnabled } from "@/lib/test-data-reset/config";
 
-export type ResetMode = "receipts" | "orders";
+export type ResetMode = "receipts" | "orders" | "stock";
 export type ResetActionState = { success: boolean; message: string };
 export type ResetPreview = {
   mode: ResetMode;
@@ -16,6 +16,11 @@ export type ResetPreview = {
   preparations: number;
   deliveries: number;
   delivery_stock_movements: number;
+  stock_products_nonzero: number;
+  stock_movements: number;
+  stock_receipts: number;
+  stock_lots: number;
+  stock_dependencies: number;
   customers_preserved: number;
   products_preserved: number;
   profiles_preserved: number;
@@ -37,15 +42,20 @@ export async function resetTestDataAction(
   if (auth.user.role !== "administrador") return { success: false, message: "Acceso denegado." };
   if (!testDataResetEnabled()) return { success: false, message: "La limpieza está desactivada en el servidor." };
   const mode = formData.get("mode");
-  if (mode !== "receipts" && mode !== "orders") return { success: false, message: "Selecciona un grupo válido." };
+  if (mode !== "receipts" && mode !== "orders" && mode !== "stock") return { success: false, message: "Selecciona un grupo válido." };
   if (formData.get("confirmation") !== "BORRAR DATOS") return { success: false, message: "Escribe BORRAR DATOS exactamente." };
   const admin = createSupabaseAdminClient();
   if (!admin) return { success: false, message: "Falta la configuración privada de mantenimiento." };
-  const { error } = await admin.rpc("execute_qb_test_data_reset", {
-    p_actor: auth.user.id,
-    p_mode: mode,
-    p_confirmation: "BORRAR DATOS",
-  });
+  const { error } = mode === "stock"
+    ? await admin.rpc("reset_qb_stock_test_data", {
+        p_actor: auth.user.id,
+        p_confirmation: "BORRAR DATOS",
+      })
+    : await admin.rpc("execute_qb_test_data_reset", {
+        p_actor: auth.user.id,
+        p_mode: mode,
+        p_confirmation: "BORRAR DATOS",
+      });
   if (error) return { success: false, message: "No se pudo completar la limpieza. Ningún grupo quedó parcialmente borrado." };
   for (const path of ["/configuracion/datos-prueba", "/pedidos", "/matriz-operativa", "/recibos", "/stock", "/historial"]) revalidatePath(path);
   return { success: true, message: "Datos de prueba seleccionados eliminados." };
