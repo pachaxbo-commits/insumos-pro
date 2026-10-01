@@ -120,12 +120,15 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
         <input type="hidden" name="receipt_id" value={receipt.id} />
         <input type="hidden" name="lines" value={payload} />
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[1230px] text-xs">
+          <table className="w-full min-w-[1380px] text-xs">
             <thead className="sticky top-0 z-10 bg-slate-100 text-left">
-              <tr>{["N°","Código","Producto","UD","Cant.","Dist. %","Exig. %","Clima %",
-                "Extra. %","Factor total %","Costo base/UD","Precio venta/UD","Costo total Bs","Venta total Bs",
-                "Utilidad Bs","Utilidad Bs/UD","Observación"].map((name) =>
-                <th key={name} className="whitespace-nowrap px-2 py-2 font-semibold">{name}</th>)}</tr>
+              <tr>{[
+                "N°", "Código", "Producto", "UD", "Cant.", "Dist. %", "Exig. %", "Clima %",
+                "Extra. %", "Factor total %", "Costo base/UD", "Precio anterior", "Precio venta/UD",
+                "Precio ref. / @", "Costo total Bs", "Venta total Bs", "Utilidad Bs", "Utilidad Bs/UD", "Observación"
+              ].map((name) => (
+                <th key={name} className="whitespace-nowrap px-2 py-2 font-semibold">{name}</th>
+              ))}</tr>
             </thead>
             <tbody>
               {receipt.orders.filter((order) => viewOrder === "all" || order.orderId === viewOrder)
@@ -134,12 +137,23 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
                   const categories = [...new Set(orderLines.map((line) => line.categoryName ?? "Sin categoría"))];
                   return categories.map((category) => <Fragment key={`${order.orderId}:${category}`}>
                     <tr className="bg-slate-50">
-                      <td colSpan={17} className="px-2 py-1.5 font-semibold">
+                      <td colSpan={19} className="px-2 py-1.5 font-semibold">
                         {order.orderReference} · {category}</td></tr>
                     {orderLines.filter((line) => (line.categoryName ?? "Sin categoría") === category)
                       .map((line, index) => {
                         const draft = drafts[line.id] ?? initialDraft(line);
                         const preview = linePreview(line, draft, !editable);
+                        const arrobaRatio =
+                          line.finalUnitPrice && line.finalUnitPrice > 0 && line.salePricePerArroba
+                            ? line.salePricePerArroba / line.finalUnitPrice
+                            : line.basePriceUsed && line.basePriceUsed > 0 && line.basePricePerArroba
+                              ? line.basePricePerArroba / line.basePriceUsed
+                              : null;
+                        const previewUnitSale = preview?.unitSale ? Number(preview.unitSale) : null;
+                        const arrobaDisplay =
+                          previewUnitSale !== null && arrobaRatio !== null
+                            ? Number((previewUnitSale * arrobaRatio).toFixed(2))
+                            : line.salePricePerArroba;
                         const input = (field: keyof Draft, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}
@@ -159,7 +173,13 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
                           <td className="px-1 py-1">{input("extraordinary")}</td>
                           <td className="px-2 py-1.5 text-right">{preview ? `${preview.factorTotalPct}%` : "—"}</td>
                           <td className="px-1 py-1">{input("cost", "w-24")}</td>
-                          <td className="px-2 py-1.5 text-right">{money(preview?.unitSale ?? null)}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                            {line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}
+                          </td>
+                          <td className="px-2 py-1.5 text-right font-semibold">{money(preview?.unitSale ?? null)}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-slate-600">
+                            {arrobaDisplay !== null ? money(arrobaDisplay) : "Sin equivalencia"}
+                          </td>
                           <td className="px-2 py-1.5 text-right">{money(preview?.costTotal ?? null)}</td>
                           <td className="px-2 py-1.5 text-right font-semibold">{money(preview?.saleTotal ?? null)}</td>
                           <td className="px-2 py-1.5 text-right">{money(preview?.profitTotal ?? null)}</td>

@@ -45,6 +45,8 @@ export type MatrixLine = {
   quantityUnits: MatrixQuantityUnit[];
   baseUnitSymbol: string;
   priceUnitSymbol: string | null;
+  baseSalePrice: number | null;
+  basePriceUnitId: string | null;
   hasWeightBasedPrice: boolean;
   requestedQuantity: number;
   requestedBaseQuantity: number;

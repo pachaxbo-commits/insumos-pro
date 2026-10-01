@@ -754,10 +754,15 @@ export function InternalOrderCreator({
                         ) : null}
                       </div>
                     ) : historyChecked && !historyError ? (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Este cliente todavía no tiene pedidos anteriores para
-                        calcular un promedio.
-                      </p>
+                      <div className="mt-2 space-y-1 text-sm">
+                        <span className="inline-block rounded bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-800">
+                          Sin historial
+                        </span>
+                        <p className="text-muted-foreground">
+                          Este cliente todavía no tiene pedidos anteriores para
+                          calcular un promedio.
+                        </p>
+                      </div>
                     ) : null}
                     {historyError ? (
                       <p className="mt-1 text-sm text-destructive">

@@ -378,6 +378,14 @@ export async function getOperationalMatrixData(
       ),
       baseUnitSymbol: String(item.base_unit_symbol),
       priceUnitSymbol,
+      baseSalePrice:
+        productSetting?.base_sale_price !== null &&
+        typeof productSetting?.base_sale_price !== "undefined"
+          ? numberOr(productSetting.base_sale_price)
+          : null,
+      basePriceUnitId: productSetting?.base_price_unit_id
+        ? String(productSetting.base_price_unit_id)
+        : null,
       hasWeightBasedPrice,
       requestedQuantity,
       requestedBaseQuantity,

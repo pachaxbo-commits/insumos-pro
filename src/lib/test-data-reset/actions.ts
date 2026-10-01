@@ -57,6 +57,46 @@ export async function resetTestDataAction(
         p_confirmation: "BORRAR DATOS",
       });
   if (error) return { success: false, message: "No se pudo completar la limpieza. Ningún grupo quedó parcialmente borrado." };
+
+  // Limpieza defensiva de bitácora y plantillas legacy según el grupo seleccionado
+  if (mode === "orders") {
+    await admin
+      .from("qb_legacy_order_template_lines")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    await admin
+      .from("qb_legacy_order_templates")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    await admin
+      .from("audit_logs")
+      .delete()
+      .in("entity_type", [
+        "order",
+        "qb_order",
+        "order_item",
+        "preparation",
+        "delivery",
+        "receipt",
+        "qb_receipt",
+      ]);
+  } else if (mode === "receipts") {
+    await admin
+      .from("audit_logs")
+      .delete()
+      .in("entity_type", ["receipt", "qb_receipt", "sale"]);
+  } else if (mode === "stock") {
+    await admin
+      .from("audit_logs")
+      .delete()
+      .in("entity_type", [
+        "inventory_movement",
+        "inventory_lot",
+        "merchandise_receipt",
+        "stock_adjustment",
+      ]);
+  }
+
   for (const path of ["/configuracion/datos-prueba", "/pedidos", "/matriz-operativa", "/recibos", "/stock", "/historial"]) revalidatePath(path);
   return { success: true, message: "Datos de prueba seleccionados eliminados." };
 }

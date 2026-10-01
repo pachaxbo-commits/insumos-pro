@@ -77,7 +77,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   sheet.getCell("A3").alignment = { horizontal: "center" };
 
   const headers = [
-    "N°",
+    "CÓDIGO",
     "DESCRIPCIÓN",
     "UD",
     ...model.customers.map((customer) => customer.name.toUpperCase()),
@@ -120,14 +120,14 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       item.unit,
       ...item.quantities.map((quantity) => (quantity > 0 ? quantity : null)),
       item.total,
-      item.stockCurrent,
+      item.stockAvailable,
       item.reserved,
-      Math.max(item.stockCurrent - item.reserved, 0),
-      Math.max(item.total - item.stockCurrent, 0),
-      null,
+      Math.max(item.stockAvailable - item.reserved, 0),
+      item.toProvision,
+      item.baseSalePrice ?? null,
     ];
     row.height = 21;
-    row.getCell(lastColumn).value = null;
+    row.getCell(lastColumn).value = item.baseSalePrice ?? null;
     row.eachCell({ includeEmpty: true }, (cell, column) => {
       cell.fill = {
         type: "pattern",

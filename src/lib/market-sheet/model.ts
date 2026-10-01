@@ -11,17 +11,36 @@ export type MarketSheetCustomer = {
   orderIds: string[];
 };
 
+export type MarketSheetLineRef = {
+  orderItemId: string;
+  orderId: string;
+  preparationVersion: number;
+  requestedQuantity: number;
+  actualWeightKg: number | null;
+  preparedQuantity: number;
+  preparationCheck: boolean;
+};
+
 export type MarketSheetRow = {
   key: string;
   productId: string;
   category: string;
   productName: string;
   stockCurrent: number;
+  stockAvailable: number;
+  toProvision: number;
+  isCoveredByStock: boolean;
   productColor: string | null;
   unit: string;
   quantities: number[];
   total: number;
   reserved: number;
+  controlsActualWeight: boolean;
+  actualWeightOrQuantity: number | null;
+  baseSalePrice: number | null;
+  basePriceUnitId: string | null;
+  priceUnitSymbol: string | null;
+  lines: MarketSheetLineRef[];
 };
 
 export type MarketSheetModel = {
@@ -105,21 +124,74 @@ export function buildMarketSheetModel(
         if (customerIndex === undefined) continue;
         quantities[customerIndex] += pendingQuantity(line);
       }
+      const total = Number(
+        quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
+      );
+      const stockCurrent = Number(first.stockCurrent.toFixed(6));
+      const stockAvailable = stockCurrent;
+      const toProvision = Number(Math.max(total - stockAvailable, 0).toFixed(6));
+      const isCoveredByStock = total <= stockAvailable;
+
+      // Real weight or quantity entered in preparation
+      const controlsActualWeight = Boolean(first.controlsActualWeight);
+      let actualWeightOrQuantity: number | null = null;
+      if (controlsActualWeight) {
+        const hasWeights = lines.some(
+          (l) => l.preparationActualWeightKg !== null,
+        );
+        if (hasWeights) {
+          actualWeightOrQuantity = Number(
+            lines
+              .reduce(
+                (sum, l) => sum + (l.preparationActualWeightKg ?? 0),
+                0,
+              )
+              .toFixed(6),
+          );
+        }
+      } else {
+        const hasPrepared = lines.some(
+          (l) => l.preparationCheck || l.preparedQuantity > 0,
+        );
+        if (hasPrepared) {
+          actualWeightOrQuantity = Number(
+            lines
+              .reduce((sum, l) => sum + (l.preparedQuantity ?? 0), 0)
+              .toFixed(6),
+          );
+        }
+      }
+
+      const lineRefs: MarketSheetLineRef[] = lines.map((l) => ({
+        orderItemId: l.orderItemId,
+        orderId: l.orderId,
+        preparationVersion: l.preparationVersion,
+        requestedQuantity: l.requestedQuantity,
+        actualWeightKg: l.preparationActualWeightKg,
+        preparedQuantity: l.preparedQuantity,
+        preparationCheck: l.preparationCheck,
+      }));
+
       return {
         key,
         productId: first.productId,
         category: first.categoryName,
         productName: first.productName,
-        stockCurrent: first.stockCurrent,
+        stockCurrent,
+        stockAvailable,
+        toProvision,
+        isCoveredByStock,
         productColor: first.productColor,
         unit: first.baseUnitSymbol,
         quantities: quantities.map((value) => Number(value.toFixed(6))),
-        total: Number(
-          quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
-        ),
-        reserved: Number(
-          quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
-        ),
+        total,
+        reserved: total,
+        controlsActualWeight,
+        actualWeightOrQuantity,
+        baseSalePrice: first.baseSalePrice,
+        basePriceUnitId: first.basePriceUnitId,
+        priceUnitSymbol: first.priceUnitSymbol ?? first.baseUnitSymbol,
+        lines: lineRefs,
       } satisfies MarketSheetRow;
     })
     .filter((row) => row.total > 0)

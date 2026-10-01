@@ -845,11 +845,11 @@ function DraftEditor({
                           </div>
                           <div>
                             <p className="font-medium text-foreground">Precio base equivalente</p>
-                            <p>{line.basePricePerArroba === null ? "No se usa para este producto" : `${money(line.basePricePerArroba)} por arroba`}</p>
+                            <p>{line.salePricePerArroba !== null ? `${money(line.salePricePerArroba)} por arroba` : line.basePricePerArroba !== null ? `${money(line.basePricePerArroba)} por arroba` : "No se usa para este producto"}</p>
                           </div>
                           <div>
                             <p className="font-medium text-foreground">Precio base anterior</p>
-                            <p>{line.previousBasePricePerArroba !== null ? `${money(line.previousBasePricePerArroba)} por arroba` : line.previousBasePrice !== null ? money(line.previousBasePrice) : "Sin precio anterior"}</p>
+                            <p>{line.previousSalePrice !== null ? money(line.previousSalePrice) : line.previousBasePricePerArroba !== null ? `${money(line.previousBasePricePerArroba)} por arroba` : line.previousBasePrice !== null ? money(line.previousBasePrice) : "Sin precio anterior"}</p>
                           </div>
                           {line.inputMode === "quantity" && matchesCurrentPrice ? (
                             <p className="font-medium text-emerald-700 sm:col-span-2 lg:col-span-3">
@@ -1078,9 +1078,13 @@ function ReceiptCard({
             voidAction={voidAction} voidPending={voidPending} /> : null}
         {receipt.pricingMode === "legacy" && receipt.status !== "borrador" ? (
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[1100px] text-xs">
+            <table className="w-full min-w-[1240px] text-xs">
               <thead className="bg-slate-100 text-left">
-                <tr>{["Pedido", "Producto", "UD", "Cantidad", "Dist. %", "Exig. %", "Clima %", "Extra. %", "Costo base/UD", "Precio venta/UD", "Costo total Bs", "Venta Bs", "Utilidad Bs", "Estado"].map((label) =>
+                <tr>{[
+                  "Pedido", "Producto", "UD", "Cantidad", "Dist. %", "Exig. %", "Clima %", "Extra. %",
+                  "Costo base/UD", "Precio anterior", "Precio venta/UD", "Precio ref. / @",
+                  "Costo total Bs", "Venta Bs", "Utilidad Bs", "Estado"
+                ].map((label) =>
                   <th key={label} className="whitespace-nowrap px-2 py-2">{label}</th>)}</tr>
               </thead>
               <tbody className="divide-y">
@@ -1093,7 +1097,9 @@ function ReceiptCard({
                     {[line.distanceFactorPercent, line.exigencyFactorPercent, line.weatherFactorPercent, line.extraordinaryFactorPercent].map((factor, index) =>
                       <td key={index} className="px-2 py-2 text-right">{factor}%</td>)}
                     <td className="px-2 py-2 text-right">{line.costBaseUnitSnapshot === null ? "—" : money(Number(line.costBaseUnitSnapshot))}</td>
-                    <td className="px-2 py-2 text-right">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice)}</td>
+                    <td className="px-2 py-2 text-right font-mono text-slate-600">{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}</td>
+                    <td className="px-2 py-2 text-right font-semibold">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice)}</td>
+                    <td className="px-2 py-2 text-right font-mono text-slate-600">{line.salePricePerArroba !== null ? money(line.salePricePerArroba) : "Sin equivalencia"}</td>
                     <td className="px-2 py-2 text-right">{line.costTotalPrecise === null ? "—" : money(Number(line.costTotalPrecise))}</td>
                     <td className="px-2 py-2 text-right">{line.saleTotalPrecise === null ? line.lineTotal === null ? "—" : money(line.lineTotal) : money(Number(line.saleTotalPrecise))}</td>
                     <td className="px-2 py-2 text-right">{line.profitTotalPrecise === null ? "—" : money(Number(line.profitTotalPrecise))}</td>

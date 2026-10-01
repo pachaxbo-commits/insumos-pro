@@ -239,3 +239,69 @@ export async function deleteCustomerAdminAction(
     };
   }
 }
+
+const resetPasswordSchema = z.object({
+  id: z.string().uuid("ID de cliente inválido."),
+  new_password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres."),
+});
+
+export async function resetCustomerPasswordAdminAction(
+  _previous: CustomerAdminActionState,
+  formData: FormData,
+): Promise<CustomerAdminActionState> {
+  try {
+    const { actor, admin } = await requireCustomerAdmin();
+    const customerId = formData.get("id");
+    const newPassword = formData.get("new_password");
+
+    const parsed = resetPasswordSchema.parse({
+      id: customerId,
+      new_password: newPassword,
+    });
+
+    const { data: customer, error: fetchError } = await admin
+      .from("customer_accounts")
+      .select("id, email, business_name")
+      .eq("id", parsed.id)
+      .maybeSingle();
+
+    if (fetchError || !customer) {
+      throw new Error("Cliente no encontrado.");
+    }
+
+    const { error: authError } = await admin.auth.admin.updateUserById(
+      customer.id,
+      { password: parsed.new_password },
+    );
+
+    if (authError) {
+      throw new Error(authError.message || "No se pudo actualizar la contraseña.");
+    }
+
+    const auditClient = await createSupabaseServerClient();
+    if (auditClient) {
+      await writeAuditLog({
+        supabase: auditClient,
+        userId: actor.id,
+        action: "reset_user_access",
+        entityType: "customer",
+        entityId: customer.id,
+        metadata: {
+          customer_email: customer.email,
+          business_name: customer.business_name,
+        },
+      });
+    }
+
+    revalidatePath("/clientes");
+    return {
+      success: true,
+      message: `Contraseña actualizada exitosamente para ${customer.business_name}.`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: actionError(error, "No se pudo restablecer la contraseña."),
+    };
+  }
+}

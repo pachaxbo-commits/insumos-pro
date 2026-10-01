@@ -197,7 +197,7 @@ function pricePerArroba(
 function attachPreviousPrices(receipts: QbReceipt[]) {
   const previousByCustomerProduct = new Map<
     string,
-    { basePrice: number; perArroba: number | null }
+    { basePrice: number; perArroba: number | null; salePrice: number }
   >();
   const previousPurchaseCostByProduct = new Map<
     string,
@@ -216,6 +216,7 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
       );
       line.previousBasePrice = previous?.basePrice ?? null;
       line.previousBasePricePerArroba = previous?.perArroba ?? null;
+      line.previousSalePrice = previous?.salePrice ?? null;
       const previousPurchaseCost = previousPurchaseCostByProduct.get(
         line.productId,
       );
@@ -226,12 +227,24 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
     }
     if (receipt.status !== "emitido") continue;
     for (const line of receipt.lines) {
-      if (line.basePriceUsed !== null && line.basePriceUsed > 0) {
+      const salePrice =
+        line.finalUnitPrice !== null && line.finalUnitPrice > 0
+          ? line.finalUnitPrice
+          : null;
+      if (
+        (line.basePriceUsed !== null && line.basePriceUsed > 0) ||
+        salePrice !== null
+      ) {
+        const prev = previousByCustomerProduct.get(
+          `${receipt.customerId}:${line.productId}`,
+        );
         previousByCustomerProduct.set(
           `${receipt.customerId}:${line.productId}`,
           {
-            basePrice: line.basePriceUsed,
-            perArroba: line.basePricePerArroba,
+            basePrice: line.basePriceUsed ?? prev?.basePrice ?? 0,
+            perArroba: line.basePricePerArroba ?? prev?.perArroba ?? null,
+            salePrice:
+              salePrice ?? prev?.salePrice ?? (line.basePriceUsed ?? 0),
           },
         );
       }
@@ -382,25 +395,26 @@ async function getReceiptParts(
       ]),
     ];
 
-    if (unitIds.length) {
-      const [{ data: unitData }, { data: arrobaData }] = await Promise.all([
-        supabase
-          .from("qb_units")
-          .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
-          .in("id", unitIds),
-        supabase
-          .from("qb_units")
-          .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
-          .eq("code", "arroba")
-          .eq("is_active", true)
-          .limit(1),
-      ]);
+    const [{ data: unitData }, { data: arrobaData }] = await Promise.all([
+      unitIds.length
+        ? supabase
+            .from("qb_units")
+            .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
+            .in("id", unitIds)
+        : Promise.resolve({ data: [] }),
+      supabase
+        .from("qb_units")
+        .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
+        .or("code.eq.arroba,symbol.eq.@,name.ilike.%arroba%")
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .limit(1),
+    ]);
 
-      for (const unit of (unitData ?? []) as UnitSymbolRow[]) {
-        unitById.set(unit.id, unit);
-      }
-      arrobaUnit = ((arrobaData ?? []) as UnitSymbolRow[])[0];
+    for (const unit of (unitData ?? []) as UnitSymbolRow[]) {
+      unitById.set(unit.id, unit);
     }
+    arrobaUnit = ((arrobaData ?? []) as UnitSymbolRow[])[0];
   }
 
   const ordersByReceipt = new Map<string, QbReceiptOrder[]>();
@@ -460,6 +474,12 @@ async function getReceiptParts(
         ),
         previousBasePrice: null,
         previousBasePricePerArroba: null,
+        previousSalePrice: null,
+        salePricePerArroba: pricePerArroba(
+          nullableNumberValue(row.final_unit_price),
+          row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined,
+          arrobaUnit,
+        ),
         purchaseCostTotal: nullableNumberValue(row.purchase_cost_total),
         costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
         costTotalPrecise: nullableDecimalText(row.cost_total_precise),
@@ -665,12 +685,36 @@ export async function getQbReceiptDetailData(
   const { ordersByReceipt, linesByReceipt, eventsByReceipt } =
     await getReceiptParts(supabase, [data.id]);
 
+  const mapped = mapReceipt(
+    data,
+    ordersByReceipt.get(data.id) ?? [],
+    linesByReceipt.get(data.id) ?? [],
+    eventsByReceipt.get(data.id) ?? [],
+  );
+
+  if (data.customer_account_id) {
+    const { data: previousReceiptsData } = await supabase
+      .from("qb_receipts")
+      .select("*, customer:customer_accounts(id, email, full_name, phone)")
+      .eq("customer_account_id", data.customer_account_id)
+      .eq("status", "emitido")
+      .neq("id", data.id)
+      .order("issued_at", { ascending: true });
+
+    if (previousReceiptsData && previousReceiptsData.length > 0) {
+      const prevIds = previousReceiptsData.map((r) => r.id);
+      const { linesByReceipt: prevLines } = await getReceiptParts(
+        supabase,
+        prevIds,
+      );
+      const prevMapped = previousReceiptsData.map((r) =>
+        mapReceipt(r, [], prevLines.get(r.id) ?? [], []),
+      );
+      attachPreviousPrices([...prevMapped, mapped]);
+    }
+  }
+
   return {
-    receipt: mapReceipt(
-      data,
-      ordersByReceipt.get(data.id) ?? [],
-      linesByReceipt.get(data.id) ?? [],
-      eventsByReceipt.get(data.id) ?? [],
-    ),
+    receipt: mapped,
   };
 }

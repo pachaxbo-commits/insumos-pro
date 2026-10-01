@@ -9,6 +9,8 @@ import { buildMarketSheetModel } from "@/lib/market-sheet/model";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+import { MarketSheetTable } from "./market-sheet-table";
+
 function todayInBolivia() {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/La_Paz",
@@ -34,12 +36,6 @@ async function resolveDate(value: string | undefined) {
     date: data?.operational_date ? String(data.operational_date) : todayInBolivia(),
     usedLatestDate: Boolean(data?.operational_date),
   };
-}
-
-function quantity(value: number) {
-  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
-    value,
-  );
 }
 
 export default async function MarketPrintPage({
@@ -77,7 +73,7 @@ export default async function MarketPrintPage({
           <input type="date" name="date" defaultValue={date} className="mt-1 block rounded-md border p-2" />
         </label>
         <Button type="submit">Ver fecha</Button>
-        <p className="text-sm text-muted-foreground">Se genera directamente desde los pedidos. No registra compras ni cambia precios.</p>
+        <p className="text-sm text-muted-foreground">Se genera directamente desde los pedidos. No descuenta stock físico ni crea reservas automáticas.</p>
       </form>
       {usedLatestDate ? (
         <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 print:hidden">
@@ -91,7 +87,7 @@ export default async function MarketPrintPage({
           <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE PROVISIÓN</h2>
           <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
           <p className="text-xs text-slate-600">
-            Necesidades pendientes consolidadas en la unidad base de cada producto
+            Necesidades consolidadas considerando existencias disponibles en almacén.
           </p>
         </div>
 
@@ -100,62 +96,10 @@ export default async function MarketPrintPage({
             No hay pedidos solicitados para esta fecha.
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto print:overflow-visible">
-            <table className="w-full min-w-max border-collapse text-[10px]">
-              <thead>
-                <tr className="bg-slate-200">
-                  <th className="border border-slate-500 px-2 py-2">N°</th>
-                  <th className="min-w-52 border border-slate-500 px-2 py-2 text-left">DESCRIPCIÓN</th>
-                  <th className="border border-slate-500 px-2 py-2">UD</th>
-                  {model.customers.map((customer) => (
-                    <th key={customer.key} className="max-w-28 border border-slate-500 px-2 py-2">
-                      {customer.name}
-                    </th>
-                  ))}
-                  <th className="border border-slate-500 bg-emerald-100 px-2 py-2">TOTAL</th>
-                  <th className="border border-slate-500 bg-sky-100 px-2 py-2">STOCK FÍSICO</th>
-                  <th className="border border-slate-500 bg-amber-100 px-2 py-2">RESERVADO</th>
-                  <th className="border border-slate-500 bg-emerald-100 px-2 py-2">DISPONIBLE</th>
-                  <th className="border border-slate-500 bg-rose-100 px-2 py-2">FALTANTE / COMPRAR</th>
-                  <th className="min-w-28 border border-slate-500 px-2 py-2">PRECIO COMPRA (Bs/UD)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.rows.map((row, index) => (
-                  <tr key={row.key} style={{ backgroundColor: row.productColor ?? "#FFFFFF" }}>
-                    <td className="border-b border-r border-slate-300 px-2 py-1 text-center">{index + 1}</td>
-                    <td className="border-b border-r border-slate-300 px-2 py-1 font-medium">{row.productName}</td>
-                    <td className="border-b border-r border-slate-300 px-2 py-1 text-center">{row.unit}</td>
-                    {row.quantities.map((value, customerIndex) => (
-                      <td key={model.customers[customerIndex]?.key} className="border-b border-r border-slate-300 px-2 py-1 text-center">
-                        {value > 0 ? quantity(value) : ""}
-                      </td>
-                    ))}
-                    <td className="border-b border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold">{quantity(row.total)}</td>
-                    <td className="border-b border-r border-slate-300 bg-sky-50 px-2 py-1 text-center">{quantity(row.stockCurrent)}</td>
-                    <td className="border-b border-r border-slate-300 bg-amber-50 px-2 py-1 text-center">{quantity(row.reserved)}</td>
-                    <td className={`border-b border-r border-slate-300 px-2 py-1 text-center font-semibold ${row.stockCurrent - row.reserved <= 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{quantity(Math.max(row.stockCurrent - row.reserved, 0))}</td>
-                    <td className={`border-b border-r border-slate-300 px-2 py-1 text-center font-semibold ${row.total > row.stockCurrent ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{quantity(Math.max(row.total - row.stockCurrent, 0))}</td>
-                    <td className="border border-slate-300 bg-white px-2 py-1" aria-label={`Precio de compra de ${row.productName} por ${row.unit}`} />
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-emerald-100 font-bold">
-                  <th colSpan={3} className="border-y-2 border-emerald-800 px-2 py-2 text-left">LÍNEAS PEDIDAS</th>
-                  {model.customers.map((customer, customerIndex) => (
-                    <th key={customer.key} className="border-y-2 border-emerald-800 px-2 py-2">
-                      {model.customerLineCounts[customerIndex]}
-                    </th>
-                  ))}
-                  <th className="border-y-2 border-emerald-800 px-2 py-2">
-                    {model.totalLineCount}
-                  </th>
-                  <th className="border-y-2 border-emerald-800" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <MarketSheetTable
+            model={model}
+            isAdmin={auth.user.role === "administrador"}
+          />
         )}
       </section>
     </div>

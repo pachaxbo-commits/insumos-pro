@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { useState, useActionState } from "react";
+import { Eye, EyeOff, KeyRound, Pencil, Plus, Save, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import {
   createCustomerAdminAction,
   deleteCustomerAdminAction,
+  resetCustomerPasswordAdminAction,
   updateCustomerAdminAction,
   type CustomerAdminActionState,
 } from "@/lib/customer-account/admin-actions";
@@ -186,8 +187,75 @@ function EditCustomerForm({ customer }: { customer: QbCustomerDirectoryRow }) {
           </Button>
         </div>
       </form>
+      <ResetCustomerPasswordForm customer={customer} />
       <DeleteCustomerForm customer={customer} />
     </details>
+  );
+}
+
+function ResetCustomerPasswordForm({
+  customer,
+}: {
+  customer: QbCustomerDirectoryRow;
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [state, action, pending] = useActionState(
+    resetCustomerPasswordAdminAction,
+    initialState,
+  );
+
+  return (
+    <form
+      action={action}
+      className="space-y-3 border-t border-slate-200 bg-slate-50/50 p-4"
+    >
+      <input type="hidden" name="id" value={customer.id} />
+      <div className="flex flex-wrap items-center gap-2">
+        <KeyRound className="size-4 text-slate-700" />
+        <p className="text-sm font-semibold text-slate-900">
+          Restablecer contraseña de cliente
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Establece una nueva contraseña de acceso para {customer.email}.
+        Por seguridad, las contraseñas anteriores no se almacenan ni se muestran.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="space-y-1">
+          <Label htmlFor={`new-password-${customer.id}`} className="text-xs">
+            Nueva contraseña
+          </Label>
+          <div className="relative">
+            <Input
+              id={`new-password-${customer.id}`}
+              name="new_password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={6}
+              placeholder="Mínimo 6 caracteres"
+              className="pr-10 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? "Ocultar contraseña" : "Ver contraseña escrita"}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 focus:outline-none"
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </button>
+          </div>
+        </div>
+        <Button type="submit" variant="outline" disabled={pending}>
+          <KeyRound className="size-4" />
+          {pending ? "Guardando…" : "Cambiar contraseña"}
+        </Button>
+      </div>
+      <Feedback state={state} />
+    </form>
   );
 }
 
