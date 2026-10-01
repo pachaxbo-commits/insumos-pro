@@ -69,11 +69,11 @@ function buildCustomers(orders: MatrixOrder[]) {
 }
 
 function lineKey(line: MatrixLine) {
-  return `${line.productId}:${line.sourceLabel}`;
+  return line.productId;
 }
 
 function pendingQuantity(line: MatrixLine) {
-  return Math.max(line.requestedQuantity - line.deliveredQuantity, 0);
+  return Math.max(line.requestedBaseQuantity - line.deliveredBaseQuantity, 0);
 }
 
 export function buildMarketSheetModel(
@@ -112,7 +112,7 @@ export function buildMarketSheetModel(
         productName: first.productName,
         stockCurrent: first.stockCurrent,
         productColor: first.productColor,
-        unit: first.sourceLabel,
+        unit: first.baseUnitSymbol,
         quantities: quantities.map((value) => Number(value.toFixed(6))),
         total: Number(
           quantities.reduce((sum, value) => sum + value, 0).toFixed(6),
@@ -122,6 +122,7 @@ export function buildMarketSheetModel(
         ),
       } satisfies MarketSheetRow;
     })
+    .filter((row) => row.total > 0)
     .sort(
       (left, right) =>
         left.category.localeCompare(right.category, "es") ||

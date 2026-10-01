@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { AppearanceForm } from "@/components/settings/appearance-form";
+import { SettingsNav } from "@/components/settings/settings-nav";
 import { StockControlSettings } from "@/components/inventory/stock-control-settings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireRoleAccess } from "@/lib/auth/session";
+import { getAppAppearance } from "@/lib/app-appearance/data";
 import { getRoleLabel } from "@/lib/auth/roles";
 import { getAuditLogsData } from "@/lib/audit/data";
 import { getQbOperationalSettingsData } from "@/lib/operational-settings/data";
@@ -193,9 +196,10 @@ export default async function ConfiguracionPage({
 }: ConfiguracionPageProps) {
   await requireRoleAccess("/configuracion");
   const filters = normalizeFilters(await searchParams);
-  const [audit, operationalSettings] = await Promise.all([
+  const [audit, operationalSettings, appearance] = await Promise.all([
     getAuditLogsData(filters),
     getQbOperationalSettingsData(),
+    getAppAppearance(),
   ]);
   const activeModules = getActiveTransitionalModules();
   const suspendedModules = getSuspendedLegacyModules();
@@ -209,12 +213,14 @@ export default async function ConfiguracionPage({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         eyebrow="Administración"
-        title="Configuración y auditoría"
-        description="Consulta las funciones disponibles, los accesos por rol y la actividad registrada en QB Insumos."
+        title="Configuración · General"
+        description="Administra la identidad visible y revisa accesos y auditoría."
       />
+      <SettingsNav current="/configuracion" />
+      <AppearanceForm appearance={appearance} />
 
       <Card className="border-emerald-200 bg-emerald-50/70">
         <CardHeader>

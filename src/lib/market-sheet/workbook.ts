@@ -48,10 +48,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   });
   sheet.properties.showGridLines = false;
 
-  const lastColumn = 5 + model.customers.length;
+  const lastColumn = 9 + model.customers.length;
   const lastColumnLetter = columnLetter(lastColumn);
   sheet.mergeCells(`A1:${lastColumnLetter}1`);
-  sheet.getCell("A1").value = "QB INSUMOS · HOJA DE COMPRAS DE MERCADO";
+  sheet.getCell("A1").value = "QB INSUMOS · HOJA DE PROVISIÓN";
   sheet.getCell("A1").font = {
     bold: true,
     color: { argb: "FFFFFFFF" },
@@ -66,13 +66,13 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   sheet.getRow(1).height = 28;
 
   sheet.mergeCells(`A2:${lastColumnLetter}2`);
-  sheet.getCell("A2").value = `Fecha operativa: ${model.operationalDate} · Cantidades solicitadas antes de preparación`;
+  sheet.getCell("A2").value = `Fecha operativa: ${model.operationalDate} · Pendiente por producto en unidad base`;
   sheet.getCell("A2").font = { italic: true, color: { argb: "FF475569" } };
   sheet.getCell("A2").alignment = { horizontal: "center" };
 
   sheet.mergeCells(`A3:${lastColumnLetter}3`);
   sheet.getCell("A3").value =
-    "Los pedidos repetidos del mismo producto y unidad se muestran sumados por cliente.";
+    "Las presentaciones se convierten a la unidad base y se consolidan por producto.";
   sheet.getCell("A3").font = { size: 9, color: { argb: "FF64748B" } };
   sheet.getCell("A3").alignment = { horizontal: "center" };
 
@@ -82,6 +82,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "UD",
     ...model.customers.map((customer) => customer.name.toUpperCase()),
     "TOTAL",
+    "STOCK FÍSICO",
+    "RESERVADO",
+    "DISPONIBLE",
+    "FALTANTE / COMPRAR",
     "PRECIO COMPRA (Bs/UD)",
   ];
   const headerRow = sheet.getRow(5);
@@ -116,6 +120,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       item.unit,
       ...item.quantities.map((quantity) => (quantity > 0 ? quantity : null)),
       item.total,
+      item.stockCurrent,
+      item.reserved,
+      Math.max(item.stockCurrent - item.reserved, 0),
+      Math.max(item.total - item.stockCurrent, 0),
       null,
     ];
     row.height = 21;
@@ -148,7 +156,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   model.customerLineCounts.forEach((count, index) => {
     totalRow.getCell(index + 4).value = count;
   });
-  totalRow.getCell(lastColumn - 1).value = model.totalLineCount;
+  totalRow.getCell(lastColumn - 5).value = model.totalLineCount;
   totalRow.getCell(lastColumn).value = null;
   totalRow.eachCell({ includeEmpty: true }, (cell) => {
     cell.font = { bold: true, color: { argb: "FF064E3B" } };
@@ -178,7 +186,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   };
   sheet.pageSetup.printArea = `A1:${lastColumnLetter}${totalRowNumber}`;
   sheet.headerFooter.oddFooter =
-    "&LQB Insumos&CCompras de mercado&R Página &P de &N";
+    "&LQB Insumos&CHoja de Provisión&R Página &P de &N";
 
   return workbook.xlsx.writeBuffer();
 }

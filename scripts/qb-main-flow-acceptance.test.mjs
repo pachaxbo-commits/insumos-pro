@@ -162,7 +162,7 @@ assert.match(
   roles,
   /administrador: \[[\s\S]*"\/pedidos"[\s\S]*"\/matriz-operativa"/,
 );
-assert.match(roles, /inventario: \["\/", "\/matriz-operativa"\]/);
+assert.match(roles, /inventario: \["\/", "\/matriz-operativa", "\/stock"\]/);
 assert.match(roles, /entregador: \["\/", "\/matriz-operativa"\]/);
 assert.doesNotMatch(roles, /inventario: \[[^\]]*"\/pedidos"/);
 assert.match(home, /getFocusedWorkspace\(auth\.user\.role\)/);
@@ -269,8 +269,8 @@ assert.match(
   appSidebar,
   /adminAvailablePaths[\s\S]*"\/matriz-operativa"/,
 );
-assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/productos"/);
-assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/parametrizacion"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/stock"/);
+assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/configuracion"/);
 assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/clientes"/);
 assert.match(appSidebar, /adminAvailablePaths[\s\S]*"\/recibos"/);
 assert.match(navigation, /title: "Abrir preparación y entregas"/);

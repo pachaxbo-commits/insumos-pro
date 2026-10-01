@@ -59,7 +59,7 @@ export default async function MarketPrintPage({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 print:hidden">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">Hoja de provisiones</h1>
+          <h1 className="text-xl font-semibold">Hoja de Provisión</h1>
         <Button asChild variant="outline">
           <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
             <ArrowLeft className="size-4" />
@@ -73,7 +73,7 @@ export default async function MarketPrintPage({
         </div>
       </div>
       <form method="get" className="flex flex-wrap items-end gap-2 print:hidden">
-        <label className="text-sm">Fecha de provisiones
+        <label className="text-sm">Fecha de provisión
           <input type="date" name="date" defaultValue={date} className="mt-1 block rounded-md border p-2" />
         </label>
         <Button type="submit">Ver fecha</Button>
@@ -88,10 +88,10 @@ export default async function MarketPrintPage({
 
       <section className="bg-white p-3 text-slate-950 print:p-0">
         <div className="border-b-2 border-emerald-900 pb-2 text-center">
-          <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE COMPRAS DE MERCADO</h2>
+          <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE PROVISIÓN</h2>
           <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
           <p className="text-xs text-slate-600">
-            Cantidades solicitadas por los clientes antes de preparación
+            Necesidades pendientes consolidadas en la unidad base de cada producto
           </p>
         </div>
 

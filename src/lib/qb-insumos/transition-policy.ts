@@ -27,6 +27,14 @@ export const transitionModules: TransitionModule[] = [
     href: "/productos",
     status: "active_transitional",
     reason: "Gestiona el Catálogo, las unidades, las presentaciones y la información de cada producto.",
+    visibleInNavigation: false,
+  },
+  {
+    id: "stock",
+    title: "Stock",
+    href: "/stock",
+    status: "active_transitional",
+    reason: "Consulta existencias, alertas y movimientos operativos de inventario.",
     visibleInNavigation: true,
   },
   {
@@ -74,7 +82,7 @@ export const transitionModules: TransitionModule[] = [
     title: "Configuración",
     href: "/configuracion",
     status: "active_transitional",
-    reason: "Consulta los accesos por rol y la bitácora de actividad.",
+    reason: "Configura la apariencia, productos, parametrización y controles administrativos.",
     visibleInNavigation: true,
   },
   {
@@ -204,7 +212,7 @@ export const transitionModules: TransitionModule[] = [
     href: "/parametrizacion",
     status: "active_transitional",
     reason: "Define unidades, conversiones y presentaciones disponibles para los productos.",
-    visibleInNavigation: true,
+    visibleInNavigation: false,
   },
 ];
 

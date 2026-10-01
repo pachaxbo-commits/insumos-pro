@@ -1,6 +1,8 @@
 -- FIFO only for new confirmed merchandise receipts.
 -- Historical stock and manual adjustments remain unvalued and untouched.
 
+begin;
+
 create table if not exists public.inventory_lots (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.products(id) on delete restrict,
@@ -45,11 +47,20 @@ create table if not exists public.inventory_fifo_consumption_runs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.inventory_lot_writeoffs (
+  id uuid primary key default gen_random_uuid(),
+  lot_id uuid not null references public.inventory_lots(id) on delete restrict,
+  detected_delivery_movement_id uuid references public.qb_order_delivery_movements(id) on delete set null,
+  quantity numeric(18, 6) not null check (quantity > 0),
+  unit_cost numeric(18, 4),
+  created_at timestamptz not null default now()
+);
+
 create or replace function public.create_inventory_lot_from_receipt_movement()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 declare
   v_product_id uuid;
@@ -61,15 +72,17 @@ begin
     return new;
   end if;
 
-  select coalesce(new.product_id, line.product_id),
-         new.movement_quantity,
-         case when new.classification_result_id is null then line.unit_cost else result.assigned_cost / nullif(result.base_quantity, 0) end,
+  select new.product_id,
+         least(new.movement_quantity, greatest(inventory.stock_after, 0)),
+         case when new.classification_result_id is null then line.total_cost / nullif(line.base_quantity, 0) else result.assigned_cost / nullif(result.base_quantity, 0) end,
          receipt.confirmed_at
     into v_product_id, v_quantity, v_unit_cost, v_received_at
     from public.qb_merchandise_receipt_lines line
     join public.qb_merchandise_receipts receipt on receipt.id = line.receipt_id
+    join public.inventory_movements inventory on inventory.id = new.inventory_movement_id
     left join public.qb_merchandise_receipt_classification_results result on result.id = new.classification_result_id
-   where line.id = new.line_id;
+   where line.id = new.line_id
+     and inventory.product_id = new.product_id;
 
   if v_product_id is null or v_quantity is null or v_quantity <= 0 then
     return new;
@@ -94,19 +107,70 @@ create or replace function public.consume_inventory_fifo_for_delivery()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 declare
-  v_remaining numeric(18, 6) := new.delivered_base_quantity;
+  v_remaining numeric(18, 6) := new.warehouse_base_quantity;
   v_take numeric(18, 6);
+  v_stock_before numeric(18, 6);
+  v_movement_quantity numeric(18, 6);
+  v_lot_total numeric(18, 6);
+  v_gap numeric(18, 6);
   v_lot record;
 begin
+  if new.inventory_movement_id is null or coalesce(v_remaining, 0) <= 0 then
+    return new;
+  end if;
+
+  select movement.stock_before, movement.quantity
+    into v_stock_before, v_movement_quantity
+    from public.inventory_movements movement
+   where movement.id = new.inventory_movement_id
+     and movement.product_id = new.product_id
+     and movement.movement_type = 'salida';
+  if v_stock_before is null or v_movement_quantity <> v_remaining then
+    raise exception 'La salida de inventario no coincide con la cantidad retirada de bodega.';
+  end if;
+
   insert into public.inventory_fifo_consumption_runs(inventory_movement_id)
   values (new.inventory_movement_id)
   on conflict (inventory_movement_id) do nothing;
 
   if not found then
     return new;
+  end if;
+
+  select coalesce(sum(remaining_quantity), 0) into v_lot_total
+    from public.inventory_lots where product_id = new.product_id;
+
+  -- Manual reductions may predate this delivery. Reconcile them against the
+  -- oldest valued lots and keep an auditable record rather than inventing stock.
+  v_gap := greatest(v_lot_total - greatest(v_stock_before, 0), 0);
+  if v_gap > 0 then
+    for v_lot in
+      select id, remaining_quantity, unit_cost from public.inventory_lots
+       where product_id = new.product_id and remaining_quantity > 0
+       order by received_at, created_at, id for update
+    loop
+      exit when v_gap <= 0;
+      v_take := least(v_gap, v_lot.remaining_quantity);
+      update public.inventory_lots set remaining_quantity = remaining_quantity - v_take where id = v_lot.id;
+      insert into public.inventory_lot_writeoffs(lot_id, detected_delivery_movement_id, quantity, unit_cost)
+      values (v_lot.id, new.id, v_take, v_lot.unit_cost);
+      v_gap := v_gap - v_take;
+    end loop;
+  end if;
+
+  select coalesce(sum(remaining_quantity), 0) into v_lot_total
+    from public.inventory_lots where product_id = new.product_id;
+  v_take := least(v_remaining, greatest(v_stock_before - v_lot_total, 0));
+  if v_take > 0 then
+    insert into public.inventory_lot_consumptions (
+      lot_id, product_id, delivery_movement_id, inventory_movement_id,
+      quantity_consumed, unit_cost, total_cost, cost_status
+    ) values (null, new.product_id, new.id, new.inventory_movement_id,
+              v_take, null, null, 'historical_unknown');
+    v_remaining := v_remaining - v_take;
   end if;
 
   for v_lot in
@@ -159,9 +223,10 @@ for each row execute function public.consume_inventory_fifo_for_delivery();
 alter table public.inventory_lots enable row level security;
 alter table public.inventory_lot_consumptions enable row level security;
 alter table public.inventory_fifo_consumption_runs enable row level security;
+alter table public.inventory_lot_writeoffs enable row level security;
 
-revoke all on table public.inventory_lots, public.inventory_lot_consumptions, public.inventory_fifo_consumption_runs from public, anon;
-grant select on table public.inventory_lots, public.inventory_lot_consumptions to authenticated;
+revoke all on table public.inventory_lots, public.inventory_lot_consumptions, public.inventory_fifo_consumption_runs, public.inventory_lot_writeoffs from public, anon;
+grant select on table public.inventory_lots, public.inventory_lot_consumptions, public.inventory_lot_writeoffs to authenticated;
 
 drop policy if exists "Inventory roles can view FIFO lots" on public.inventory_lots;
 create policy "Inventory roles can view FIFO lots"
@@ -183,7 +248,18 @@ create policy "Inventory roles can view FIFO consumptions"
        and profile.role in ('administrador', 'inventario')
   ));
 
+create policy "Inventory roles can view FIFO writeoffs"
+  on public.inventory_lot_writeoffs for select to authenticated
+  using (exists (
+    select 1 from public.profiles profile
+     where profile.id = auth.uid()
+       and profile.is_active = true
+       and profile.role in ('administrador', 'inventario')
+  ));
+
 comment on table public.inventory_lots is
   'Lotes FIFO creados exclusivamente desde ingresos reales confirmados. No representa stock histórico sin costo.';
 comment on table public.inventory_lot_consumptions is
   'Consumos FIFO por entrega. lot_id null identifica consumo de stock histórico sin costo conocido.';
+
+commit;

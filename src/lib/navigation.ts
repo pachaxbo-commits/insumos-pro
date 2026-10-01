@@ -21,10 +21,10 @@ export const mainNavigation: NavItem[] = [
     description: "Resumen de la operación.",
   },
   {
-    title: "Productos",
-    href: "/productos",
+    title: "Stock",
+    href: "/stock",
     icon: Package,
-    description: "Catálogo y configuración.",
+    description: "Existencias y movimientos.",
   },
   {
     title: "Ingresos",

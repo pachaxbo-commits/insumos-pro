@@ -32,6 +32,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     orderId,
     productId: "lechuga",
     productName: "Lechuga",
+    stockCurrent: 10,
     productColor: "#D1FAE5",
     controlsActualWeight: false,
     categoryName: "Verduras",
@@ -40,7 +41,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     priceUnitSymbol: "kg",
     hasWeightBasedPrice: true,
     requestedQuantity,
-    requestedBaseQuantity: requestedQuantity,
+    requestedBaseQuantity: requestedQuantity * (sourceLabel === "arroba" ? 11.25 : 1),
     requestedNote: "",
     requestedVersion: 1,
     preparedQuantity: 900,
@@ -52,8 +53,8 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     preparedBy: null,
     preparedAt: null,
     externalQuantity: 800,
-    deliveredQuantity: 700,
-    deliveredBaseQuantity: 700,
+    deliveredQuantity: 0,
+    deliveredBaseQuantity: 0,
     deliveryCheck: true,
     deliveryActualWeightKg: null,
     deliveryNote: "",
@@ -82,23 +83,21 @@ const data = {
   ],
 };
 
-test("the market sheet sums repeated active requests by customer without mixing units", () => {
+test("the provision sheet consolidates presentations in base units", () => {
   const model = buildMarketSheetModel(data);
 
   assert.deepEqual(
     model.customers.map((customer) => customer.name),
     ["Restaurante A", "Restaurante B"],
   );
-  assert.equal(model.rows.length, 2);
-
-  const kilograms = model.rows.find((row) => row.unit === "kg");
-  const arrobas = model.rows.find((row) => row.unit === "arroba");
-  assert.deepEqual(kilograms?.quantities, [5, 4]);
-  assert.equal(kilograms?.total, 9);
-  assert.deepEqual(arrobas?.quantities, [1, 0]);
-  assert.equal(arrobas?.total, 1);
-  assert.deepEqual(model.customerLineCounts, [2, 1]);
-  assert.equal(model.totalLineCount, 3);
+  assert.equal(model.rows.length, 1);
+  assert.equal(model.rows[0]?.unit, "kg");
+  assert.deepEqual(model.rows[0]?.quantities, [16.25, 4]);
+  assert.equal(model.rows[0]?.total, 20.25);
+  assert.equal(model.rows[0]?.stockCurrent, 10);
+  assert.equal(model.rows[0]?.reserved, 20.25);
+  assert.deepEqual(model.customerLineCounts, [1, 1]);
+  assert.equal(model.totalLineCount, 2);
 });
 
 test("the generated file is a real printable Excel workbook", async () => {
@@ -107,19 +106,20 @@ test("the generated file is a real printable Excel workbook", async () => {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
-  const sheet = workbook.getWorksheet("Compras mercado");
+  const sheet = workbook.getWorksheet("Provisiones");
   assert.ok(sheet);
-  assert.equal(sheet.getCell("A1").value, "QB INSUMOS · HOJA DE COMPRAS DE MERCADO");
+  assert.equal(sheet.getCell("A1").value, "QB INSUMOS · HOJA DE PROVISIÓN");
   assert.equal(sheet.getCell("D5").value, "RESTAURANTE A");
   assert.equal(sheet.getCell("E5").value, "RESTAURANTE B");
   assert.equal(sheet.pageSetup.orientation, "landscape");
   assert.equal(sheet.pageSetup.fitToWidth, 1);
-  assert.match(sheet.pageSetup.printArea, /^A1:G\d+$/);
-  assert.equal(sheet.getCell("G5").value, "PRECIO COMPRA (Bs/UD)");
-  assert.equal(sheet.getCell("G6").value, null);
-  assert.equal(sheet.getCell("D8").value, 2);
-  assert.equal(sheet.getCell("E8").value, 1);
-  assert.equal(sheet.getCell("F8").value, 3);
+  assert.match(sheet.pageSetup.printArea, /^A1:K\d+$/);
+  assert.equal(sheet.getCell("K5").value, "PRECIO COMPRA (Bs/UD)");
+  assert.equal(sheet.getCell("K6").value, null);
+  assert.equal(sheet.getCell("D7").value, 1);
+  assert.equal(sheet.getCell("E7").value, 1);
+  assert.equal(sheet.getCell("F7").value, 2);
+  assert.equal(sheet.getCell("J6").value, 10.25);
   assert.equal(sheet.views[0].state, "frozen");
 });
 

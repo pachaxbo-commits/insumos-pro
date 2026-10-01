@@ -6,6 +6,8 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 type QbInsumosBrandProps = {
+  systemName?: string;
+  logoUrl?: string | null;
   className?: string;
   logoClassName?: string;
   textClassName?: string;
@@ -27,6 +29,8 @@ const textSizes = {
 };
 
 export function QbInsumosBrand({
+  systemName = "QB Insumos",
+  logoUrl,
   className,
   logoClassName,
   textClassName,
@@ -47,7 +51,7 @@ export function QbInsumosBrand({
               textClassName,
             )}
           >
-            QB Insumos
+            {systemName}
           </p>
           {showSubtitle ? (
             <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -69,8 +73,9 @@ export function QbInsumosBrand({
         )}
       >
         <Image
-          src="/logo.jpeg"
-          alt="QB Insumos"
+          src={logoUrl ?? "/logo.jpeg"}
+          alt={systemName}
+          unoptimized={Boolean(logoUrl)}
           width={500}
           height={500}
           className="h-full w-full object-contain"
@@ -95,7 +100,7 @@ export function QbInsumosBrand({
               textClassName,
             )}
           >
-            QB Insumos
+            {systemName}
           </p>
           {showSubtitle ? (
             <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -104,7 +109,7 @@ export function QbInsumosBrand({
           ) : null}
         </div>
       ) : (
-        <span className="sr-only">QB Insumos</span>
+        <span className="sr-only">{systemName}</span>
       )}
     </div>
   );
