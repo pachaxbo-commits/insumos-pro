@@ -54,10 +54,11 @@ function linePreview(line: QbReceiptLine, draft: Draft, issuedSnapshot = false) 
 }
 
 export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitPending,
-  voidAction, voidPending }: {
+  voidAction, voidPending, hideMonthlySummary = false }: {
   receipt: QbReceipt; relatedReceipts: QbReceipt[];
   emitAction: (formData: FormData) => void; emitPending: boolean;
   voidAction: (formData: FormData) => void; voidPending: boolean;
+  hideMonthlySummary?: boolean;
 }) {
   const [state, action, pending] = useActionState(setQbReceiptLinePricingAction,
     { success: false });
@@ -100,7 +101,7 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
     } }));
   }
 
-  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_270px]">
+  return <div className={hideMonthlySummary ? "min-w-0" : "grid gap-4 xl:grid-cols-[minmax(0,1fr)_270px]"}>
     <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div><h3 className="font-semibold">{receipt.customerName} · {receipt.number}</h3>
@@ -198,7 +199,7 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
         {hasUnsavedChanges && <span className="text-xs text-amber-700">Guarda los cambios antes de emitir.</span>}
       </div>}
     </div>
-    <aside className="self-start rounded-lg border p-3 text-sm">
+    {!hideMonthlySummary && <aside className="self-start rounded-lg border p-3 text-sm">
       <label className="block text-xs font-medium">Resumen mensual
         <input type="month" value={month} onChange={(event) => setMonth(event.target.value)}
           className="mt-1 block h-8 w-full rounded border px-2" /></label>
@@ -221,6 +222,6 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
       {monthlyKnown.length !== monthly.length && <p className="mt-2 text-xs text-amber-700">Hay recibos históricos sin costo; no se incluyen en el total de utilidad.</p>}
       <div className="mt-3 border-t pt-2 font-semibold">Venta {money(monthlyAmounts.saleTotal)} Bs<br />
         Utilidad {money(monthlyAmounts.profitTotal)} Bs<br />Margen {money(monthlyAmounts.marginPercent)}%</div>
-    </aside>
+    </aside>}
   </div>;
 }

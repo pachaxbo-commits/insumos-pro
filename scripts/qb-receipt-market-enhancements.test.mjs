@@ -143,7 +143,11 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(deliveryNote, /delivery-note/);
   assert.match(deliveryNote, /line\.deliveredBaseQuantity/);
   assert.match(deliveryNote, /Documento sin precios/);
-  assert.match(management, /Historial mensual por cliente/);
+  assert.match(management, /function ReceiptCustomerSelector/);
+  assert.match(management, /Buscar cliente\.\.\./);
+  assert.match(management, /← Volver a clientes/);
+  assert.match(management, /<CardTitle>Resumen mensual<\/CardTitle>/);
+  assert.match(management, /renderReceipts\(customerReceipts\)/);
   assert.match(management, /Precio base equivalente/);
   assert.match(management, /Precio base anterior/);
   assert.match(management, /Tabla solicitada · Costos de compra y utilidad/);

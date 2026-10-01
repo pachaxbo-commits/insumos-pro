@@ -988,6 +988,7 @@ function DraftEditor({
 function ReceiptCard({
   receipt,
   relatedReceipts,
+  hideMonthlySummary = false,
   comparisonUnits,
   updateAction,
   updatePending,
@@ -998,6 +999,7 @@ function ReceiptCard({
 }: {
   receipt: QbReceipt;
   relatedReceipts: QbReceipt[];
+  hideMonthlySummary?: boolean;
   comparisonUnits: QbReceiptComparisonUnit[];
   updateAction: (formData: FormData) => void;
   updatePending: boolean;
@@ -1071,8 +1073,37 @@ function ReceiptCard({
 
         {receipt.pricingMode === "line_cost_markup" ?
           <ReceiptLineWorkspace receipt={receipt} relatedReceipts={relatedReceipts}
+            hideMonthlySummary={hideMonthlySummary}
             emitAction={emitAction} emitPending={emitPending}
             voidAction={voidAction} voidPending={voidPending} /> : null}
+        {receipt.pricingMode === "legacy" && receipt.status !== "borrador" ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[1100px] text-xs">
+              <thead className="bg-slate-100 text-left">
+                <tr>{["Pedido", "Producto", "UD", "Cantidad", "Dist. %", "Exig. %", "Clima %", "Extra. %", "Costo base/UD", "Precio venta/UD", "Costo total Bs", "Venta Bs", "Utilidad Bs", "Estado"].map((label) =>
+                  <th key={label} className="whitespace-nowrap px-2 py-2">{label}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y">
+                {receipt.lines.map((line) => (
+                  <tr key={line.id}>
+                    <td className="px-2 py-2 font-mono">{line.orderReference}</td>
+                    <td className="px-2 py-2 font-medium">{line.productName}</td>
+                    <td className="px-2 py-2">{line.baseUnitSymbol}</td>
+                    <td className="px-2 py-2 text-right">{quantity(line.deliveredBaseQuantity)}</td>
+                    {[line.distanceFactorPercent, line.exigencyFactorPercent, line.weatherFactorPercent, line.extraordinaryFactorPercent].map((factor, index) =>
+                      <td key={index} className="px-2 py-2 text-right">{factor}%</td>)}
+                    <td className="px-2 py-2 text-right">{line.costBaseUnitSnapshot === null ? "—" : money(Number(line.costBaseUnitSnapshot))}</td>
+                    <td className="px-2 py-2 text-right">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice)}</td>
+                    <td className="px-2 py-2 text-right">{line.costTotalPrecise === null ? "—" : money(Number(line.costTotalPrecise))}</td>
+                    <td className="px-2 py-2 text-right">{line.saleTotalPrecise === null ? line.lineTotal === null ? "—" : money(line.lineTotal) : money(Number(line.saleTotalPrecise))}</td>
+                    <td className="px-2 py-2 text-right">{line.profitTotalPrecise === null ? "—" : money(Number(line.profitTotalPrecise))}</td>
+                    <td className="px-2 py-2">{statusLabels[receipt.status]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
         {receipt.status === "borrador" ? (
           receipt.pricingMode === "line_cost_markup" ? null :
           <details className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1160,6 +1191,68 @@ function currentBoliviaMonth() {
   return `${values.year}-${values.month}`;
 }
 
+function ReceiptCustomerSelector({
+  receipts,
+  selectedCustomerId,
+  onSelect,
+}: {
+  receipts: QbReceipt[];
+  selectedCustomerId: string | null;
+  onSelect: (customerId: string | null) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const customers = [...receipts.reduce((groups, receipt) => {
+    const current = groups.get(receipt.customerId);
+    groups.set(receipt.customerId, {
+      id: receipt.customerId,
+      name: receipt.customerName,
+      count: (current?.count ?? 0) + 1,
+    });
+    return groups;
+  }, new Map<string, { id: string; name: string; count: number }>()).values()]
+    .sort((left, right) => left.name.localeCompare(right.name, "es"));
+
+  if (selectedCustomerId) {
+    const selected = customers.find((customer) => customer.id === selectedCustomerId);
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="outline" size="sm" onClick={() => onSelect(null)}>
+          ← Volver a clientes
+        </Button>
+        <span className="text-sm font-semibold">{selected?.name ?? "Cliente"}</span>
+        {selected ? <Badge variant="secondary">{selected.count}</Badge> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <Input
+        aria-label="Buscar cliente"
+        placeholder="Buscar cliente..."
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        className="max-w-sm"
+      />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {customers.filter((customer) => customer.name.toLocaleLowerCase("es").includes(search.trim().toLocaleLowerCase("es")))
+          .map((customer) => (
+            <button
+              key={customer.id}
+              type="button"
+              onClick={() => onSelect(customer.id)}
+              className="flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-left text-sm font-medium transition-colors hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            >
+              <span className="min-w-0 truncate">{customer.name}</span>
+              <Badge variant="secondary" className="shrink-0 rounded-full">{customer.count}</Badge>
+            </button>
+          ))}
+      </div>
+      {!customers.length ? <p className="text-sm text-muted-foreground">No hay recibos en esta sección.</p> : null}
+    </div>
+  );
+}
+
 function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
   const [customerId, setCustomerId] = useState("all");
   const [month, setMonth] = useState("all");
@@ -1230,108 +1323,97 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
 
 function ReceiptHistoryPanel({
   receipts,
-  pendingGroups,
+  renderReceipts,
 }: {
   receipts: QbReceipt[];
-  pendingGroups: QbReceiptCustomerGroup[];
+  renderReceipts: (items: QbReceipt[]) => React.ReactNode;
 }) {
-  const customers = useMemo(() => {
-    const values = new Map<string, string>();
-    receipts.forEach((receipt) => values.set(receipt.customerId, receipt.customerName));
-    pendingGroups.forEach((group) => values.set(group.customerId, group.customerName));
-    return [...values.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((left, right) => left.name.localeCompare(right.name, "es"));
-  }, [pendingGroups, receipts]);
-  const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [month, setMonth] = useState(currentBoliviaMonth);
-  const receiptRows = receipts.filter((receipt) => {
+  const activeCustomerId = receipts.some((receipt) => receipt.customerId === customerId) ? customerId : null;
+  const customerReceipts = receipts.filter((receipt) => receipt.customerId === activeCustomerId);
+  const monthlyReceipts = customerReceipts.filter((receipt) => {
     const date = receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt;
-    return receipt.customerId === customerId && date?.slice(0, 7) === month;
+    return receipt.status === "emitido" && date?.slice(0, 7) === month;
   });
-  const pendingRows =
-    pendingGroups
-      .find((group) => group.customerId === customerId)
-      ?.orders.filter((order) => order.deliveredAt?.slice(0, 7) === month) ?? [];
+  const knownCostReceipts = monthlyReceipts.filter((receipt) => receipt.costTotalPrecise !== null
+    || (receipt.lines.length > 0 && receipt.lines.every((line) => line.purchaseCostTotal !== null)));
+  const summary = summarizeReceipts(knownCostReceipts.map((receipt) => ({
+    customerId: receipt.customerId,
+    date: (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 10),
+    status: receipt.status,
+    costTotal: receipt.costTotalPrecise ?? receipt.lines.reduce((sum, line) => sum + (line.purchaseCostTotal ?? 0), 0),
+    saleTotal: receipt.saleTotalPrecise ?? receipt.totalAmount,
+  })));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Historial mensual por cliente</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Muestra pedidos entregados pendientes y recibos acumulados. El control de envío y pago es manual.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="space-y-1 text-sm font-medium">
-            Cliente
-            <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="block h-10 w-full rounded-md border bg-white px-3 text-sm">
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm font-medium">
-            Mes
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-          </label>
-        </div>
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-muted/60 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Fecha</th>
-                <th className="px-3 py-2">Registro</th>
-                <th className="px-3 py-2">Pedidos incluidos</th>
-                <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2">Enviado</th>
-                <th className="px-3 py-2">Pago</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {pendingRows.map((order) => (
-                <tr key={`pending:${order.id}`}>
-                  <td className="px-3 py-2">{formatBoliviaDate(order.deliveredAt, "short")}</td>
-                  <td className="px-3 py-2 font-medium">Pendiente de recibo</td>
-                  <td className="px-3 py-2 font-mono text-xs">{order.reference}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">Por calcular</td>
-                  <td className="px-3 py-2 text-muted-foreground">No aplica</td>
-                  <td className="px-3 py-2">Pendiente</td>
-                </tr>
-              ))}
-              {receiptRows.map((receipt) => (
-                <tr key={`receipt:${receipt.id}`}>
-                  <td className="px-3 py-2">{formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt, "short")}</td>
-                  <td className="px-3 py-2">
-                    <Link href={`/recibos/${receipt.id}`} className="font-mono font-medium underline-offset-2 hover:underline">{receipt.number}</Link>
-                    <p className="text-xs text-muted-foreground">{statusLabels[receipt.status]}</p>
-                  </td>
-                  <td className="max-w-80 px-3 py-2 font-mono text-xs">{receipt.orders.map((order) => order.orderReference).join(", ")}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{receipt.hasPendingPrices ? "Precio pendiente" : money(receipt.totalAmount)}</td>
-                  <td className="px-3 py-2">{receipt.receiptSentAt ? "Enviado" : "No enviado"}</td>
-                  <td className="px-3 py-2">{receipt.paymentStatus === "cobrado" ? "Cobrado" : receipt.paymentStatus === "pagado" ? "Pagado" : "Pendiente"}</td>
-                </tr>
-              ))}
-              {!pendingRows.length && !receiptRows.length ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">No hay registros para este cliente y mes.</td>
-                </tr>
-              ) : null}
-            </tbody>
-            <tfoot className="bg-emerald-50 font-semibold">
-              <tr>
-                <td colSpan={3} className="px-3 py-2">Total de recibos emitidos no anulados</td>
-                <td className="px-3 py-2 text-right">
-                  {money(receiptRows.filter((receipt) => receipt.status === "emitido" && !receipt.hasPendingPrices).reduce((sum, receipt) => sum + receipt.totalAmount, 0))}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <ReceiptCustomerSelector receipts={receipts} selectedCustomerId={activeCustomerId} onSelect={setCustomerId} />
+      {activeCustomerId ? (
+        <>
+          <div className="space-y-4">{renderReceipts(customerReceipts)}</div>
+          <Card>
+            <CardHeader><CardTitle>Resumen mensual</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <label className="block max-w-56 space-y-1 text-sm font-medium">Mes
+                <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+              </label>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[700px] table-auto text-sm">
+                  <thead className="bg-slate-100 text-left text-xs uppercase">
+                    <tr><th className="px-3 py-2">Pedido / Recibo</th><th className="px-3 py-2">Fecha</th>
+                      <th className="px-3 py-2 text-right">Utilidad Bs</th><th className="px-3 py-2 text-right">Venta Bs</th>
+                      <th className="px-3 py-2">Estado</th><th className="px-3 py-2 text-right">% Utilidad</th></tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {monthlyReceipts.map((receipt) => {
+                      const knownCost = receipt.costTotalPrecise ?? (receipt.lines.length > 0 && receipt.lines.every((line) => line.purchaseCostTotal !== null)
+                        ? receipt.lines.reduce((sum, line) => sum + (line.purchaseCostTotal ?? 0), 0) : null);
+                      const sale = Number(receipt.saleTotalPrecise ?? receipt.totalAmount);
+                      const profit = knownCost === null ? null : sale - Number(knownCost);
+                      return <tr key={receipt.id}>
+                        <td className="px-3 py-2 font-mono text-xs">{receipt.orders.map((order) => order.orderReference).join(", ")} / {receipt.number}</td>
+                        <td className="whitespace-nowrap px-3 py-2">{formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt, "short")}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{profit === null ? "Sin costo histórico" : money(profit)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{money(sale)}</td>
+                        <td className="px-3 py-2">{statusLabels[receipt.status]}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{profit === null || sale === 0 ? "—" : `${(profit / sale * 100).toFixed(2)}%`}</td>
+                      </tr>;
+                    })}
+                    {!monthlyReceipts.length ? <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">Sin recibos emitidos en este mes.</td></tr> : null}
+                  </tbody>
+                  <tfoot className="border-t bg-emerald-50 font-semibold">
+                    <tr><td colSpan={2} className="px-3 py-2">TOTAL MENSUAL</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(Number(summary.total.profitTotal))}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(Number(summary.total.saleTotal))}</td>
+                      <td className="px-3 py-2">{knownCostReceipts.length} con costo</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{Number(summary.total.marginPercent).toFixed(2)}%</td></tr>
+                  </tfoot>
+                </table>
+              </div>
+              {knownCostReceipts.length !== monthlyReceipts.length ? <p className="text-xs text-amber-700">Los recibos históricos sin costo no se incluyen en los totales de utilidad.</p> : null}
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function ReceiptCustomerView({
+  receipts,
+  children,
+}: {
+  receipts: QbReceipt[];
+  children: (items: QbReceipt[]) => React.ReactNode;
+}) {
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const activeCustomerId = receipts.some((receipt) => receipt.customerId === customerId) ? customerId : null;
+  return (
+    <div className="space-y-4">
+      <ReceiptCustomerSelector receipts={receipts} selectedCustomerId={activeCustomerId} onSelect={setCustomerId} />
+      {activeCustomerId ? children(receipts.filter((receipt) => receipt.customerId === activeCustomerId)) : null}
+    </div>
   );
 }
 
@@ -1348,7 +1430,6 @@ export function QbReceiptsManagement({
   initialSection?: "pendientes" | "borradores" | "emitidos" | "historial" | "general";
   error?: string;
 }) {
-  const [focusedCustomerId, setFocusedCustomerId] = useState("all");
   const [createState, createAction, createPending] = useActionState(
     createQbReceiptDraftAction,
     initialState,
@@ -1371,12 +1452,9 @@ export function QbReceiptsManagement({
   const legacyDraftCount = receipts.filter(
     (receipt) => receipt.status === "borrador" && receipt.pricingMode === "legacy",
   ).length;
-  const issuedReceipts = receipts.filter((receipt) => receipt.status !== "borrador");
-  const customerOptions = [...new Map([
-    ...receipts.map((receipt) => [receipt.customerId, receipt.customerName] as const),
-    ...pendingGroups.map((group) => [group.customerId, group.customerName] as const),
-  ]).entries()].sort((a,b) => a[1].localeCompare(b[1], "es"));
-  const issuedCount = receipts.filter((receipt) => receipt.status === "emitido").length;
+  const issuedReceipts = receipts.filter((receipt) => receipt.status === "emitido");
+  const historyReceipts = receipts.filter((receipt) => receipt.status !== "borrador");
+  const issuedCount = issuedReceipts.length;
   const pendingCount = pendingGroups.reduce(
     (total, group) => total + group.orders.length,
     0,
@@ -1385,10 +1463,8 @@ export function QbReceiptsManagement({
     initialSection ??
     (pendingCount > 0 ? "pendientes" : draftCount > 0 ? "borradores" : "emitidos");
 
-  function receiptCards(items: QbReceipt[], emptyMessage: string) {
-    const visibleItems = items.filter((receipt) => focusedCustomerId === "all"
-      || receipt.customerId === focusedCustomerId);
-    if (!visibleItems.length) {
+  function receiptCards(items: QbReceipt[], emptyMessage: string, hideMonthlySummary = false) {
+    if (!items.length) {
       return (
         <Card>
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -1398,11 +1474,12 @@ export function QbReceiptsManagement({
       );
     }
 
-    return visibleItems.map((receipt) => (
+    return items.map((receipt) => (
       <ReceiptCard
         key={receipt.id}
         receipt={receipt}
         relatedReceipts={receipts}
+        hideMonthlySummary={hideMonthlySummary}
         comparisonUnits={comparisonUnits}
         updateAction={updateAction}
         updatePending={updatePending}
@@ -1430,14 +1507,6 @@ export function QbReceiptsManagement({
         {actionMessage(emitState)}
         {actionMessage(voidState)}
       </div>
-
-      <label className="inline-flex items-center gap-2 text-sm">Cliente
-        <select className="h-9 max-w-72 rounded border bg-white px-2" value={focusedCustomerId}
-          onChange={(event) => setFocusedCustomerId(event.target.value)}>
-          <option value="all">Todos los clientes</option>
-          {customerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
-      </label>
 
       <Tabs defaultValue={defaultSection} className="space-y-5">
         <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1">
@@ -1480,18 +1549,22 @@ export function QbReceiptsManagement({
               Conservan su editor histórico. Los recibos creados desde Por crear muestran la nueva tabla por producto.
             </p>
           ) : null}
-          {receiptCards(receipts.filter((receipt) => receipt.status === "borrador"), "No hay borradores pendientes.")}
+          <ReceiptCustomerView receipts={receipts.filter((receipt) => receipt.status === "borrador")}>
+            {(items) => receiptCards(items, "No hay borradores pendientes.")}
+          </ReceiptCustomerView>
         </TabsContent>
 
         <TabsContent value="emitidos" className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Consulta, imprime y registra manualmente si el recibo fue enviado y pagado.
           </p>
-          {receiptCards(issuedReceipts, "Todavía no hay recibos emitidos.")}
+          <ReceiptCustomerView receipts={issuedReceipts}>
+            {(items) => receiptCards(items, "Todavía no hay recibos emitidos.")}
+          </ReceiptCustomerView>
         </TabsContent>
 
         <TabsContent value="historial">
-          <ReceiptHistoryPanel receipts={receipts} pendingGroups={pendingGroups} />
+          <ReceiptHistoryPanel receipts={historyReceipts} renderReceipts={(items) => receiptCards(items, "No hay historial para este cliente.", true)} />
         </TabsContent>
         <TabsContent value="general"><ReceiptGeneralSummary receipts={receipts} /></TabsContent>
       </Tabs>
