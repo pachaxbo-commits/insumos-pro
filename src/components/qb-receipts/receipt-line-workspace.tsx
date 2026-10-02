@@ -144,11 +144,13 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
                         const draft = drafts[line.id] ?? initialDraft(line);
                         const preview = linePreview(line, draft, !editable);
                         const arrobaRatio =
-                          line.finalUnitPrice && line.finalUnitPrice > 0 && line.salePricePerArroba
-                            ? line.salePricePerArroba / line.finalUnitPrice
-                            : line.basePriceUsed && line.basePriceUsed > 0 && line.basePricePerArroba
-                              ? line.basePricePerArroba / line.basePriceUsed
-                              : null;
+                          line.arrobaFactor !== null
+                            ? line.arrobaFactor
+                            : line.finalUnitPrice && line.finalUnitPrice > 0 && line.salePricePerArroba
+                              ? line.salePricePerArroba / line.finalUnitPrice
+                              : line.basePriceUsed && line.basePriceUsed > 0 && line.basePricePerArroba
+                                ? line.basePricePerArroba / line.basePriceUsed
+                                : null;
                         const previewUnitSale = preview?.unitSale ? Number(preview.unitSale) : null;
                         const arrobaDisplay =
                           previewUnitSale !== null && arrobaRatio !== null

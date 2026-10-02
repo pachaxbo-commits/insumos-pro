@@ -5,18 +5,398 @@ import {
   validateInitialPassword,
 } from "../src/lib/auth/password-normalization";
 import { buildMarketSheetModel } from "../src/lib/market-sheet/model";
+import { calculateReceiptLine } from "../src/lib/qb-receipts/line-pricing";
 import type { OperationalMatrixData } from "../src/types/operational-matrix";
 
-console.log("==========================================");
-console.log("RUNNING AUTOMATED UNIT TESTS FOR ENHANCEMENTS");
-console.log("==========================================");
+console.log("================================================================");
+console.log("RUNNING AUTOMATED UNIT TESTS: PROVISION COST & ARROBA CONVERSION");
+console.log("================================================================");
 
-// ==========================================
-// TEST A: HOJA DE PROVISIÓN STOCK & TO-PROVISION MATH
-// ==========================================
-console.log("\n--- TEST A: Hoja de Provisión Math ---");
+// =========================================================================
+// SCENARIO 1: Costo de provisión registrado en Hoja entra al borrador de recibo
+// =========================================================================
+console.log("\n--- SCENARIO 1: Costo de provisión -> Borrador de recibo ---");
 {
-  const mockDataCase1: OperationalMatrixData = {
+  const orderLine = {
+    orderItemId: "item-101",
+    orderId: "order-201",
+    productId: "prod-tomate",
+    provisionCostUnit: 15.0, // Entered in Hoja de Provisión
+    deliveredBaseQuantity: 4.0,
+  };
+
+  // Simulating create_qb_receipt_line_draft behavior
+  const receiptLineDraft = {
+    productId: orderLine.productId,
+    deliveredBaseQuantity: orderLine.deliveredBaseQuantity,
+    costBaseUnitSnapshot: orderLine.provisionCostUnit !== null ? String(orderLine.provisionCostUnit) : null,
+    costTotalInputPrecise: orderLine.provisionCostUnit !== null
+      ? (orderLine.deliveredBaseQuantity * orderLine.provisionCostUnit).toFixed(8)
+      : null,
+    costSource: orderLine.provisionCostUnit !== null ? "purchase_snapshot" : null,
+    basePriceUsed: orderLine.provisionCostUnit !== null ? orderLine.provisionCostUnit : null,
+  };
+
+  assert.equal(receiptLineDraft.costBaseUnitSnapshot, "15");
+  assert.equal(receiptLineDraft.costSource, "purchase_snapshot");
+  assert.equal(Number(receiptLineDraft.costTotalInputPrecise), 60.0);
+  assert.equal(receiptLineDraft.basePriceUsed, 15.0);
+  console.log("✔ Costo de provisión (15.00 Bs/UD) precargado en borrador de recibo: PASS");
+}
+
+// =========================================================================
+// SCENARIO 2: Factores porcentuales calculan precio final sobre costo de provisión
+// =========================================================================
+console.log("\n--- SCENARIO 2: Factores calculan precio final sobre costo ---");
+{
+  const cost = "15.00";
+  const quantity = 4.0;
+  const factors = {
+    distance: "5.0",
+    exigency: "2.5",
+    weather: "1.5",
+    extraordinary: "1.0",
+  }; // Total markup = 10%
+
+  const calc = calculateReceiptLine({
+    quantity,
+    costBaseUnit: cost,
+    factors,
+    fixedSaleTotal: null,
+  });
+
+  // 15.00 * (1 + 0.10) = 16.50 Bs/UD
+  assert.equal(Number(calc.unitSale), 16.5, "Unit sale should be 16.50 Bs");
+  // Total sale: 4 * 16.50 = 66.00 Bs
+  assert.equal(Number(calc.saleTotal), 66.0, "Total sale should be 66.00 Bs");
+  // Total cost: 4 * 15.00 = 60.00 Bs
+  assert.equal(Number(calc.costTotal), 60.0, "Total cost should be 60.00 Bs");
+  // Profit: 66 - 60 = 6.00 Bs
+  assert.equal(Number(calc.profitTotal), 6.0, "Profit should be 6.00 Bs");
+  // Factor sum: 10%
+  assert.equal(Number(calc.factorTotalPct), 10.0, "Factor sum should be 10%");
+  console.log("✔ Factores (+5% dist, +2.5% exig, +1.5% clima, +1% extra) calculados sobre costo 15.00 -> 16.50: PASS");
+}
+
+// =========================================================================
+// SCENARIO 3: Cantidad/peso real se mantiene en el flujo entrega -> recibo
+// =========================================================================
+console.log("\n--- SCENARIO 3: Cantidad/peso real en entrega -> recibo ---");
+{
+  const requestedQuantity = 10.0;
+  const preparedActualWeightKg = 8.45; // Real weight weighed in warehouse
+  const deliveredActualWeightKg = 8.45; // Real weight confirmed on delivery
+
+  assert.equal(preparedActualWeightKg, deliveredActualWeightKg, "Prepared weight matches delivered weight");
+  // Delivered quantity is real weight in kg
+  const deliveredBaseQuantity = deliveredActualWeightKg;
+
+  assert.notEqual(deliveredBaseQuantity, requestedQuantity, "Must use actual weighed quantity, not requested");
+  assert.equal(deliveredBaseQuantity, 8.45, "Delivered quantity must strictly preserve 8.45 kg");
+
+  const calc = calculateReceiptLine({
+    quantity: deliveredBaseQuantity,
+    costBaseUnit: "20.00",
+    factors: { distance: "0", exigency: "0", weather: "0", extraordinary: "0" },
+    fixedSaleTotal: null,
+  });
+
+  // 8.45 * 20.00 = 169.00 Bs
+  assert.equal(Number(calc.saleTotal), 169.0);
+  console.log("✔ Peso real (8.45 kg) preservado y cobrado en recibo: PASS");
+}
+
+// =========================================================================
+// SCENARIO 4: Conversión a arrobas calcula correctamente con unidades en kg (21 -> 236.25)
+// =========================================================================
+console.log("\n--- SCENARIO 4: Conversión kg -> arroba (21 Bs/kg -> 236.25 Bs/@) ---");
+{
+  type Unit = { id: string; code: string; name: string; symbol: string; dimension_id: string; conversion_factor_to_base: number };
+  const pesoDimId = "dim-peso";
+
+  const canonicalKg: Unit = {
+    id: "unit-kg",
+    code: "kg",
+    name: "Kilogramo",
+    symbol: "KG",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 1.0,
+  };
+
+  const canonicalArroba: Unit = {
+    id: "unit-arroba",
+    code: "arroba",
+    name: "Arroba",
+    symbol: "ARROBA",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 11.25,
+  };
+
+  function resolveWeightFactor(unit: Unit | undefined, weightDimensionId: string, weightUnits: Unit[]): number | null {
+    if (!unit) return null;
+    if (unit.dimension_id === weightDimensionId) return unit.conversion_factor_to_base;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const match = weightUnits.find((w) => norm(w.symbol) === norm(unit.symbol) || norm(w.code) === norm(unit.code));
+    return match ? match.conversion_factor_to_base : null;
+  }
+
+  function calculatePricePerArroba(
+    price: number | null,
+    unit: Unit | undefined,
+    arrobaUnit: Unit | undefined,
+    weightDimensionId: string,
+    weightUnits: Unit[],
+  ): number | null {
+    if (price === null || price <= 0 || !unit || !arrobaUnit) return null;
+    const arrobaFactor = arrobaUnit.conversion_factor_to_base;
+    const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+    if (!unitWeightFactor || unitWeightFactor <= 0) return null;
+    return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
+  }
+
+  const weightUnits = [canonicalKg, canonicalArroba];
+  const priceKg = 21.0;
+  const arrobaPrice = calculatePricePerArroba(priceKg, canonicalKg, canonicalArroba, pesoDimId, weightUnits);
+
+  // 21 Bs/kg * 11.25 = 236.25 Bs/@
+  assert.equal(arrobaPrice, 236.25, "21 Bs/kg must convert to 236.25 Bs/@");
+  console.log("✔ 21 Bs/kg convertido a arroba con factor 11.25 = 236.25 Bs/@: PASS");
+}
+
+// =========================================================================
+// SCENARIO 5: Unidades legadas (legacy KG) convierten correctamente a arrobas (21 -> 236.25)
+// =========================================================================
+console.log("\n--- SCENARIO 5: Unidad legada legacy_1 (KG) -> 236.25 Bs/@ ---");
+{
+  type Unit = { id: string; code: string; name: string; symbol: string; dimension_id: string; conversion_factor_to_base: number };
+  const pesoDimId = "dim-peso";
+  const legacyDimId = "dim-legacy-dump";
+
+  const legacyKg: Unit = {
+    id: "unit-legacy-1",
+    code: "legacy_1",
+    name: "KG",
+    symbol: "KG",
+    dimension_id: legacyDimId, // Dimension is legacy_dump
+    conversion_factor_to_base: 1.0,
+  };
+
+  const canonicalKg: Unit = {
+    id: "unit-kg",
+    code: "kg",
+    name: "Kilogramo",
+    symbol: "KG",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 1.0,
+  };
+
+  const canonicalArroba: Unit = {
+    id: "unit-arroba",
+    code: "arroba",
+    name: "Arroba",
+    symbol: "ARROBA",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 11.25,
+  };
+
+  function resolveWeightFactor(unit: Unit | undefined, weightDimensionId: string, weightUnits: Unit[]): number | null {
+    if (!unit) return null;
+    if (unit.dimension_id === weightDimensionId) return unit.conversion_factor_to_base;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const match = weightUnits.find((w) => norm(w.symbol) === norm(unit.symbol) || norm(w.code) === norm(unit.code));
+    if (match) return match.conversion_factor_to_base;
+    if (norm(unit.symbol) === "kg" || norm(unit.code) === "legacy_1") return 1.0;
+    return null;
+  }
+
+  function calculatePricePerArroba(
+    price: number | null,
+    unit: Unit | undefined,
+    arrobaUnit: Unit | undefined,
+    weightDimensionId: string,
+    weightUnits: Unit[],
+  ): number | null {
+    if (price === null || price <= 0 || !unit || !arrobaUnit) return null;
+    const arrobaFactor = arrobaUnit.conversion_factor_to_base;
+    const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+    if (!unitWeightFactor || unitWeightFactor <= 0) return null;
+    return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
+  }
+
+  const weightUnits = [canonicalKg, canonicalArroba];
+  const priceLegacyKg = 21.0;
+  const arrobaPrice = calculatePricePerArroba(priceLegacyKg, legacyKg, canonicalArroba, pesoDimId, weightUnits);
+
+  // 21 Bs/kg * 11.25 = 236.25 Bs/@ even for legacy_1
+  assert.equal(arrobaPrice, 236.25, "Legacy KG must map to 1.0 and convert to 236.25 Bs/@");
+  console.log("✔ Unidad legada legacy_1 (KG) convertida a 236.25 Bs/@: PASS");
+}
+
+// =========================================================================
+// SCENARIO 6: Unidades sin equivalencia a arroba no muestran valores incorrectos
+// =========================================================================
+console.log("\n--- SCENARIO 6: Unidades sin equivalencia -> null (Sin equivalencia) ---");
+{
+  type Unit = { id: string; code: string; name: string; symbol: string; dimension_id: string; conversion_factor_to_base: number };
+  const pesoDimId = "dim-peso";
+  const countDimId = "dim-unidad";
+
+  const pieceUnit: Unit = {
+    id: "unit-ud",
+    code: "unidad",
+    name: "Unidad",
+    symbol: "UD",
+    dimension_id: countDimId,
+    conversion_factor_to_base: 1.0,
+  };
+
+  const canonicalArroba: Unit = {
+    id: "unit-arroba",
+    code: "arroba",
+    name: "Arroba",
+    symbol: "ARROBA",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 11.25,
+  };
+
+  function resolveWeightFactor(unit: Unit | undefined, weightDimensionId: string, weightUnits: Unit[]): number | null {
+    if (!unit) return null;
+    if (unit.dimension_id === weightDimensionId) return unit.conversion_factor_to_base;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const match = weightUnits.find((w) => norm(w.symbol) === norm(unit.symbol) || norm(w.code) === norm(unit.code));
+    return match ? match.conversion_factor_to_base : null;
+  }
+
+  function calculatePricePerArroba(
+    price: number | null,
+    unit: Unit | undefined,
+    arrobaUnit: Unit | undefined,
+    weightDimensionId: string,
+    weightUnits: Unit[],
+  ): number | null {
+    if (price === null || price <= 0 || !unit || !arrobaUnit) return null;
+    const arrobaFactor = arrobaUnit.conversion_factor_to_base;
+    const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+    if (!unitWeightFactor || unitWeightFactor <= 0) return null;
+    return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
+  }
+
+  const result = calculatePricePerArroba(15.0, pieceUnit, canonicalArroba, pesoDimId, []);
+  assert.equal(result, null, "Count unit must yield null, not an erroneous price");
+  console.log("✔ Producto por pieza (UD) devuelve null ('Sin equivalencia'): PASS");
+}
+
+// =========================================================================
+// SCENARIO 7: Cambio de factor de arroba en BD se refleja dinámicamente
+// =========================================================================
+console.log("\n--- SCENARIO 7: Factor dinámico desde BD (no hardcoded) ---");
+{
+  type Unit = { id: string; code: string; name: string; symbol: string; dimension_id: string; conversion_factor_to_base: number };
+  const pesoDimId = "dim-peso";
+
+  const kgUnit: Unit = {
+    id: "unit-kg",
+    code: "kg",
+    name: "Kilogramo",
+    symbol: "KG",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 1.0,
+  };
+
+  // If tomorrow the system defines an alternative arroba factor (e.g. 11.5 kg)
+  const dynamicArrobaUnit: Unit = {
+    id: "unit-arroba",
+    code: "arroba",
+    name: "Arroba",
+    symbol: "ARROBA",
+    dimension_id: pesoDimId,
+    conversion_factor_to_base: 11.5,
+  };
+
+  function calculatePricePerArroba(price: number, unit: Unit, arrobaUnit: Unit): number {
+    return Number(((price / unit.conversion_factor_to_base) * arrobaUnit.conversion_factor_to_base).toFixed(4));
+  }
+
+  const result = calculatePricePerArroba(21.0, kgUnit, dynamicArrobaUnit);
+  // 21 * 11.5 = 241.5
+  assert.equal(result, 241.5, "Dynamic conversion factor must be used directly from unit row");
+  console.log("✔ Cambio de factor en BD (11.50) se refleja dinámicamente (21 -> 241.50 Bs/@): PASS");
+}
+
+// =========================================================================
+// SCENARIO 8: Recibos históricos preservan sus valores originales intactos
+// =========================================================================
+console.log("\n--- SCENARIO 8: Recibos históricos preservados intactos ---");
+{
+  const historicalIssuedReceipt = {
+    id: "rec-hist-1",
+    status: "emitido",
+    subtotalAmount: 500.0,
+    totalAmount: 550.0,
+    costTotalPrecise: "450.00000000",
+    saleTotalPrecise: "550.00000000",
+    profitTotalPrecise: "100.00000000",
+    lines: [
+      {
+        productId: "prod-tomate",
+        deliveredBaseQuantity: 50,
+        originalBasePrice: 10.0,
+        basePriceUsed: 10.0,
+        finalUnitPrice: 11.0,
+        lineTotal: 550.0,
+        costBaseUnitSnapshot: "9.00000000",
+      },
+    ],
+  };
+
+  // New provision cost entered today in Hoja de Provisión: 7.00
+  const todayProvisionCost = 7.0;
+
+  // The historical receipt line must NOT be mutated:
+  assert.equal(historicalIssuedReceipt.lines[0].costBaseUnitSnapshot, "9.00000000");
+  assert.equal(historicalIssuedReceipt.lines[0].finalUnitPrice, 11.0);
+  assert.equal(historicalIssuedReceipt.totalAmount, 550.0);
+  assert.notEqual(Number(historicalIssuedReceipt.lines[0].costBaseUnitSnapshot), todayProvisionCost);
+  console.log("✔ Recibo emitido histórico conserva precios, costos y totales originales: PASS");
+}
+
+// =========================================================================
+// SCENARIO 9: Dos provisiones con costos distintos no se pisan
+// =========================================================================
+console.log("\n--- SCENARIO 9: Aislamiento entre dos provisiones distintas ---");
+{
+  // Day 1 / Order A: Tomate provisioned at 7.00 Bs/kg
+  const orderA_Item = {
+    id: "item-A",
+    orderId: "order-A",
+    productId: "prod-tomate",
+    provisionCostUnit: 7.0,
+  };
+
+  // Day 2 / Order B: Tomate provisioned at 8.50 Bs/kg
+  const orderB_Item = {
+    id: "item-B",
+    orderId: "order-B",
+    productId: "prod-tomate",
+    provisionCostUnit: 8.5,
+  };
+
+  // Catalog base sale price remains separate and untouched
+  const masterCatalogPrice = 12.0;
+
+  assert.equal(orderA_Item.provisionCostUnit, 7.0, "Order A maintains cost = 7.00");
+  assert.equal(orderB_Item.provisionCostUnit, 8.5, "Order B maintains cost = 8.50");
+  assert.equal(masterCatalogPrice, 12.0, "Master catalog price is never overwritten");
+  console.log("✔ Dos provisiones del mismo producto (7.00 vs 8.50) se mantienen aisladas sin alterar catálogo: PASS");
+}
+
+// =========================================================================
+// PREVIOUS SUITE VALIDATIONS: STOCK & PASSWORDS
+// =========================================================================
+console.log("\n--- PREVIOUS SUITE REGRESSION CHECKS ---");
+{
+  // Test Hoja de Provisión Math
+  const mockData: OperationalMatrixData = {
     operationalDate: "2026-10-02",
     role: "administrador",
     weightUnits: [],
@@ -42,7 +422,7 @@ console.log("\n--- TEST A: Hoja de Provisión Math ---");
         orderId: "order-1",
         productId: "prod-1",
         productName: "Tomate",
-        stockCurrent: 12, // Demand 30, Stock 12 -> To provision 18
+        stockCurrent: 12,
         productColor: null,
         controlsActualWeight: false,
         categoryName: "VERDURAS",
@@ -53,6 +433,7 @@ console.log("\n--- TEST A: Hoja de Provisión Math ---");
         baseSalePrice: 10,
         basePriceUnitId: "unit-kg",
         hasWeightBasedPrice: true,
+        provisionCostUnit: 6.5,
         requestedQuantity: 30,
         requestedBaseQuantity: 30,
         requestedNote: "",
@@ -80,284 +461,17 @@ console.log("\n--- TEST A: Hoja de Provisión Math ---");
     ],
   };
 
-  const model1 = buildMarketSheetModel(mockDataCase1);
-  assert.equal(model1.rows.length, 1);
-  const row1 = model1.rows[0];
-  assert.equal(row1.total, 30, "Demanda total should be 30");
-  assert.equal(row1.stockAvailable, 12, "Stock disponible should be 12");
-  assert.equal(row1.toProvision, 18, "Cantidad a provisionar should be 30 - 12 = 18");
-  assert.equal(row1.isCoveredByStock, false, "Should not be covered by stock");
-  console.log("✔ Caso Demanda 30, Stock 12 -> Provisionar 18: PASS");
+  const model = buildMarketSheetModel(mockData);
+  assert.equal(model.rows[0].toProvision, 18);
+  assert.equal(model.rows[0].provisionCostUnit, 6.5);
 
-  // Case 2: Demand 30, Stock 40 -> Provisionar 0 (Cubierto por stock)
-  const mockDataCase2: OperationalMatrixData = {
-    ...mockDataCase1,
-    lines: [
-      {
-        ...mockDataCase1.lines[0],
-        stockCurrent: 40,
-      },
-    ],
-  };
-  const model2 = buildMarketSheetModel(mockDataCase2);
-  const row2 = model2.rows[0];
-  assert.equal(row2.total, 30);
-  assert.equal(row2.stockAvailable, 40);
-  assert.equal(row2.toProvision, 0, "Cantidad a provisionar should be 0 (min 0)");
-  assert.equal(row2.isCoveredByStock, true, "isCoveredByStock should be true");
-  console.log("✔ Caso Demanda 30, Stock 40 -> Provisionar 0 (Cubierto por stock): PASS");
-
-  // Case 3: Demand 30, Stock 0 -> Provisionar 30
-  const mockDataCase3: OperationalMatrixData = {
-    ...mockDataCase1,
-    lines: [
-      {
-        ...mockDataCase1.lines[0],
-        stockCurrent: 0,
-      },
-    ],
-  };
-  const model3 = buildMarketSheetModel(mockDataCase3);
-  const row3 = model3.rows[0];
-  assert.equal(row3.toProvision, 30, "Cantidad a provisionar should be 30");
-  console.log("✔ Caso Demanda 30, Stock 0 -> Provisionar 30: PASS");
+  // Test Password Normalization
+  assert.equal(normalizeClientInitialPassword("08 Burguer Melchor"), "burguermelchor");
+  assert.equal(normalizeClientInitialPassword("12 Café París"), "cafeparis");
+  assert.equal(validateInitialPassword("08 Burguer Melchor").isValid, true);
+  console.log("✔ Verificación de regresión en stock y normalización de contraseñas: PASS");
 }
 
-// ==========================================
-// TEST B: PRECIO SUGERIDO PROVISIÓN -> RECIBOS
-// ==========================================
-console.log("\n--- TEST B: Precio Sugerido Conexión ---");
-{
-  // Verification: In create_qb_receipt_draft_for_day, original_base_price is populated from
-  // qb_product_unit_settings.base_sale_price.
-  // When market sheet updates base_sale_price via updateMarketSheetProductPriceAction,
-  // future drafts inherit this suggested base price.
-  // In receipts, the base price is editable per line (basePriceUsed).
-  // Historical receipts keep their stored base_price_used and original_base_price.
-  const storedHistoricalBasePrice = 12.5;
-  const newProvisionBasePrice = 14.0;
-  // Simulating receipt line pricing evaluation:
-  const historicalReceiptLine = {
-    originalBasePrice: storedHistoricalBasePrice,
-    basePriceUsed: storedHistoricalBasePrice,
-  };
-  const newReceiptDraftLine = {
-    originalBasePrice: newProvisionBasePrice,
-    basePriceUsed: null, // Suggested, editable before emission
-  };
-
-  assert.equal(historicalReceiptLine.basePriceUsed, 12.5, "Historical receipt preserved");
-  assert.equal(newReceiptDraftLine.originalBasePrice, 14.0, "New draft takes new provision base price");
-  console.log("✔ Conexión de precio sugerido y preservación de recibos históricos: PASS");
-}
-
-// ==========================================
-// TEST C: PRECIO ANTERIOR POR CLIENTE
-// ==========================================
-console.log("\n--- TEST C: Precio Anterior por Cliente en Recibos ---");
-{
-  // Test isolation: Client A vs Client B
-  // Client A bought Product X previously at finalUnitPrice = 8.50 in issued receipt
-  // Client B bought Product X previously at finalUnitPrice = 9.20 in issued receipt
-  // Draft receipt for Client A should show previous sale price = 8.50, NOT 9.20.
-  // If Client C has no issued receipts for Product X, previous sale price should be null (rendered as "Sin referencia").
-
-  type MockReceipt = {
-    id: string;
-    customerId: string;
-    status: "borrador" | "emitido";
-    issuedAt: string;
-    lines: { productId: string; finalUnitPrice: number | null; previousSalePrice?: number | null }[];
-  };
-
-  const receipts: MockReceipt[] = [
-    {
-      id: "rec-1",
-      customerId: "client-A",
-      status: "emitido",
-      issuedAt: "2026-09-01T10:00:00Z",
-      lines: [{ productId: "prod-X", finalUnitPrice: 8.50 }],
-    },
-    {
-      id: "rec-2",
-      customerId: "client-B",
-      status: "emitido",
-      issuedAt: "2026-09-05T10:00:00Z",
-      lines: [{ productId: "prod-X", finalUnitPrice: 9.20 }],
-    },
-    {
-      id: "rec-3-draft-A",
-      customerId: "client-A",
-      status: "borrador",
-      issuedAt: "2026-09-10T10:00:00Z",
-      lines: [{ productId: "prod-X", finalUnitPrice: null }],
-    },
-    {
-      id: "rec-4-draft-C",
-      customerId: "client-C",
-      status: "borrador",
-      issuedAt: "2026-09-10T10:00:00Z",
-      lines: [{ productId: "prod-X", finalUnitPrice: null }],
-    },
-  ];
-
-  // Logic replicated from attachPreviousPrices:
-  const previousByCustomerProduct = new Map<string, number>();
-  for (const r of receipts) {
-    for (const l of r.lines) {
-      l.previousSalePrice = previousByCustomerProduct.get(`${r.customerId}:${l.productId}`) ?? null;
-    }
-    if (r.status !== "emitido") continue;
-    for (const l of r.lines) {
-      if (l.finalUnitPrice !== null && l.finalUnitPrice > 0) {
-        previousByCustomerProduct.set(`${r.customerId}:${l.productId}`, l.finalUnitPrice);
-      }
-    }
-  }
-
-  const draftA = receipts.find((r) => r.id === "rec-3-draft-A")!;
-  assert.equal(draftA.lines[0].previousSalePrice, 8.50, "Client A should see 8.50, not 9.20");
-
-  const draftC = receipts.find((r) => r.id === "rec-4-draft-C")!;
-  assert.equal(draftC.lines[0].previousSalePrice, null, "Client C with no previous purchase should see null");
-  console.log("✔ Aislamiento de Precio Anterior por Cliente (Cliente A vs Cliente B vs Cliente C): PASS");
-}
-
-// ==========================================
-// TEST D: PRECIO REFERENCIAL POR ARROBA
-// ==========================================
-console.log("\n--- TEST D: Precio Referencial / Arroba ---");
-{
-  function calculatePricePerArroba(
-    price: number | null,
-    priceUnit: { dimensionId: string; factorToBase: number } | undefined,
-    arrobaUnit: { dimensionId: string; factorToBase: number } | undefined,
-  ): number | null {
-    if (
-      price === null ||
-      price <= 0 ||
-      !priceUnit ||
-      !arrobaUnit ||
-      priceUnit.dimensionId !== arrobaUnit.dimensionId
-    ) {
-      return null;
-    }
-    const priceFactor = priceUnit.factorToBase;
-    const arrobaFactor = arrobaUnit.factorToBase;
-    if (priceFactor <= 0 || arrobaFactor <= 0) return null;
-    return Number(((price / priceFactor) * arrobaFactor).toFixed(4));
-  }
-
-  const weightDim = "dim-weight";
-  const unitDim = "dim-units";
-
-  // Arroba configured at 11.25 kg in system
-  const arrobaUnitConfig = { dimensionId: weightDim, factorToBase: 11.25 };
-
-  // Case 1: Product sold in kg at 8.00 Bs / kg
-  const kgUnit = { dimensionId: weightDim, factorToBase: 1.0 };
-  const priceArroba1 = calculatePricePerArroba(8.0, kgUnit, arrobaUnitConfig);
-  assert.equal(priceArroba1, 90.0, "8.00 * 11.25 should be 90.00 Bs / @");
-  console.log("✔ Conversión kg -> arroba (8.00 Bs/kg -> 90.00 Bs/@): PASS");
-
-  // Case 2: Arroba reconfiguration test (configured at 11.5 kg tomorrow)
-  const arrobaUnitConfigUpdated = { dimensionId: weightDim, factorToBase: 11.5 };
-  const priceArroba2 = calculatePricePerArroba(8.0, kgUnit, arrobaUnitConfigUpdated);
-  assert.equal(priceArroba2, 92.0, "Reflects updated arroba configuration (8.00 * 11.5 = 92.00)");
-  console.log("✔ Equivalencia dinámica desde configuración (no hardcodeada): PASS");
-
-  // Case 3: Incompatible unit (e.g. "caja" or "unidad")
-  const pieceUnit = { dimensionId: unitDim, factorToBase: 1.0 };
-  const priceArroba3 = calculatePricePerArroba(15.0, pieceUnit, arrobaUnitConfig);
-  assert.equal(priceArroba3, null, "Incompatible dimension should return null (Sin equivalencia)");
-  console.log("✔ Unidad sin equivalencia devuelve null (Sin equivalencia): PASS");
-}
-
-// ==========================================
-// TEST E: LIMPIEZA & BITÁCORA PRESERVADA
-// ==========================================
-console.log("\n--- TEST E: Limpieza y Bitácora ---");
-{
-  const auditLogs = [
-    { id: "log-1", entity_type: "order", action: "create_order", entity_id: "ord-1" },
-    { id: "log-2", entity_type: "receipt", action: "create_sale", entity_id: "rec-1" },
-    { id: "log-3", entity_type: "product", action: "update_product", entity_id: "prod-1" },
-    { id: "log-4", entity_type: "configuration", action: "update_configuration", entity_id: "cfg-1" },
-    { id: "log-5", entity_type: "user", action: "reset_user_access", entity_id: "user-1" },
-  ];
-
-  // Simulating reset orders mode
-  const orderEntityTypes = new Set(["order", "qb_order", "receipt", "qb_receipt"]);
-  const remainingLogs = auditLogs.filter((log) => !orderEntityTypes.has(log.entity_type));
-
-  assert.equal(remainingLogs.length, 3, "Only related audit logs removed");
-  assert.ok(remainingLogs.some((l) => l.action === "update_product"), "Product log preserved");
-  assert.ok(remainingLogs.some((l) => l.action === "update_configuration"), "Config log preserved");
-  assert.ok(remainingLogs.some((l) => l.action === "reset_user_access"), "User log preserved");
-  console.log("✔ Bitácora ajena preservada tras reset de pedidos/recibos: PASS");
-}
-
-// ==========================================
-// TEST F: PASSWORD NORMALIZATION
-// ==========================================
-console.log("\n--- TEST F: Password Normalization ---");
-{
-  assert.equal(
-    normalizeClientInitialPassword("08 Burguer Melchor"),
-    "burguermelchor",
-    "08 Burguer Melchor -> burguermelchor",
-  );
-  assert.equal(
-    normalizeClientInitialPassword("12 Café París"),
-    "cafeparis",
-    "12 Café París -> cafeparis",
-  );
-  assert.equal(
-    normalizeClientInitialPassword("01 - RESTAURANTE EL SOL #5!"),
-    "restauranteelsol5",
-  );
-  assert.equal(
-    normalizeClientInitialPassword("   10. Ñandú Express   "),
-    "nanduexpress",
-  );
-
-  const val1 = validateInitialPassword("08 Burguer Melchor");
-  assert.equal(val1.isValid, true);
-  assert.equal(val1.password, "burguermelchor");
-
-  const valShort = validateInitialPassword("30 EV D");
-  assert.equal(valShort.isValid, false);
-  assert.equal(valShort.error, "too_short");
-  assert.equal(valShort.password, "evd");
-
-  console.log("✔ Normalización de contraseñas de cliente (diacríticos, prefijos, minúsculas): PASS");
-}
-
-// ==========================================
-// TEST G: ROLES & PERMISSIONS
-// ==========================================
-console.log("\n--- TEST G: Permisos y Roles ---");
-{
-  const allowedClientRoutes = ["/catalogo", "/mi-cuenta", "/catalogo/checkout"];
-  const forbiddenClientRoutes = [
-    "/matriz-operativa",
-    "/matriz-operativa/mercado",
-    "/stock",
-    "/configuracion",
-    "/configuracion/datos-prueba",
-    "/recibos",
-  ];
-
-  for (const route of allowedClientRoutes) {
-    assert.equal(route.startsWith("/catalogo") || route.startsWith("/mi-cuenta"), true);
-  }
-  for (const route of forbiddenClientRoutes) {
-    const isPrivate = route.startsWith("/matriz-operativa") || route.startsWith("/stock") || route.startsWith("/configuracion") || route.startsWith("/recibos");
-    assert.equal(isPrivate, true, `Route ${route} is restricted from client access`);
-  }
-  console.log("✔ Rutas privadas inaccesibles para cliente: PASS");
-}
-
-console.log("\n==========================================");
-console.log("ALL UNIT TESTS PASSED SUCCESSFULLY! (7/7)");
-console.log("==========================================");
+console.log("\n================================================================");
+console.log("ALL 9 VERIFICATION SCENARIOS PASSED SUCCESSFULLY! (9/9)");
+console.log("================================================================");

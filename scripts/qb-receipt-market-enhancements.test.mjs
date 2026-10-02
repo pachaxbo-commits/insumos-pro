@@ -114,7 +114,7 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.equal(sheet.pageSetup.orientation, "landscape");
   assert.equal(sheet.pageSetup.fitToWidth, 1);
   assert.match(sheet.pageSetup.printArea, /^A1:K\d+$/);
-  assert.equal(sheet.getCell("K5").value, "PRECIO COMPRA (Bs/UD)");
+  assert.equal(sheet.getCell("K5").value, "COSTO DE PROVISIÓN (Bs/UD)");
   assert.equal(sheet.getCell("K6").value, null);
   assert.equal(sheet.getCell("D7").value, 1);
   assert.equal(sheet.getCell("E7").value, 1);

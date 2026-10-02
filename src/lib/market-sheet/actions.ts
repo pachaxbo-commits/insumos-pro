@@ -13,6 +13,58 @@ export type MarketSheetActionResult = {
   data?: unknown;
 };
 
+const costSchema = z.object({
+  orderItemIds: z.array(z.string().uuid()).min(1),
+  newCost: z.number().finite().min(0).max(999999).nullable(),
+});
+
+export async function updateMarketSheetProductCostAction(
+  orderItemIds: string[],
+  newCost: number | null,
+): Promise<MarketSheetActionResult> {
+  const auth = await requireRoleAccess("/matriz-operativa");
+  if (auth.user.role !== "administrador") {
+    return {
+      success: false,
+      message: "Solo un administrador puede actualizar el costo de provisión.",
+    };
+  }
+
+  const parsed = costSchema.safeParse({ orderItemIds, newCost });
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: "Costo de provisión inválido.",
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return { success: false, message: "Error al conectar con la base de datos." };
+  }
+
+  const { error } = await supabase.rpc("save_qb_matrix_provision_cost", {
+    p_order_item_ids: parsed.data.orderItemIds,
+    p_cost: parsed.data.newCost,
+  });
+
+  if (error) {
+    return {
+      success: false,
+      message: error.message || "No se pudo actualizar el costo de provisión.",
+    };
+  }
+
+  revalidatePath("/matriz-operativa/mercado");
+  revalidatePath("/matriz-operativa");
+  revalidatePath("/recibos");
+
+  return {
+    success: true,
+    message: "Costo de provisión actualizado.",
+  };
+}
+
 const priceSchema = z.object({
   productId: z.string().uuid(),
   newPrice: z.number().finite().min(0).max(999999).nullable(),

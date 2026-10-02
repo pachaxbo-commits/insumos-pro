@@ -86,7 +86,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "RESERVADO",
     "DISPONIBLE",
     "FALTANTE / COMPRAR",
-    "PRECIO COMPRA (Bs/UD)",
+    "COSTO DE PROVISIÓN (Bs/UD)",
   ];
   const headerRow = sheet.getRow(5);
   headerRow.values = headers;
@@ -124,10 +124,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       item.reserved,
       Math.max(item.stockAvailable - item.reserved, 0),
       item.toProvision,
-      item.baseSalePrice ?? null,
+      item.provisionCostUnit ?? null,
     ];
     row.height = 21;
-    row.getCell(lastColumn).value = item.baseSalePrice ?? null;
+    row.getCell(lastColumn).value = item.provisionCostUnit ?? null;
     row.eachCell({ includeEmpty: true }, (cell, column) => {
       cell.fill = {
         type: "pattern",

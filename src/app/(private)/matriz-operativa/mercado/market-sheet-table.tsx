@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import type { MarketSheetModel, MarketSheetRow } from "@/lib/market-sheet/model";
 import {
-  updateMarketSheetProductPriceAction,
+  updateMarketSheetProductCostAction,
   updateMarketSheetProductActualAction,
 } from "@/lib/market-sheet/actions";
 
@@ -64,7 +64,7 @@ export function MarketSheetTable({
               PESO / CANT. REAL
             </th>
             <th className="min-w-28 border border-slate-500 bg-indigo-50 px-2 py-2 font-bold">
-              PRECIO PROVISIÓN (Bs/UD)
+              COSTO DE PROVISIÓN (Bs/UD)
             </th>
           </tr>
         </thead>
@@ -120,13 +120,13 @@ function MarketSheetTableRow({
   const [actualInput, setActualInput] = useState<string>(
     row.actualWeightOrQuantity !== null ? String(row.actualWeightOrQuantity) : "",
   );
-  const [priceInput, setPriceInput] = useState<string>(
-    row.baseSalePrice !== null ? String(row.baseSalePrice) : "",
+  const [costInput, setCostInput] = useState<string>(
+    row.provisionCostUnit !== null ? String(row.provisionCostUnit) : "",
   );
   const [isSavingActual, startActualTransition] = useTransition();
-  const [isSavingPrice, startPriceTransition] = useTransition();
+  const [isSavingCost, startCostTransition] = useTransition();
   const [savedActual, setSavedActual] = useState(false);
-  const [savedPrice, setSavedPrice] = useState(false);
+  const [savedCost, setSavedCost] = useState(false);
 
   const handleBlurActual = () => {
     const raw = actualInput.trim();
@@ -154,24 +154,25 @@ function MarketSheetTableRow({
     });
   };
 
-  const handleBlurPrice = () => {
+  const handleBlurCost = () => {
     if (!isAdmin) return;
-    const raw = priceInput.trim();
+    const raw = costInput.trim();
     const parsed = raw === "" ? null : Number(raw.replace(",", "."));
     if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) {
-      toast.error("Ingresa un precio válido.");
+      toast.error("Ingresa un costo de provisión válido.");
       return;
     }
-    if (parsed === row.baseSalePrice) return;
+    if (parsed === row.provisionCostUnit) return;
 
-    startPriceTransition(async () => {
-      const res = await updateMarketSheetProductPriceAction(
-        row.productId,
+    startCostTransition(async () => {
+      const lineIds = row.lines.map((line) => line.orderItemId);
+      const res = await updateMarketSheetProductCostAction(
+        lineIds,
         parsed,
       );
       if (res.success) {
-        setSavedPrice(true);
-        setTimeout(() => setSavedPrice(false), 2000);
+        setSavedCost(true);
+        setTimeout(() => setSavedCost(false), 2000);
         toast.success(res.message);
       } else {
         toast.error(res.message);
@@ -262,7 +263,7 @@ function MarketSheetTableRow({
         </div>
       </td>
 
-      {/* Provision / suggested base price editable */}
+      {/* Provision cost editable */}
       <td className="border-r border-slate-300 bg-indigo-50/40 px-1.5 py-1 text-center">
         {isAdmin ? (
           <div className="flex items-center justify-center gap-1 print:hidden">
@@ -270,28 +271,28 @@ function MarketSheetTableRow({
             <input
               type="text"
               inputMode="decimal"
-              value={priceInput}
-              onChange={(e) => setPriceInput(e.target.value)}
-              onBlur={handleBlurPrice}
-              onKeyDown={(e) => e.key === "Enter" && handleBlurPrice()}
-              disabled={isSavingPrice}
-              placeholder={row.baseSalePrice !== null ? String(row.baseSalePrice) : "—"}
-              aria-label={`Precio provisión de ${row.productName}`}
+              value={costInput}
+              onChange={(e) => setCostInput(e.target.value)}
+              onBlur={handleBlurCost}
+              onKeyDown={(e) => e.key === "Enter" && handleBlurCost()}
+              disabled={isSavingCost}
+              placeholder={row.provisionCostUnit !== null ? String(row.provisionCostUnit) : "—"}
+              aria-label={`Costo de provisión de ${row.productName}`}
               className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600 disabled:opacity-60"
             />
-            {isSavingPrice ? (
+            {isSavingCost ? (
               <Loader2 className="size-3 animate-spin text-slate-400" />
-            ) : savedPrice ? (
+            ) : savedCost ? (
               <Check className="size-3 text-emerald-600" />
             ) : null}
           </div>
         ) : (
           <span className="print:hidden">
-            {row.baseSalePrice !== null ? formatMoney(row.baseSalePrice) : "—"}
+            {row.provisionCostUnit !== null ? formatMoney(row.provisionCostUnit) : "—"}
           </span>
         )}
         <div className="hidden print:block text-center font-medium">
-          {row.baseSalePrice !== null ? formatMoney(row.baseSalePrice) : "—"}
+          {row.provisionCostUnit !== null ? formatMoney(row.provisionCostUnit) : "—"}
         </div>
       </td>
     </tr>

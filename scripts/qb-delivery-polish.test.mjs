@@ -46,13 +46,15 @@ test("SQL acepta peso manual, conserva auditoría y no modifica el catálogo ni 
 test("hoja de compras tiene destino directo y costos permanece en el recibo", () => {
   const sidebar = read("src/components/layout/app-sidebar.tsx");
   const receipts = read("src/components/qb-receipts/qb-receipts-management.tsx");
-  const market = read("src/app/(private)/matriz-operativa/mercado/page.tsx");
+  const market =
+    read("src/app/(private)/matriz-operativa/mercado/page.tsx") +
+    read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx");
   assert.match(sidebar, /href="\/matriz-operativa\/mercado"/);
   assert.doesNotMatch(sidebar, /href="\/recibos\?section=borradores"/);
   assert.doesNotMatch(receipts, /Las 2 tablas solicitadas|Tabla 1 ·|Tabla 2 ·/);
   assert.match(receipts, /TabsTrigger value="costos"/);
   assert.match(market, /name="date"/);
-  assert.match(market, /PRECIO COMPRA \(Bs\/UD\)/);
+  assert.match(market, /COSTO DE PROVISIÓN \(Bs\/UD\)/);
   assert.match(market, /model\.customerLineCounts/);
   assert.match(market, /model\.totalLineCount/);
   assert.doesNotMatch(market, /rows\.reduce\(\(sum, row\) => sum \+ row\.total/);

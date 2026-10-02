@@ -40,6 +40,7 @@ export type QbReceiptLine = {
   previousBasePricePerArroba: number | null;
   previousSalePrice: number | null;
   salePricePerArroba: number | null;
+  arrobaFactor: number | null;
   purchaseCostTotal: number | null;
   costBaseUnitSnapshot: string | null;
   costTotalPrecise: string | null;

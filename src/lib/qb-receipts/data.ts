@@ -72,6 +72,7 @@ type ReceiptLineRow = {
   product_code_snapshot?: string | null;
   category_name_snapshot?: string | null;
   delivered_base_quantity: number | string;
+  base_unit_id?: string | null;
   base_unit_symbol: string;
   visible_unit_label: string;
   order_input_mode: "quantity" | "amount_bs";
@@ -174,24 +175,84 @@ function customerName(customer: CustomerRow | null) {
   return customer?.full_name?.trim() || customer?.email || "Cliente";
 }
 
-function pricePerArroba(
+function resolveWeightFactor(
+  unit: UnitSymbolRow | undefined,
+  weightDimensionId: string | undefined,
+  weightUnits: UnitSymbolRow[],
+): number | null {
+  if (!unit) return null;
+  if (weightDimensionId && unit.dimension_id === weightDimensionId) {
+    const factor = numberValue(unit.conversion_factor_to_base);
+    return factor > 0 ? factor : null;
+  }
+  const norm = (val: string | null | undefined) =>
+    (val ?? "").trim().toLowerCase();
+  const unitSymbol = norm(unit.symbol);
+  const unitName = norm(unit.name);
+  const unitCode = norm(unit.code);
+
+  const matched = weightUnits.find((w) => {
+    const wSymbol = norm(w.symbol);
+    const wName = norm(w.name);
+    const wCode = norm(w.code);
+    return (
+      (unitSymbol && (unitSymbol === wSymbol || unitSymbol === wCode || unitSymbol === wName)) ||
+      (unitCode && (unitCode === wCode || unitCode === wSymbol)) ||
+      (unitName && (unitName === wName || unitName === wSymbol))
+    );
+  });
+
+  if (matched) {
+    const factor = numberValue(matched.conversion_factor_to_base);
+    return factor > 0 ? factor : null;
+  }
+
+  if (unitSymbol === "kg" || unitCode === "legacy_1" || unitName === "kg" || unitName === "kilogramo") {
+    return 1.0;
+  }
+  if (unitSymbol === "gr" || unitCode === "legacy_29" || unitName === "gramos" || unitName === "gr") {
+    return 0.001;
+  }
+  if (unitSymbol === "libra" || unitCode === "legacy_9" || unitName === "libra") {
+    return 0.453592;
+  }
+
+  return null;
+}
+
+function calculatePricePerArroba(
   price: number | null,
-  priceUnit: UnitSymbolRow | undefined,
+  unit: UnitSymbolRow | undefined,
   arrobaUnit: UnitSymbolRow | undefined,
-) {
-  if (
-    price === null ||
-    price <= 0 ||
-    !priceUnit ||
-    !arrobaUnit ||
-    priceUnit.dimension_id !== arrobaUnit.dimension_id
-  ) {
+  weightDimensionId: string | undefined,
+  weightUnits: UnitSymbolRow[],
+): number | null {
+  if (price === null || price <= 0 || !unit || !arrobaUnit) {
     return null;
   }
-  const priceFactor = numberValue(priceUnit.conversion_factor_to_base);
   const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
-  if (priceFactor <= 0 || arrobaFactor <= 0) return null;
-  return Number(((price / priceFactor) * arrobaFactor).toFixed(4));
+  if (arrobaFactor <= 0) return null;
+
+  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+  if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
+
+  return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
+}
+
+function calculateArrobaFactor(
+  unit: UnitSymbolRow | undefined,
+  arrobaUnit: UnitSymbolRow | undefined,
+  weightDimensionId: string | undefined,
+  weightUnits: UnitSymbolRow[],
+): number | null {
+  if (!unit || !arrobaUnit) return null;
+  const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
+  if (arrobaFactor <= 0) return null;
+
+  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+  if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
+
+  return Number((arrobaFactor / unitWeightFactor).toFixed(6));
 }
 
 function attachPreviousPrices(receipts: QbReceipt[]) {
@@ -365,6 +426,8 @@ async function getReceiptParts(
   const metaByProduct = new Map<string, ProductMetaRow>();
   const unitById = new Map<string, UnitSymbolRow>();
   let arrobaUnit: UnitSymbolRow | undefined;
+  let weightDimensionId: string | undefined;
+  let weightUnits: UnitSymbolRow[] = [];
 
   if (productIds.length) {
     const { data: priceData } = await supabase
@@ -390,12 +453,15 @@ async function getReceiptParts(
           .map((line) => line.pricing_unit_id)
           .filter((unitId): unitId is string => Boolean(unitId)),
         ...lineRows
+          .map((line) => line.base_unit_id)
+          .filter((unitId): unitId is string => Boolean(unitId)),
+        ...lineRows
           .map((line) => line.purchase_cost_reference_unit_id)
           .filter((unitId): unitId is string => Boolean(unitId)),
       ]),
     ];
 
-    const [{ data: unitData }, { data: arrobaData }] = await Promise.all([
+    const [{ data: unitData }, { data: weightDimensionData }, { data: canonicalArrobaData }] = await Promise.all([
       unitIds.length
         ? supabase
             .from("qb_units")
@@ -403,18 +469,42 @@ async function getReceiptParts(
             .in("id", unitIds)
         : Promise.resolve({ data: [] }),
       supabase
+        .from("qb_unit_dimensions")
+        .select("id")
+        .eq("code", "peso")
+        .eq("is_active", true)
+        .limit(1),
+      supabase
         .from("qb_units")
         .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
-        .or("code.eq.arroba,symbol.eq.@,name.ilike.%arroba%")
+        .eq("code", "arroba")
         .eq("is_active", true)
-        .order("sort_order", { ascending: true })
         .limit(1),
     ]);
 
     for (const unit of (unitData ?? []) as UnitSymbolRow[]) {
       unitById.set(unit.id, unit);
     }
-    arrobaUnit = ((arrobaData ?? []) as UnitSymbolRow[])[0];
+
+    weightDimensionId = weightDimensionData?.[0]?.id as string | undefined;
+
+    if (weightDimensionId) {
+      const { data: weightUnitsData } = await supabase
+        .from("qb_units")
+        .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
+        .eq("dimension_id", weightDimensionId)
+        .eq("is_active", true);
+      weightUnits = (weightUnitsData ?? []) as UnitSymbolRow[];
+    }
+
+    arrobaUnit =
+      ((canonicalArrobaData ?? []) as UnitSymbolRow[])[0] ??
+      weightUnits.find(
+        (u) =>
+          u.code === "arroba" ||
+          u.symbol === "@" ||
+          u.name.toLowerCase().includes("arroba"),
+      );
   }
 
   const ordersByReceipt = new Map<string, QbReceiptOrder[]>();
@@ -438,6 +528,9 @@ async function getReceiptParts(
       const order = single(row.order);
       const currentPrice = priceByProduct.get(row.product_id);
       const items = linesByReceipt.get(row.receipt_id) ?? [];
+      const lineUnit =
+        (row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined) ??
+        (row.base_unit_id ? unitById.get(row.base_unit_id) : undefined);
       items.push({
         id: row.id,
         orderId: row.order_id,
@@ -467,18 +560,28 @@ async function getReceiptParts(
         saveAsNewBasePrice: row.save_as_new_base_price,
         finalUnitPrice: nullableNumberValue(row.final_unit_price),
         lineTotal: nullableNumberValue(row.line_total),
-        basePricePerArroba: pricePerArroba(
+        basePricePerArroba: calculatePricePerArroba(
           nullableNumberValue(row.base_price_used),
-          row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined,
+          lineUnit,
           arrobaUnit,
+          weightDimensionId,
+          weightUnits,
         ),
         previousBasePrice: null,
         previousBasePricePerArroba: null,
         previousSalePrice: null,
-        salePricePerArroba: pricePerArroba(
+        salePricePerArroba: calculatePricePerArroba(
           nullableNumberValue(row.final_unit_price),
-          row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined,
+          lineUnit,
           arrobaUnit,
+          weightDimensionId,
+          weightUnits,
+        ),
+        arrobaFactor: calculateArrobaFactor(
+          lineUnit,
+          arrobaUnit,
+          weightDimensionId,
+          weightUnits,
         ),
         purchaseCostTotal: nullableNumberValue(row.purchase_cost_total),
         costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),

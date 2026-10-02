@@ -48,6 +48,7 @@ export type MatrixLine = {
   baseSalePrice: number | null;
   basePriceUnitId: string | null;
   hasWeightBasedPrice: boolean;
+  provisionCostUnit: number | null;
   requestedQuantity: number;
   requestedBaseQuantity: number;
   requestedNote: string;

@@ -19,6 +19,7 @@ export type MarketSheetLineRef = {
   actualWeightKg: number | null;
   preparedQuantity: number;
   preparationCheck: boolean;
+  provisionCostUnit: number | null;
 };
 
 export type MarketSheetRow = {
@@ -38,6 +39,7 @@ export type MarketSheetRow = {
   controlsActualWeight: boolean;
   actualWeightOrQuantity: number | null;
   baseSalePrice: number | null;
+  provisionCostUnit: number | null;
   basePriceUnitId: string | null;
   priceUnitSymbol: string | null;
   lines: MarketSheetLineRef[];
@@ -170,7 +172,11 @@ export function buildMarketSheetModel(
         actualWeightKg: l.preparationActualWeightKg,
         preparedQuantity: l.preparedQuantity,
         preparationCheck: l.preparationCheck,
+        provisionCostUnit: l.provisionCostUnit,
       }));
+
+      const provisionCostUnit =
+        lines.find((l) => l.provisionCostUnit !== null)?.provisionCostUnit ?? null;
 
       return {
         key,
@@ -189,6 +195,7 @@ export function buildMarketSheetModel(
         controlsActualWeight,
         actualWeightOrQuantity,
         baseSalePrice: first.baseSalePrice,
+        provisionCostUnit,
         basePriceUnitId: first.basePriceUnitId,
         priceUnitSymbol: first.priceUnitSymbol ?? first.baseUnitSymbol,
         lines: lineRefs,
