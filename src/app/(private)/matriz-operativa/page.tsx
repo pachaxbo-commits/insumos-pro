@@ -1,23 +1,20 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { MarketSheetActions } from "@/components/operational-matrix/market-sheet-actions";
 import { OperationalMatrix } from "@/components/operational-matrix/operational-matrix";
+import { OperationalDateFilter } from "@/components/operational-matrix/operational-date-filter";
+import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
+import { AllPendingSummaryView } from "@/components/operational-matrix/all-pending-summary-view";
 import { requireRoleAccess } from "@/lib/auth/session";
+import { todayInBolivia } from "@/lib/date-time";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
+import {
+  getPendingDeliveryWork,
+  getPendingPreparationWork,
+} from "@/lib/operational-matrix/pending-work";
 import type { MatrixStage } from "@/types/operational-matrix";
 
-function boliviaToday() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/La_Paz",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
-}
-
-function validDate(value: string | undefined) {
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : boliviaToday();
+function validDate(value: string | undefined, fallback: string) {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback;
 }
 
 function validMode(value: string | undefined): MatrixStage | undefined {
@@ -35,18 +32,39 @@ export default async function MatrizOperativaPage({
     fecha?: string;
     mode?: string;
     order?: string;
+    allPending?: string;
   }>;
 }) {
   const auth = await requireRoleAccess("/matriz-operativa");
   const params = await searchParams;
-  const date = validDate(params.date ?? params.fecha);
-  const mode = validMode(params.mode);
-  const data = await getOperationalMatrixData(date, auth.user.role!);
   const isInventory = auth.user.role === "inventario";
+  const isDelivery = auth.user.role === "entregador";
   const isAdmin = auth.user.role === "administrador";
 
+  const requestedMode = validMode(params.mode);
+  const activeStage: MatrixStage =
+    requestedMode ?? (isInventory ? "preparacion" : isDelivery ? "entrega" : "preparacion");
+  const isAllPending = params.allPending === "1";
+
+  // Fetch pending work based on active stage
+  const pendingSummary =
+    activeStage === "entrega"
+      ? await getPendingDeliveryWork()
+      : await getPendingPreparationWork();
+
+  // If no date was explicitly provided, default to oldest pending date (if any), otherwise today
+  const explicitDate = params.date ?? params.fecha;
+  const date = validDate(
+    explicitDate,
+    pendingSummary.oldestPendingDate ?? todayInBolivia(),
+  );
+
+  const data = !isAllPending
+    ? await getOperationalMatrixData(date, auth.user.role!)
+    : null;
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <PageHeader
         eyebrow={undefined}
         title={
@@ -58,29 +76,38 @@ export default async function MatrizOperativaPage({
         }
         description=""
       />
-      <div className="flex flex-wrap items-end gap-2">
-        <form className="flex flex-wrap items-end gap-2" method="get">
-          <label className="text-sm font-medium">
-            Fecha operativa (Bolivia)
-            <input
-              className="mt-1 block h-10 rounded-md border bg-background px-3"
-              type="date"
-              name="date"
-              defaultValue={date}
-            />
-          </label>
-          <button className="h-10 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
-            Ver fecha
-          </button>
-        </form>
+
+      <PendingWorkBar
+        summary={pendingSummary}
+        currentDate={date}
+        isAllPending={isAllPending}
+        basePath="/matriz-operativa"
+        mode={activeStage}
+      />
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <OperationalDateFilter
+          currentDate={date}
+          mode={activeStage}
+          basePath="/matriz-operativa"
+        />
         {isAdmin ? <MarketSheetActions date={date} /> : null}
       </div>
-      <OperationalMatrix
-        key={date}
-        data={data}
-        initialStage={mode}
-        initialOrderId={params.order}
-      />
+
+      {isAllPending ? (
+        <AllPendingSummaryView
+          summary={pendingSummary}
+          basePath="/matriz-operativa"
+          mode={activeStage}
+        />
+      ) : data ? (
+        <OperationalMatrix
+          key={`${date}:${activeStage}`}
+          data={data}
+          initialStage={activeStage}
+          initialOrderId={params.order}
+        />
+      ) : null}
     </div>
   );
 }

@@ -41,3 +41,26 @@ export function formatBoliviaDate(
     timeZone: BOLIVIA_TIME_ZONE,
   }).format(date);
 }
+
+export function todayInBolivia(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BOLIVIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export function formatChipDate(dateStr: string): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const parts = dateStr.split("-").map(Number);
+  const day = parts[2];
+  const month = parts[1];
+  const months = [
+    "ENE", "FEB", "MAR", "ABR", "MAY", "JUN",
+    "JUL", "AGO", "SEP", "OCT", "NOV", "DIC",
+  ];
+  return `${day} ${months[month - 1]}`;
+}

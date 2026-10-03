@@ -1075,7 +1075,14 @@ export function OperationalMatrix({
               type="button"
               size="sm"
               variant={stage === item ? "default" : "ghost"}
-              onClick={() => void navigateForm(() => setStage(item))}
+              onClick={() => void navigateForm(() => {
+                setStage(item);
+                if (typeof window !== "undefined") {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("mode", item);
+                  router.replace(url.pathname + url.search);
+                }
+              })}
               role="tab"
               aria-selected={stage === item}
               className="capitalize"
