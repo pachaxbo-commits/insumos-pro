@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { formatChipDate, todayInBolivia } from "../src/lib/date-time";
+import { formatChipDate } from "../src/lib/date-time";
+import { buildMarketSheetModel } from "../src/lib/market-sheet/model";
+import type { OperationalMatrixData } from "../src/types/operational-matrix";
 
 function read(relPath: string) {
   return fs.readFileSync(path.join(process.cwd(), relPath), "utf8");
@@ -101,6 +103,152 @@ console.log("=================================================================="
   console.log("✔ Hoja de Provisión prioriza pendiente más antiguo y mantiene fechas aisladas: PASS");
 }
 
+// --- SCENARIO E.2: toProvision evaluation (Observation 1) ---
+{
+  console.log("\n--- SCENARIO E.2: Hoja de Provisión: Stock coverage vs Real Deficit ---");
+  // Test 1: Order with products 100% covered by stock -> toProvision = 0, no false pending items
+  const mockMatrixCovered: OperationalMatrixData = {
+    operationalDate: "2026-10-03",
+    role: "administrador",
+    weightUnits: [],
+    orders: [
+      {
+        id: "ord-cov",
+        customerKey: "cust:1",
+        reference: "PED-COV",
+        customerName: "Cliente Stock",
+        locationLabel: null,
+        customerNotes: "",
+        status: "pendiente_preparacion",
+        updatedAt: "2026-10-03T10:00:00Z",
+        position: 1,
+        positionVersion: 1,
+        preparationStatus: null,
+        deliveryStatus: null,
+      },
+    ],
+    lines: [
+      {
+        orderItemId: "item-1",
+        orderId: "ord-cov",
+        productId: "prod-1",
+        productName: "Arroz Grano de Oro",
+        categoryName: "Abarrotes",
+        sourceLabel: "KG",
+        baseUnitSymbol: "KG",
+        stockCurrent: 50, // 50 in stock
+        requestedQuantity: 10, // 10 requested
+        requestedBaseQuantity: 10,
+        deliveredBaseQuantity: 0,
+        preparedQuantity: 0,
+        preparationCheck: false,
+        preparationActualWeightKg: null,
+        preparationVersion: 1,
+        provisionCostUnit: null,
+        controlsActualWeight: false,
+        productColor: null,
+      },
+      {
+        orderItemId: "item-2",
+        orderId: "ord-cov",
+        productId: "prod-2",
+        productName: "Aceite Fino 1L",
+        categoryName: "Abarrotes",
+        sourceLabel: "UD",
+        baseUnitSymbol: "UD",
+        stockCurrent: 20, // 20 in stock
+        requestedQuantity: 5, // 5 requested
+        requestedBaseQuantity: 5,
+        deliveredBaseQuantity: 0,
+        preparedQuantity: 0,
+        preparationCheck: false,
+        preparationActualWeightKg: null,
+        preparationVersion: 1,
+        provisionCostUnit: null,
+        controlsActualWeight: false,
+        productColor: null,
+      },
+    ],
+  } as unknown as OperationalMatrixData;
+
+  const modelCovered = buildMarketSheetModel(mockMatrixCovered);
+  const pendingItemsCovered = modelCovered.rows.filter((r) => r.toProvision > 0);
+  assert.equal(pendingItemsCovered.length, 0, "All items covered by stock must have toProvision = 0");
+  console.log("✔ Pedido con productos completamente cubiertos por stock produce 0 productos pendientes de provisión: PASS");
+
+  // Test 2: Order with real deficit -> toProvision > 0, correctly appears in pending items
+  const mockMatrixDeficit: OperationalMatrixData = {
+    operationalDate: "2026-10-04",
+    role: "administrador",
+    weightUnits: [],
+    orders: [
+      {
+        id: "ord-def",
+        customerKey: "cust:2",
+        reference: "PED-DEF",
+        customerName: "Cliente Mercado",
+        locationLabel: null,
+        customerNotes: "",
+        status: "pendiente_preparacion",
+        updatedAt: "2026-10-04T10:00:00Z",
+        position: 1,
+        positionVersion: 1,
+        preparationStatus: null,
+        deliveryStatus: null,
+      },
+    ],
+    lines: [
+      {
+        orderItemId: "item-3",
+        orderId: "ord-def",
+        productId: "prod-3",
+        productName: "Tomate Manzano",
+        categoryName: "Verduras",
+        sourceLabel: "KG",
+        baseUnitSymbol: "KG",
+        stockCurrent: 2, // 2 in stock
+        requestedQuantity: 15, // 15 requested -> deficit 13
+        requestedBaseQuantity: 15,
+        deliveredBaseQuantity: 0,
+        preparedQuantity: 0,
+        preparationCheck: false,
+        preparationActualWeightKg: null,
+        preparationVersion: 1,
+        provisionCostUnit: null,
+        controlsActualWeight: true,
+        productColor: null,
+      },
+      {
+        orderItemId: "item-4",
+        orderId: "ord-def",
+        productId: "prod-4",
+        productName: "Cebolla Roja",
+        categoryName: "Verduras",
+        sourceLabel: "KG",
+        baseUnitSymbol: "KG",
+        stockCurrent: 20, // 20 in stock
+        requestedQuantity: 5, // 5 requested -> deficit 0
+        requestedBaseQuantity: 5,
+        deliveredBaseQuantity: 0,
+        preparedQuantity: 0,
+        preparationCheck: false,
+        preparationActualWeightKg: null,
+        preparationVersion: 1,
+        provisionCostUnit: null,
+        controlsActualWeight: true,
+        productColor: null,
+      },
+    ],
+  } as unknown as OperationalMatrixData;
+
+  const modelDeficit = buildMarketSheetModel(mockMatrixDeficit);
+  const pendingItemsDeficit = modelDeficit.rows.filter((r) => r.toProvision > 0);
+  assert.equal(pendingItemsDeficit.length, 1, "Only Tomate has deficit and must be in pending items");
+  assert.equal(pendingItemsDeficit[0].productId, "prod-3");
+  assert.equal(pendingItemsDeficit[0].toProvision, 13);
+  console.log("✔ Pedido con déficit real (Tomate: 13 kg a provisionar) sí aparece en provisión pendiente: PASS");
+}
+
 // --- SCENARIO F & G: State machine separation between Preparation and Delivery ---
 {
   console.log("\n--- SCENARIO F & G: State machine consistency in Preparation and Delivery ---");
@@ -143,6 +291,35 @@ console.log("=================================================================="
   console.log("✔ Estados de preparación y entrega estrictamente segregados según máquina de estados: PASS");
 }
 
+// --- SCENARIO J: Stage specific PendingWorkBar rendering (Observation 2) ---
+{
+  console.log("\n--- SCENARIO J: PendingWorkBar stage filtering (resumen & pedido excluded) ---");
+  const matrixPage = read("src/app/(private)/matriz-operativa/page.tsx");
+
+  // Must check hasPendingSupport
+  assert.match(
+    matrixPage,
+    /const hasPendingSupport = activeStage === "preparacion" \|\| activeStage === "entrega";/,
+    "Only preparacion and entrega stages support pending bars",
+  );
+
+  // Must only render PendingWorkBar when hasPendingSupport
+  assert.match(
+    matrixPage,
+    /\{hasPendingSupport && pendingSummary \? \(\s*<PendingWorkBar/,
+    "PendingWorkBar only renders if hasPendingSupport is true",
+  );
+
+  // Must not call getPendingPreparationWork when activeStage is resumen
+  assert.match(
+    matrixPage,
+    /activeStage === "entrega"\s*\?\s*await getPendingDeliveryWork\(\)\s*:\s*activeStage === "preparacion"\s*\?\s*await getPendingPreparationWork\(\)\s*:\s*null/,
+    "Resumen and pedido stages do NOT fetch preparation pending work",
+  );
+
+  console.log("✔ mode=resumen y mode=pedido no renderizan ni consultan PendingWorkBar de Preparación: PASS");
+}
+
 // --- SCENARIO H: Historical receipts intact ---
 {
   console.log("\n--- SCENARIO H: Historical receipts preserved intact ---");
@@ -167,5 +344,5 @@ console.log("=================================================================="
 }
 
 console.log("\n==================================================================");
-console.log("ALL 9 DATE NAVIGATION & PENDING UX SCENARIOS PASSED SUCCESSFULLY!");
+console.log("ALL DATE NAVIGATION, PENDING UX & STAGE FILTERING TESTS PASSED!");
 console.log("==================================================================");

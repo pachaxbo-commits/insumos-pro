@@ -46,20 +46,27 @@ export default async function MatrizOperativaPage({
     requestedMode ?? (isInventory ? "preparacion" : isDelivery ? "entrega" : "preparacion");
   const isAllPending = params.allPending === "1";
 
-  // Fetch pending work based on active stage
+  // Only preparacion and entrega stages have operational pending work bars
+  const hasPendingSupport = activeStage === "preparacion" || activeStage === "entrega";
+
+  // Fetch pending work ONLY for stages that support it
   const pendingSummary =
     activeStage === "entrega"
       ? await getPendingDeliveryWork()
-      : await getPendingPreparationWork();
+      : activeStage === "preparacion"
+        ? await getPendingPreparationWork()
+        : null;
 
-  // If no date was explicitly provided, default to oldest pending date (if any), otherwise today
+  // If no date was explicitly provided, default to oldest pending date (if any and supported), otherwise today
   const explicitDate = params.date ?? params.fecha;
   const date = validDate(
     explicitDate,
-    pendingSummary.oldestPendingDate ?? todayInBolivia(),
+    hasPendingSupport && pendingSummary?.oldestPendingDate
+      ? pendingSummary.oldestPendingDate
+      : todayInBolivia(),
   );
 
-  const data = !isAllPending
+  const data = !(hasPendingSupport && isAllPending)
     ? await getOperationalMatrixData(date, auth.user.role!)
     : null;
 
@@ -77,13 +84,15 @@ export default async function MatrizOperativaPage({
         description=""
       />
 
-      <PendingWorkBar
-        summary={pendingSummary}
-        currentDate={date}
-        isAllPending={isAllPending}
-        basePath="/matriz-operativa"
-        mode={activeStage}
-      />
+      {hasPendingSupport && pendingSummary ? (
+        <PendingWorkBar
+          summary={pendingSummary}
+          currentDate={date}
+          isAllPending={isAllPending}
+          basePath="/matriz-operativa"
+          mode={activeStage}
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <OperationalDateFilter
@@ -94,7 +103,7 @@ export default async function MatrizOperativaPage({
         {isAdmin ? <MarketSheetActions date={date} /> : null}
       </div>
 
-      {isAllPending ? (
+      {hasPendingSupport && isAllPending && pendingSummary ? (
         <AllPendingSummaryView
           summary={pendingSummary}
           basePath="/matriz-operativa"

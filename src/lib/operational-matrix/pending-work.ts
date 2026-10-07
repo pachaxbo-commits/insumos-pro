@@ -4,6 +4,8 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInBolivia } from "@/lib/date-time";
+import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
+import { buildMarketSheetModel } from "@/lib/market-sheet/model";
 
 export type PendingOrderItem = {
   id: string;
@@ -200,29 +202,12 @@ export async function getPendingProvisionWork(): Promise<PendingStageSummary> {
     };
   }
 
-  const orderIds = orders.map((o) => String(o.id));
-  const { data: items } = await supabase
-    .from("qb_order_items")
-    .select("order_id, product_id")
-    .in("order_id", orderIds);
-
-  const orderToProducts = new Map<string, Set<string>>();
-  for (const item of items ?? []) {
-    const oId = String(item.order_id);
-    const pId = String(item.product_id);
-    const set = orderToProducts.get(oId) ?? new Set<string>();
-    set.add(pId);
-    orderToProducts.set(oId, set);
-  }
-
-  const dateMap = new Map<string, { orders: PendingOrderItem[]; products: Set<string> }>();
-  const globalProducts = new Set<string>();
-
+  // Group active orders by operational_date
+  const dateOrdersMap = new Map<string, PendingOrderItem[]>();
   for (const row of orders) {
     const dateStr = String(row.operational_date);
-    const oId = String(row.id);
     const item: PendingOrderItem = {
-      id: oId,
+      id: String(row.id),
       publicReference: String(row.public_reference),
       customerName: customerNameFromSnapshot(row.customer_snapshot),
       operationalDate: dateStr,
@@ -230,33 +215,62 @@ export async function getPendingProvisionWork(): Promise<PendingStageSummary> {
       customerNotes: typeof row.customer_notes === "string" ? row.customer_notes : undefined,
       isOverdue: dateStr < today,
     };
-
-    const entry = dateMap.get(dateStr) ?? { orders: [], products: new Set<string>() };
-    entry.orders.push(item);
-    const orderProds = orderToProducts.get(oId);
-    if (orderProds) {
-      for (const p of orderProds) {
-        entry.products.add(p);
-        globalProducts.add(p);
-      }
-    }
-    dateMap.set(dateStr, entry);
+    const list = dateOrdersMap.get(dateStr) ?? [];
+    list.push(item);
+    dateOrdersMap.set(dateStr, list);
   }
 
-  const dates: PendingDateSummary[] = [...dateMap.entries()]
-    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-    .map(([date, entry]) => ({
-      date,
-      orderCount: entry.orders.length,
-      productCount: entry.products.size,
-      isOverdue: date < today,
-      orders: entry.orders,
-    }));
+  const distinctDates = [...dateOrdersMap.keys()].sort((a, b) => a.localeCompare(b));
+
+  // For each distinct date, build the actual Market Sheet model to evaluate toProvision
+  const matrixDataPerDate = await Promise.all(
+    distinctDates.map(async (date) => {
+      try {
+        const matrixData = await getOperationalMatrixData(date, "administrador");
+        const model = buildMarketSheetModel(matrixData);
+        // Products that actually have deficit to provision from market (toProvision > 0):
+        const itemsToProvision = model.rows.filter((r) => r.toProvision > 0);
+        return {
+          date,
+          productCount: itemsToProvision.length,
+          productIds: itemsToProvision.map((r) => r.productId),
+        };
+      } catch {
+        return {
+          date,
+          productCount: 0,
+          productIds: [],
+        };
+      }
+    }),
+  );
+
+  const dates: PendingDateSummary[] = [];
+  const globalProductsNeedingProvision = new Set<string>();
+  let totalOrdersWithDeficit = 0;
+
+  for (const info of matrixDataPerDate) {
+    // Only dates that actually have at least 1 product requiring market provision (toProvision > 0)
+    if (info.productCount > 0) {
+      const dateOrders = dateOrdersMap.get(info.date) ?? [];
+      dates.push({
+        date: info.date,
+        orderCount: dateOrders.length,
+        productCount: info.productCount,
+        isOverdue: info.date < today,
+        orders: dateOrders,
+      });
+      totalOrdersWithDeficit += dateOrders.length;
+      for (const pId of info.productIds) {
+        globalProductsNeedingProvision.add(pId);
+      }
+    }
+  }
 
   return {
     stage: "mercado",
-    totalOrders: orders.length,
-    totalProducts: globalProducts.size,
+    totalOrders: totalOrdersWithDeficit,
+    totalProducts: globalProductsNeedingProvision.size,
     dates,
     oldestPendingDate: dates[0]?.date ?? null,
   };
