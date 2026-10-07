@@ -97,6 +97,8 @@ const createReceiptSchema = z.object({
   unit_cost: optionalNonNegativeNumber,
   requires_classification: booleanField,
   notes: optionalText,
+  reference_unit_id: z.preprocess((value) => value === "" || value == null ? null : value, z.uuid().nullable()),
+  reference_price: optionalNonNegativeNumber,
 });
 
 const lineIdSchema = z.object({
@@ -145,6 +147,7 @@ async function assertCanManageQbIngresos() {
 
 function revalidateQbIngresos() {
   revalidatePath("/ingresos");
+  revalidatePath("/ingresos/compras-almacen");
   revalidatePath("/productos");
   revalidatePath("/inventario");
 }
@@ -256,6 +259,9 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const input = parsed.data;
+  if ((input.reference_unit_id === null) !== (input.reference_price === null)) {
+    return { success: false, message: "Selecciona unidad de referencia y precio referencial juntos." };
+  }
   const [productResult, settingsResult, allowedUnitResult] = await Promise.all([
     access.supabase
       .from("products")
@@ -359,6 +365,18 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const baseUnit = baseUnitResult.data;
+  if (input.reference_unit_id) {
+    const { data: referenceUnit, error: referenceError } = await access.supabase
+      .from("qb_units")
+      .select("id, dimension_id, name, symbol, is_active")
+      .eq("id", input.reference_unit_id)
+      .maybeSingle<{ id: string; dimension_id: string; name: string; symbol: string; is_active: boolean }>();
+    if (referenceError) return { success: false, message: referenceError.message };
+    const label = `${referenceUnit?.name ?? ""} ${referenceUnit?.symbol ?? ""}`.toLowerCase();
+    if (!referenceUnit?.is_active || !/arroba|cuartilla|libra/.test(label)) {
+      return { success: false, message: "Elige ARROBA, CUARTILLA o LIBRA como unidad de referencia." };
+    }
+  }
   const dimensionResult = await access.supabase
     .from("qb_unit_dimensions")
     .select("code")
@@ -503,6 +521,8 @@ export async function createQbMerchandiseReceiptAction(
       conversion_factor_to_base: conversionFactorToBase,
       unit_cost: input.unit_cost,
       total_cost: totalCost,
+      reference_unit_id: input.reference_unit_id,
+      reference_price: input.reference_price,
       requires_classification: requiresClassification,
       notes: input.notes,
       created_by: access.userId,

@@ -31,6 +31,7 @@ export function AppSidebar({
   const adminAvailablePaths = new Set([
     "/matriz-operativa",
     "/stock",
+    "/ingresos",
     "/configuracion",
     "/clientes",
     "/recibos",
@@ -135,6 +136,19 @@ export function AppSidebar({
                 <span>
                   <span className="block text-sm font-semibold">Hoja de Provisión</span>
                   <span className="block text-xs text-sidebar-foreground/65">Vista para imprimir y Excel</span>
+                </span>
+              </Link>
+              <Link
+                href="/ingresos/compras-almacen"
+                onClick={onNavigate}
+                className="flex items-center gap-3 rounded-xl bg-emerald-950/35 px-3 py-3 text-sidebar-foreground hover:bg-emerald-950/50"
+              >
+                <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-900">
+                  <FileSpreadsheet className="size-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">Hoja de Compras para Almacén</span>
+                  <span className="block text-xs text-sidebar-foreground/65">Compras reales y costo referencial</span>
                 </span>
               </Link>
             </div>
