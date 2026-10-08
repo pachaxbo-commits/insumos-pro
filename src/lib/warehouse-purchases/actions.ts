@@ -8,8 +8,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const schema = z.object({
   id: z.uuid(),
-  reference_unit_id: z.uuid(),
-  reference_price: z.coerce.number().finite().min(0).max(999999),
+  reference_unit_id: z.preprocess((value) => value === "" || value == null ? null : value, z.uuid().nullable()),
+  reference_price: z.preprocess((value) => value === "" || value == null ? null : value,
+    z.coerce.number().finite().min(0).max(999999).nullable()),
   notes: z.string().max(2000),
 });
 
@@ -22,11 +23,16 @@ export async function updateWarehousePurchaseAction(formData: FormData) {
   if (!parsed.success) return { success: false, message: "Revisa el precio y la unidad de referencia." };
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { success: false, message: "Supabase no disponible." };
-  const { data: unit } = await supabase.from("qb_units")
-    .select("name, symbol, is_active").eq("id", parsed.data.reference_unit_id)
-    .maybeSingle<{ name: string; symbol: string; is_active: boolean }>();
-  if (!unit?.is_active || !/arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`)) {
-    return { success: false, message: "Unidad de referencia inválida." };
+  if (parsed.data.reference_unit_id) {
+    const { data: unit } = await supabase.from("qb_units")
+      .select("name, symbol, is_active").eq("id", parsed.data.reference_unit_id)
+      .maybeSingle<{ name: string; symbol: string; is_active: boolean }>();
+    if (!unit?.is_active || !/arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`)) {
+      return { success: false, message: "Unidad de referencia inválida." };
+    }
+  }
+  if (parsed.data.reference_price !== null && parsed.data.reference_unit_id === null) {
+    return { success: false, message: "Elige unidad para el precio referencial." };
   }
   const { data: line, error: readError } = await supabase
     .from("qb_merchandise_receipt_lines")
@@ -41,6 +47,7 @@ export async function updateWarehousePurchaseAction(formData: FormData) {
     .update({
       reference_unit_id: parsed.data.reference_unit_id,
       reference_price: parsed.data.reference_price,
+      reference_price_origin: parsed.data.reference_price === null ? null : "manual",
       notes: parsed.data.notes.trim() || null,
       updated_by: auth.user.id,
     }).eq("id", parsed.data.id);

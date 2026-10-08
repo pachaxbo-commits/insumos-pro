@@ -7,6 +7,15 @@ export function purchaseTotal(quantity: number, unitPrice: number) {
 
 export type ReferenceUnit = { dimensionId: string; factorToBase: number };
 
+export function autoReferencePriceFromPurchaseUnit(
+  purchaseUnitPrice: number,
+  purchaseUnit: ReferenceUnit & { label: string },
+  referenceUnit: ReferenceUnit,
+) {
+  if (/carga|chipa|amarro|bandeja/i.test(purchaseUnit.label)) return null;
+  return referenceCostForUnit(purchaseUnitPrice, purchaseUnit, referenceUnit);
+}
+
 export function referenceCostForUnit(
   manualReferencePrice: number,
   referenceUnit: ReferenceUnit,

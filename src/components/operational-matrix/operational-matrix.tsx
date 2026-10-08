@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertTriangle,
   Check,
@@ -19,6 +20,7 @@ import {
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
 import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-scope";
+import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
 import {
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
@@ -90,7 +92,7 @@ function stageHeaders(stage: MatrixStage) {
       "OBSERVACIÓN",
     ];
   }
-  return ["CANT", "CHECK", "PESO REAL", "OBSERVACIÓN"];
+  return ["CANT", "OBSERVACIÓN"];
 }
 
 function groupStatus(group: MatrixCustomerGroup) {
@@ -277,7 +279,7 @@ function hasDeliveryCheck(line: MatrixLine) {
 
 function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
   return lines.map((line) => {
-    if (!hasCompletePreparation(line) || line.deliveredAt) return line;
+    if (!line.preparedAt || !line.preparationCheck || line.deliveredAt) return line;
 
     const shouldCopyQuantity = line.deliveryVersion === 0;
     const shouldCopyWeight =
@@ -364,7 +366,7 @@ export function OperationalMatrix({
   const [stage, setStage] = useState<MatrixStage>(() =>
     allowedStage(data.role, initialStage),
   );
-  const [viewMode, setViewMode] = useState<"formulario" | "tabla">("formulario");
+  const [viewMode, setViewMode] = useState<"formulario" | "tabla">("tabla");
   const [expandedOrderId, setExpandedOrderId] = useState(initialOrderId ?? data.orders[0]?.id ?? "");
   const [formStatus, setFormStatus] = useState<"guardado" | "pendiente" | "guardando" | "error">("guardado");
   const formSaveSequence = useRef(0);
@@ -940,18 +942,8 @@ export function OperationalMatrix({
     if (action === "confirm") {
       if (groupLines.some((line) => !hasDeliveryCheck(line))) {
         setMessage(
-          "Completa los campos rojos de peso o cantidad real antes de confirmar.",
+          "Verifica el check de entrega de cada línea antes de confirmar.",
         );
-        return;
-      }
-      if (
-        groupLines.some(
-          (line) =>
-            (line.controlsActualWeight || line.preparationActualWeightKg !== null) &&
-            line.deliveryActualWeightKg === null,
-        )
-      ) {
-        setMessage("Completa los pesos reales marcados en rojo.");
         return;
       }
       if (
@@ -1019,7 +1011,9 @@ export function OperationalMatrix({
     setMessage(
       failed
         ? `No se pudo ${action === "confirm" ? "confirmar" : "deshacer"} la entrega: ${failed.message}`
-        : `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
+        : action === "confirm"
+          ? `${applicableOrders.length === 1 ? "Pedido entregado" : `${applicableOrders.length} pedidos entregados`}. Ya puedes continuar en Recibos.`
+          : `${applicableOrders.length} pedido${applicableOrders.length === 1 ? "" : "s"} actualizado${applicableOrders.length === 1 ? "" : "s"}.`,
     );
     setActionPending(null);
     router.refresh();
@@ -1119,7 +1113,10 @@ export function OperationalMatrix({
             </Button>
           ) : null}
           {message && !showForm ? (
-            <span className="text-muted-foreground">{message}</span>
+            <>
+              <span className="text-muted-foreground">{message}</span>
+              {message.includes("entregado") ? <Link href="/recibos" className="font-semibold text-emerald-800 underline">Ir a Recibos</Link> : null}
+            </>
           ) : null}
         </div>
       </div>
@@ -1187,6 +1184,7 @@ export function OperationalMatrix({
                               ) : null}
                               {stage === "preparacion" || stage === "entrega" ? (
                                 <div className="space-y-2">
+                                  {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
                                   {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
                                     {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
@@ -1220,9 +1218,6 @@ export function OperationalMatrix({
                                         if (stage === "preparacion") updateGroupedLines([line], {
                                           preparationCheck: checked,
                                           ...(checked && line.preparedQuantity <= 0 ? { preparedQuantity: line.requestedQuantity } : {}),
-                                          ...(checked && line.controlsActualWeight && findWeightUnit(data.weightUnits, line.sourceLabel) &&
-                                            line.preparationActualWeightKg === null
-                                            ? { preparationActualWeightKg: requestedWeightInKilograms(line, data.weightUnits) } : {}),
                                         });
                                         else updateMissingDeliveryChecks([line], checked);
                                       }}
@@ -1282,7 +1277,7 @@ export function OperationalMatrix({
               </div>
             </div>
           ))}
-          {message ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
+          {message ? <p role="status" className="text-sm text-muted-foreground">{message} {message.includes("entregado") ? <Link href="/recibos" className="font-semibold text-emerald-800 underline">Ir a Recibos</Link> : null}</p> : null}
         </section>
       ) : <>
 
@@ -1615,11 +1610,8 @@ export function OperationalMatrix({
                       line,
                     ]);
                   });
-                  const completed = [...customerRows.values()].filter(
-                    (groupedLines) =>
-                      stage === "entrega"
-                        ? groupedLines.every(hasDeliveryCheck)
-                        : groupedLines.every((line) => line.preparationCheck),
+                  const completed = customerLines.filter((line) =>
+                    stage === "entrega" ? hasDeliveryCheck(line) : line.preparationCheck,
                   ).length;
                   return (
                     <th
@@ -1631,7 +1623,8 @@ export function OperationalMatrix({
                           : "bg-slate-100"
                       }`}
                     >
-                      {customerRows.size} líneas · {completed} checks
+                      {customerRows.size} productos · {customerLines.length} líneas
+                      {stage === "pedido" ? "" : ` · ${completed} checks`}
                     </th>
                   );
                 })}
@@ -1766,19 +1759,6 @@ function weightToKilograms(
 ) {
   if (value === null) return null;
   return Number((value * unit.kilograms).toFixed(6));
-}
-
-function requestedWeightInKilograms(
-  line: MatrixLine,
-  weightUnits: MatrixWeightUnit[],
-) {
-  const unit = findWeightUnit(
-    weightUnits,
-    line.sourceLabel,
-  );
-  return unit
-    ? weightToKilograms(line.requestedQuantity, unit)
-    : null;
 }
 
 function decimalInputText(value: number | null) {
@@ -1932,7 +1912,7 @@ function MeasuredQuantityEditor({
       </div>
       <div>
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
-          Peso real
+          Peso real (opcional)
         </span>
         <span className="mb-1 block text-left text-[9px] text-muted-foreground">
           Registra el peso medido, sin convertir cajas o unidades automáticamente.
@@ -1969,6 +1949,11 @@ function MeasuredQuantityEditor({
             ))}
           </select>
         </div>
+        {actualWeightKg === null && sourceWeightUnit && quantityValue !== null && quantityValue > 0 ? (
+          <span className="mt-1 block text-[9px] text-slate-600">
+            Equivalencia configurada: {formatQuantity(quantityValue * sourceWeightUnit.kilograms)} kg (estimación; no es peso medido).
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -2110,6 +2095,29 @@ function QuantityEditor({
   );
 }
 
+function StockSplitSuggestion({ line, disabled, onAccept }: {
+  line: MatrixLine;
+  disabled: boolean;
+  onAccept: (warehouseQuantity: number) => void;
+}) {
+  const suggestion = suggestWarehouseSplit(line);
+  if (!suggestion) return null;
+  return (
+    <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-left text-xs text-amber-950">
+      <p>Existencia informativa: {formatQuantity(suggestion.availableBase)} {line.baseUnitSymbol}.</p>
+      <p>Sugerencia para {formatQuantity(line.requestedQuantity)} {line.sourceLabel}: almacén {formatQuantity(suggestion.warehouseQuantity)} y externo {formatQuantity(suggestion.externalQuantity)} {line.sourceLabel}.</p>
+      <p>Confirma el origen real. La existencia se revisará otra vez al confirmar la entrega.</p>
+      <Button type="button" size="xs" variant="outline" disabled={disabled} className="mt-1" onClick={() => {
+        if (window.confirm(`¿Confirmas que ${formatQuantity(suggestion.warehouseQuantity)} ${line.sourceLabel} saldrán del almacén? Los ${formatQuantity(suggestion.externalQuantity)} ${line.sourceLabel} restantes deberán abastecerse externamente.`)) {
+          onAccept(suggestion.warehouseQuantity);
+        }
+      }}>
+        Aceptar sugerencia
+      </Button>
+    </div>
+  );
+}
+
 function DesktopOrderCells(props: CellProps) {
   const {
     line,
@@ -2140,12 +2148,6 @@ function DesktopOrderCells(props: CellProps) {
           className={`${cellClass} ${customerDividerClass(focused)} font-semibold`}
         >
           {formatQuantity(line.requestedQuantity)}
-        </td>
-        <td style={cellStyle} className={cellClass}>
-          <span className="text-muted-foreground">—</span>
-        </td>
-        <td style={cellStyle} className={cellClass}>
-          <span className="text-muted-foreground">—</span>
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (
@@ -2194,18 +2196,6 @@ function DesktopOrderCells(props: CellProps) {
                 ...(checked && line.preparedQuantity <= 0.000001
                   ? { preparedQuantity: line.requestedQuantity }
                   : {}),
-                ...(checked &&
-                line.controlsActualWeight &&
-                findWeightUnit(
-                  weightUnits,
-                  line.sourceLabel,
-                ) !== undefined &&
-                line.preparationActualWeightKg === null
-                  ? {
-                      preparationActualWeightKg:
-                        requestedWeightInKilograms(line, weightUnits),
-                    }
-                  : {}),
               })
             }
             onBlur={onSavePreparation}
@@ -2239,6 +2229,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSavePreparation}
           />
           <WeightPricingHint line={line} />
+          <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => onChange({ preparedQuantity: quantity, preparationCheck: false })} />
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (

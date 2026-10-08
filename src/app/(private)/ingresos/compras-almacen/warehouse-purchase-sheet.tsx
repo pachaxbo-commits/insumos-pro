@@ -9,14 +9,15 @@ import {
 } from "@/lib/qb-ingresos/actions";
 import { measureWarehousePurchaseAction, updateWarehousePurchaseAction } from "@/lib/warehouse-purchases/actions";
 import type { WarehousePurchase } from "@/lib/warehouse-purchases/data";
-import { purchaseTotal } from "@/lib/warehouse-purchases/model";
+import { autoReferencePriceFromPurchaseUnit, purchaseTotal } from "@/lib/warehouse-purchases/model";
 
 type Product = { id: string; name: string };
-type Unit = { id: string; name: string; symbol: string; isActive: boolean };
+type Unit = { id: string; name: string; symbol: string; dimensionId: string; factorToBase: number; isActive: boolean };
 type AllowedUnit = { id: string; productId: string; context: string; unitId: string | null; presentationId: string | null; isActive: boolean };
 type Presentation = { id: string; name: string; symbol: string };
 
-function money(value: number) {
+function money(value: number | null) {
+  if (value === null) return "—";
   return new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
@@ -39,6 +40,7 @@ export function WarehousePurchaseSheet({ date, rows, products, units, allowedUni
   const [unitPrice, setUnitPrice] = useState("");
   const [referenceUnitId, setReferenceUnitId] = useState("");
   const [referencePrice, setReferencePrice] = useState("");
+  const [referenceMode, setReferenceMode] = useState<"auto" | "manual">("auto");
   const [notes, setNotes] = useState("");
 
   const filteredProducts = products.filter((product) => product.name.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es")));
@@ -46,6 +48,16 @@ export function WarehousePurchaseSheet({ date, rows, products, units, allowedUni
   const referenceUnits = units.filter((unit) => unit.isActive && /arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`));
   const unitById = new Map(units.map((unit) => [unit.id, unit]));
   const presentationById = new Map(presentations.map((item) => [item.id, item]));
+  const selectedPurchaseUnit = purchaseUnits.find((unit) => unit.id === allowedId);
+  const sourceUnit = selectedPurchaseUnit?.unitId ? unitById.get(selectedPurchaseUnit.unitId) : null;
+  const targetUnit = unitById.get(referenceUnitId);
+  const autoReferencePrice = sourceUnit && targetUnit && unitPrice !== ""
+    ? autoReferencePriceFromPurchaseUnit(Number(unitPrice),
+      { dimensionId: sourceUnit.dimensionId, factorToBase: sourceUnit.factorToBase,
+        label: `${sourceUnit.name} ${sourceUnit.symbol}` },
+      { dimensionId: targetUnit.dimensionId, factorToBase: targetUnit.factorToBase }) : null;
+  const displayedReferencePrice = referenceMode === "auto"
+    ? autoReferencePrice?.toString() ?? "" : referencePrice;
   const total = Number(quantity) > 0 && Number(unitPrice) >= 0 &&
     Number.isFinite(Number(quantity)) && Number.isFinite(Number(unitPrice))
     ? purchaseTotal(Number(quantity), Number(unitPrice)) : 0;
@@ -67,13 +79,16 @@ export function WarehousePurchaseSheet({ date, rows, products, units, allowedUni
       receipt_date: date, reference_code: "HOJA-COMPRAS-ALMACEN", supplier_name: "",
       product_id: productId, allowed_unit_id: allowedId, source_quantity: quantity,
       unit_cost: unitPrice, requires_classification: "false", notes,
-      reference_unit_id: referenceUnitId, reference_price: referencePrice,
+      reference_unit_id: referenceUnitId, reference_price: displayedReferencePrice,
+      reference_price_origin: referenceMode === "auto" && autoReferencePrice !== null ? "calculated" :
+        displayedReferencePrice !== "" ? "manual" : "",
+      warehouse_purchase: "true",
     }).forEach(([key, value]) => form.set(key, value));
     startTransition(async () => {
       const result = await createQbMerchandiseReceiptAction({ success: false }, form);
       setMessage(result.message ?? "");
       if (result.success) {
-        setQuantity(""); setUnitPrice(""); setReferencePrice(""); setNotes("");
+        setQuantity(""); setUnitPrice(""); setReferencePrice(""); setReferenceMode("auto"); setNotes("");
         router.refresh();
       }
     });
@@ -134,11 +149,14 @@ export function WarehousePurchaseSheet({ date, rows, products, units, allowedUni
             <label className="text-sm">Cantidad<input required min="0.000001" step="any" type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
             <label className="text-sm">PU compra (Bs)<input required min="0" step="any" type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
             <div className="text-sm">Total Bs<div className="mt-1 rounded-lg bg-slate-50 px-3 py-2 font-semibold">{money(Number.isFinite(total) ? total : 0)}</div></div>
-            <label className="text-sm">Unidad de referencia<select required value={referenceUnitId} onChange={(e) => setReferenceUnitId(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Seleccionar</option>{referenceUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}</select></label>
-            <label className="text-sm">Precio referencial manual (Bs)<input required min="0" step="any" type="number" value={referencePrice} onChange={(e) => setReferencePrice(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+            <label className="text-sm">Unidad de referencia<select value={referenceUnitId} onChange={(e) => setReferenceUnitId(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Sin definir</option>{referenceUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}</select></label>
+            <label className="text-sm">Precio referencial (Bs)<input min="0" step="any" type="number" value={displayedReferencePrice} onChange={(e) => { setReferenceMode("manual"); setReferencePrice(e.target.value); }} className="mt-1 w-full rounded-lg border px-3 py-2" />
+              <span className="mt-1 block text-xs text-muted-foreground">{referenceMode === "auto" && autoReferencePrice !== null ? "Calculado con unidades configuradas; puedes editarlo." : "Sin equivalencia segura: escribe el valor cuando lo conozcas."}</span>
+              {autoReferencePrice !== null && referenceMode === "manual" ? <button type="button" onClick={() => setReferenceMode("auto")} className="mt-1 text-xs text-emerald-800 underline">Usar cálculo</button> : null}
+            </label>
           </div>
           <label className="block text-sm">Observaciones<textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} placeholder="Opcional: descarte, merma, compra urgente..." className="mt-1 min-h-16 w-full rounded-lg border px-3 py-2" /></label>
-          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">El precio referencial se escribe manualmente; guardar crea un ingreso en borrador, sin sumar stock.</p><button disabled={pending} className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar compra</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">El cálculo solo aparece con equivalencia segura; puedes corregirlo. Guardar no suma stock.</p><button disabled={pending} className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Guardar compra</button></div>
         </form>
       ) : null}
       <section className="rounded-2xl border bg-white p-3 sm:p-5">
@@ -158,5 +176,54 @@ function PurchaseCard({ row, index, units, pending, canManage, onUpdate, onMeasu
   onMeasure: (event: React.FormEvent<HTMLFormElement>) => void;
   onConfirm: (receiptId: string) => void; compact?: boolean;
 }) {
-  return <article className="rounded-xl border p-3 text-sm"><div className="flex flex-wrap items-start justify-between gap-2"><div><strong>{index + 1}. {row.productName}</strong><p className="text-xs text-muted-foreground">{row.quantity} {row.unitLabel} × Bs {money(row.unitPrice)} · Total Bs {money(row.total)}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{row.status}</span></div>{!compact ? <p className="mt-2">Referencia: Bs {money(row.referencePrice)} / {units.find((unit) => unit.id === row.referenceUnitId)?.name ?? "unidad"}<br />{row.notes || "Sin observaciones"}</p> : null}<p className="mt-1 text-xs text-muted-foreground">Registró: {row.actor} · {new Date(row.createdAt).toLocaleString("es-BO")}</p>{canManage && row.status === "borrador" ? <div className="mt-3 flex flex-wrap items-end gap-3"><form onSubmit={onUpdate} className="flex flex-wrap items-end gap-2"><input type="hidden" name="id" value={row.id} /><label className="text-xs">Unidad de referencia<select name="reference_unit_id" defaultValue={row.referenceUnitId} className="mt-1 block rounded-lg border px-2 py-1">{units.filter((unit) => unit.isActive && /arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`)).map((unit) => <option value={unit.id} key={unit.id}>{unit.name}</option>)}</select></label><label className="text-xs">Precio referencial<input name="reference_price" type="number" min="0" step="any" defaultValue={row.referencePrice} className="mt-1 block w-28 rounded-lg border px-2 py-1" /></label><label className="text-xs">Observaciones<input name="notes" maxLength={2000} defaultValue={row.notes} className="mt-1 block max-w-52 rounded-lg border px-2 py-1" /></label><button disabled={pending} className="rounded-lg border px-3 py-1.5 disabled:opacity-50">Guardar cambios</button></form><form onSubmit={onMeasure} className="flex items-end gap-2"><input type="hidden" name="id" value={row.id} /><label className="text-xs">Cantidad física útil ({row.baseUnitSymbol})<input required name="actual_base_quantity" type="number" min="0.000001" step="any" defaultValue={row.actualBaseQuantityRecorded ? row.baseQuantity : undefined} className="mt-1 block w-32 rounded-lg border px-2 py-1" /></label><button disabled={pending} className="rounded-lg border px-3 py-1.5 disabled:opacity-50">Guardar peso/cantidad</button></form>{row.requiresClassification ? <a href="/ingresos" className="rounded-lg border px-3 py-1.5 text-amber-800">Clasificar en Ingresos</a> : <button disabled={pending || !row.actualBaseQuantityRecorded} onClick={() => onConfirm(row.receiptId)} className="rounded-lg bg-emerald-800 px-3 py-1.5 text-white disabled:opacity-50">Confirmar ingreso a stock</button>}</div> : null}</article>;
+  const referenceUnit = units.find((unit) => unit.id === row.referenceUnitId);
+  return (
+    <article className="rounded-xl border p-3 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <strong>{index + 1}. {row.productName}</strong>
+          <p className="text-xs text-muted-foreground">{row.quantity} {row.unitLabel} × Bs {money(row.unitPrice)} · Total Bs {money(row.total)}</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{row.status}</span>
+      </div>
+      {!compact ? <p className="mt-2">Referencia: {row.referencePrice === null ? "Pendiente" : `Bs ${money(row.referencePrice)} / ${referenceUnit?.name ?? "unidad"}`}
+        {row.referencePriceOrigin === "calculated" ? " · Calculado" : row.referencePriceOrigin === "manual" ? " · Manual" : ""}
+        <br />{row.notes || "Sin observaciones"}</p> : null}
+      <p className="mt-1 text-xs text-muted-foreground">Registró: {row.actor} · {new Date(row.createdAt).toLocaleString("es-BO")}</p>
+      {canManage && row.status === "borrador" ? (
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <form onSubmit={onUpdate} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="id" value={row.id} />
+            <label className="text-xs">Unidad de referencia
+              <select name="reference_unit_id" defaultValue={row.referenceUnitId ?? ""} className="mt-1 block rounded-lg border px-2 py-1">
+                <option value="">Sin definir</option>
+                {units.filter((unit) => unit.isActive && /arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`)).map((unit) =>
+                  <option value={unit.id} key={unit.id}>{unit.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs">Precio referencial
+              <input name="reference_price" type="number" min="0" step="any" defaultValue={row.referencePrice ?? ""} className="mt-1 block w-28 rounded-lg border px-2 py-1" />
+            </label>
+            <label className="text-xs">Observaciones
+              <input name="notes" maxLength={2000} defaultValue={row.notes} className="mt-1 block max-w-52 rounded-lg border px-2 py-1" />
+            </label>
+            <button disabled={pending} className="rounded-lg border px-3 py-1.5 disabled:opacity-50">Guardar cambios</button>
+          </form>
+          <form onSubmit={onMeasure} className="flex items-end gap-2">
+            <input type="hidden" name="id" value={row.id} />
+            <label className="text-xs">Cantidad física útil ({row.baseUnitSymbol})
+              <input required name="actual_base_quantity" type="number" min="0.000001" step="any"
+                defaultValue={row.actualBaseQuantityRecorded ? row.baseQuantity : undefined}
+                className="mt-1 block w-32 rounded-lg border px-2 py-1" />
+            </label>
+            <button disabled={pending} className="rounded-lg border px-3 py-1.5 disabled:opacity-50">Guardar peso/cantidad</button>
+          </form>
+          {row.requiresClassification ?
+            <a href="/ingresos" className="rounded-lg border px-3 py-1.5 text-amber-800">Clasificar en Ingresos</a> :
+            <button disabled={pending || !row.actualBaseQuantityRecorded} onClick={() => onConfirm(row.receiptId)}
+              className="rounded-lg bg-emerald-800 px-3 py-1.5 text-white disabled:opacity-50">Confirmar ingreso a stock</button>}
+        </div>
+      ) : null}
+    </article>
+  );
 }

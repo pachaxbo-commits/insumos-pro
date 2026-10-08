@@ -7,6 +7,8 @@ import ts from "typescript";
 const read = (path) => readFileSync(path, "utf8");
 const matrix = read("src/components/operational-matrix/operational-matrix.tsx");
 const migration = read("supabase/migrations/20260918010000_qb_optional_actual_weight.sql");
+const optionalDelivery = read("supabase/migrations/20261007130000_qb_optional_delivery_weight.sql");
+const externalReceipts = read("supabase/migrations/20261007150000_qb_external_delivery_receipts.sql");
 
 test("todos los productos muestran cantidad y peso sin depender de la bandera del catálogo", () => {
   assert.equal((matrix.match(/<MeasuredQuantityEditor/g) ?? []).length, 3);
@@ -24,7 +26,7 @@ test("entrega hereda peso opcional y conserva el cero ingresado explícitamente"
   }).outputText;
   const exported = {};
   runInNewContext(js, { exports: exported, hasCompletePreparation: () => true });
-  const base = { controlsActualWeight: false, deliveredAt: null, deliveryVersion: 0, preparedQuantity: 5,
+  const base = { controlsActualWeight: false, preparedAt: "saved", preparationCheck: true, deliveredAt: null, deliveryVersion: 0, preparedQuantity: 5,
     deliveredQuantity: 0, preparationActualWeightKg: 0.416, deliveryActualWeightKg: null };
   assert.equal(exported.applyAutomaticDeliveryValues([base])[0].deliveryActualWeightKg, 0.416);
   assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveryActualWeightKg: 0 }])[0].deliveryActualWeightKg, 0);
@@ -58,4 +60,12 @@ test("hoja de compras tiene destino directo y costos permanece en el recibo", ()
   assert.match(market, /model\.customerLineCounts/);
   assert.match(market, /model\.totalLineCount/);
   assert.doesNotMatch(market, /rows\.reduce\(\(sum, row\) => sum \+ row\.total/);
+});
+
+test("peso medido sigue opcional y las líneas externas llegan al recibo", () => {
+  assert.match(optionalDelivery, /v_effective_weight := p_actual_weight_kg/);
+  assert.doesNotMatch(optionalDelivery, /Entrega debe registrar el peso real/);
+  assert.doesNotMatch(matrix, /preparationActualWeightKg:\s*requestedWeightInKilograms/);
+  assert.match(externalReceipts, /movement\.delivered_base_quantity > 0/);
+  assert.doesNotMatch(externalReceipts, /and item\.status in \('completo', 'parcial'\)/);
 });

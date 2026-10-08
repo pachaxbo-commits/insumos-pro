@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   sheet.addRow(["N°", "Descripción", "Ud compra", "Cant.", "PU compra", "Total Bs", "Unidad referencia", "Precio referencial", "Observaciones", "Estado"]);
   rows.forEach((row, index) => sheet.addRow([
     index + 1, row.productName, row.unitLabel, row.quantity, row.unitPrice,
-    row.total, units.get(row.referenceUnitId) ?? "", row.referencePrice,
+    row.total, row.referenceUnitId ? units.get(row.referenceUnitId) ?? "" : "", row.referencePrice,
     row.notes, row.status,
   ]));
   sheet.addRow(["", "TOTAL", "", "", "", rows.reduce((sum, row) => sum + row.total, 0)]);

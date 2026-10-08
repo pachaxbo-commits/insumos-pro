@@ -99,6 +99,8 @@ const createReceiptSchema = z.object({
   notes: optionalText,
   reference_unit_id: z.preprocess((value) => value === "" || value == null ? null : value, z.uuid().nullable()),
   reference_price: optionalNonNegativeNumber,
+  reference_price_origin: z.preprocess((value) => value === "" || value == null ? null : value, z.enum(["manual", "calculated"]).nullable()),
+  warehouse_purchase: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
 const lineIdSchema = z.object({
@@ -259,8 +261,11 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const input = parsed.data;
-  if ((input.reference_unit_id === null) !== (input.reference_price === null)) {
-    return { success: false, message: "Selecciona unidad de referencia y precio referencial juntos." };
+  if (input.reference_price !== null && input.reference_unit_id === null) {
+    return { success: false, message: "Selecciona la unidad del precio referencial." };
+  }
+  if (input.reference_price_origin === "manual" && input.reference_price === null) {
+    return { success: false, message: "Escribe el precio referencial manual." };
   }
   const [productResult, settingsResult, allowedUnitResult] = await Promise.all([
     access.supabase
@@ -365,17 +370,19 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const baseUnit = baseUnitResult.data;
+  let referenceUnit: QbUnitRow | null = null;
   if (input.reference_unit_id) {
-    const { data: referenceUnit, error: referenceError } = await access.supabase
+    const { data: referenceUnitData, error: referenceError } = await access.supabase
       .from("qb_units")
-      .select("id, dimension_id, name, symbol, is_active")
+      .select("id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active")
       .eq("id", input.reference_unit_id)
-      .maybeSingle<{ id: string; dimension_id: string; name: string; symbol: string; is_active: boolean }>();
+      .maybeSingle<QbUnitRow>();
     if (referenceError) return { success: false, message: referenceError.message };
-    const label = `${referenceUnit?.name ?? ""} ${referenceUnit?.symbol ?? ""}`.toLowerCase();
-    if (!referenceUnit?.is_active || !/arroba|cuartilla|libra/.test(label)) {
+    const label = `${referenceUnitData?.name ?? ""} ${referenceUnitData?.symbol ?? ""}`.toLowerCase();
+    if (!referenceUnitData?.is_active || !/arroba|cuartilla|libra/.test(label)) {
       return { success: false, message: "Elige ARROBA, CUARTILLA o LIBRA como unidad de referencia." };
     }
+    referenceUnit = referenceUnitData;
   }
   const dimensionResult = await access.supabase
     .from("qb_unit_dimensions")
@@ -389,6 +396,7 @@ export async function createQbMerchandiseReceiptAction(
   let sourceKind: "universal_unit" | "product_presentation";
   let sourceLabel: string;
   let sourceUnitId: string | null = null;
+  let sourceUnitForReference: QbUnitRow | null = null;
   let presentationId: string | null = null;
   let conversionFactorToBase: number;
   let snapshotPayload: Record<string, unknown>;
@@ -416,6 +424,7 @@ export async function createQbMerchandiseReceiptAction(
 
     sourceKind = "universal_unit";
     sourceUnitId = sourceUnit.id;
+    sourceUnitForReference = sourceUnit;
     sourceLabel = `${sourceUnit.name} (${sourceUnit.symbol})`;
     conversionFactorToBase =
       Number(sourceUnit.conversion_factor_to_base) / Number(baseUnit.conversion_factor_to_base);
@@ -486,6 +495,21 @@ export async function createQbMerchandiseReceiptAction(
 
   const baseQuantity = roundQuantity(input.source_quantity * conversionFactorToBase);
   const totalCost = roundMoney((input.unit_cost ?? 0) * input.source_quantity);
+  let referencePriceToSave = input.reference_price;
+  let referenceOriginToSave = input.reference_price === null ? null : "manual";
+  if (input.reference_price_origin === "calculated") {
+    const source = sourceUnitForReference as QbUnitRow | null;
+    const target = referenceUnit as QbUnitRow | null;
+    if (!source || !target || source.dimension_id !== target.dimension_id ||
+      source.conversion_factor_to_base <= 0 || target.conversion_factor_to_base <= 0 ||
+      /carga|chipa|amarro|bandeja/i.test(`${source.name} ${source.symbol}`) ||
+      input.unit_cost === null) {
+      return { success: false, message: "No existe equivalencia segura para calcular esta referencia." };
+    }
+    referencePriceToSave = Math.round(input.unit_cost *
+      target.conversion_factor_to_base / source.conversion_factor_to_base * 100_000_000) / 100_000_000;
+    referenceOriginToSave = "calculated";
+  }
 
   const { data: receipt, error: receiptError } = await access.supabase
     .from("qb_merchandise_receipts")
@@ -521,8 +545,10 @@ export async function createQbMerchandiseReceiptAction(
       conversion_factor_to_base: conversionFactorToBase,
       unit_cost: input.unit_cost,
       total_cost: totalCost,
+      is_warehouse_purchase: input.warehouse_purchase,
       reference_unit_id: input.reference_unit_id,
-      reference_price: input.reference_price,
+      reference_price: referencePriceToSave,
+      reference_price_origin: referenceOriginToSave,
       requires_classification: requiresClassification,
       notes: input.notes,
       created_by: access.userId,

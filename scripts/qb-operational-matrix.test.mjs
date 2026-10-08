@@ -199,7 +199,7 @@ assert.match(
   matrix,
   /disabled=\{deliveryDisabled \|\| line\.preparationCheck\}/,
 );
-assert.match(matrix, /groupedLines\.every\(hasDeliveryCheck\)/);
+assert.match(matrix, /customerLines\.filter\(\(line\) =>[\s\S]*hasDeliveryCheck\(line\)/);
 assert.match(matrix, /updateMissingDeliveryChecks/);
 assert.match(matrix, /function NoteEditor[\s\S]*<Textarea/);
 assert.match(matrix, /placeholder="Escribe una observación"/);
@@ -226,9 +226,9 @@ assert.match(matrix, /Peso real preparado de/);
 assert.match(matrix, /function MeasuredQuantityEditor/);
 assert.match(matrix, /quantityLabel = "Cantidad real"/);
 assert.match(matrix, /quantityLabel=\{stage === "preparacion"/);
-assert.match(matrix, />\s*Peso real\s*</);
+assert.match(matrix, />\s*Peso real \(opcional\)\s*</);
 assert.doesNotMatch(matrix, /<option value="source">/);
-assert.match(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
+assert.doesNotMatch(matrix, /preparationActualWeightKg:\s*requestedWeightInKilograms/);
 assert.match(matrix, /Peso real informativo/);
 assert.doesNotMatch(
   matrix,

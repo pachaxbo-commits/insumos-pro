@@ -14,8 +14,9 @@ export type WarehousePurchase = {
   quantity: number;
   unitPrice: number;
   total: number;
-  referenceUnitId: string;
-  referencePrice: number;
+  referenceUnitId: string | null;
+  referencePrice: number | null;
+  referencePriceOrigin: "manual" | "calculated" | null;
   notes: string;
   actor: string;
   createdAt: string;
@@ -34,8 +35,9 @@ type PurchaseRow = {
   source_quantity: number | string;
   unit_cost: number | string;
   total_cost: number | string;
-  reference_unit_id: string;
-  reference_price: number | string;
+  reference_unit_id: string | null;
+  reference_price: number | string | null;
+  reference_price_origin: "manual" | "calculated" | null;
   notes: string | null;
   requires_classification: boolean;
   actual_base_quantity_recorded: boolean;
@@ -63,14 +65,14 @@ export async function getWarehousePurchases(date: string) {
   const { data, error } = await supabase
     .from("qb_merchandise_receipt_lines")
     .select(`id, receipt_id, product_id, source_label, source_quantity, unit_cost,
-      total_cost, reference_unit_id, reference_price, notes, requires_classification,
+      total_cost, reference_unit_id, reference_price, reference_price_origin, notes, requires_classification,
       actual_base_quantity_recorded, base_quantity, base_unit_symbol,
       created_at, updated_at,
       product:products!qb_merchandise_receipt_lines_product_id_fkey(name),
       receipt:qb_merchandise_receipts!qb_merchandise_receipt_lines_receipt_id_fkey!inner(
         receipt_date, status,
         created_by_profile:profiles!qb_merchandise_receipts_created_by_fkey(full_name))`)
-    .not("reference_price", "is", null)
+    .eq("is_warehouse_purchase", true)
     .eq("receipt.receipt_date", date)
     .neq("receipt.status", "anulado")
     .order("created_at", { ascending: false })
@@ -95,7 +97,8 @@ export async function getWarehousePurchases(date: string) {
       unitPrice: Number(row.unit_cost),
       total: Number(row.total_cost),
       referenceUnitId: row.reference_unit_id,
-      referencePrice: Number(row.reference_price),
+      referencePrice: row.reference_price === null ? null : Number(row.reference_price),
+      referencePriceOrigin: row.reference_price_origin,
       notes: row.notes ?? "",
       actor: profile?.full_name ?? "Usuario",
       createdAt: row.created_at,

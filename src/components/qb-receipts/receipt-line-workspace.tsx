@@ -183,7 +183,7 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
                             {arrobaDisplay !== null ? money(arrobaDisplay) : "Sin equivalencia"}
                           </td>
                           <td className="px-2 py-1.5 text-right">{money(preview?.costTotal ?? null)}</td>
-                          <td className="px-2 py-1.5 text-right font-semibold">{money(preview?.saleTotal ?? null)}</td>
+                          <td className="px-2 py-1.5 text-right font-bold text-red-700">{money(preview?.saleTotal ?? null)}</td>
                           <td className="px-2 py-1.5 text-right">{money(preview?.profitTotal ?? null)}</td>
                           <td className="px-2 py-1.5 text-right">{money(preview?.unitProfit ?? null)}</td>
                           <td className="px-1 py-1">{input("notes", "w-28")}</td>
@@ -198,7 +198,7 @@ export function ReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emi
           <p className="text-xs text-amber-700">Las líneas pedidas por Bs conservan su venta fija; sus factores no se editan.</p>}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded border bg-emerald-50 p-3 text-sm">
           <span>Costo <b>{money(totals?.costTotal ?? null)} Bs</b></span>
-          <span>Venta <b>{money(totals?.saleTotal ?? null)} Bs</b></span>
+          <span className="font-bold text-red-700">VENTA TOTAL (Bs): <b>{money(totals?.saleTotal ?? null)}</b> <span className="font-normal">· importe final a cobrar</span></span>
           <span>Utilidad <b>{money(totals?.profitTotal ?? null)} Bs</b></span>
           <span>Margen <b>{totals ? `${money(totals.marginPercent)}%` : "Pendiente"}</b></span>
         </div>

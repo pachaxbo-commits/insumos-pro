@@ -238,7 +238,7 @@ assert.match(matrix, /TOTALES POR CLIENTE/);
 assert.match(matrix, /Check bodega/);
 assert.match(matrix, /Check de Inventario/);
 assert.match(matrix, /Check de Entrega faltante/);
-assert.match(matrix, /groupedLines\.every\(hasDeliveryCheck\)/);
+assert.match(matrix, /customerLines\.filter\(\(line\) =>[\s\S]*hasDeliveryCheck\(line\)/);
 assert.doesNotMatch(matrix, /Finalizar preparación/);
 assert.match(matrix, /Confirmar entrega/);
 assert.match(matrix, /Deshacer entrega/);

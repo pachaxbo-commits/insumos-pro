@@ -31,7 +31,8 @@ export default async function WarehousePurchasesPage({
         date={date}
         rows={data.rows}
         products={data.catalog.products.map((product) => ({ id: product.id, name: product.name }))}
-        units={data.catalog.qbUnits.map((unit) => ({ id: unit.id, name: unit.name, symbol: unit.symbol, isActive: unit.is_active }))}
+        units={data.catalog.qbUnits.map((unit) => ({ id: unit.id, name: unit.name, symbol: unit.symbol,
+          dimensionId: unit.dimension_id, factorToBase: Number(unit.conversion_factor_to_base), isActive: unit.is_active }))}
         allowedUnits={data.catalog.qbProductAllowedUnits.map((unit) => ({
           id: unit.id, productId: unit.product_id, context: unit.usage_context,
           unitId: unit.unit_id, presentationId: unit.presentation_id, isActive: unit.is_active,

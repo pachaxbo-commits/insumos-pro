@@ -44,13 +44,15 @@ export function MarketSheetTable({
             </th>
             <th className="border border-slate-500 px-2 py-2">UD</th>
             {model.customers.map((customer) => (
-              <th
-                key={customer.key}
-                className="max-w-28 border border-slate-500 px-2 py-2"
-              >
+              <th key={customer.key} className="max-w-28 border border-slate-500 px-2 py-2">
                 {customer.name}
               </th>
-            ))}
+            )).flatMap((cell, index) => [
+              cell,
+              <th key={`${model.customers[index].key}-handwritten`} className="hidden border border-slate-500 px-1 py-2 print:table-cell">
+                ANOTACIÓN
+              </th>,
+            ])}
             <th className="border border-slate-500 bg-emerald-100 px-2 py-2 font-bold">
               DEMANDA TOTAL
             </th>
@@ -87,14 +89,12 @@ export function MarketSheetTable({
             >
               LÍNEAS PEDIDAS
             </th>
-            {model.customers.map((customer, customerIndex) => (
-              <th
-                key={customer.key}
-                className="border-y-2 border-emerald-800 px-2 py-2"
-              >
+            {model.customers.flatMap((customer, customerIndex) => [
+              <th key={customer.key} className="border-y-2 border-emerald-800 px-2 py-2">
                 {model.customerLineCounts[customerIndex]}
-              </th>
-            ))}
+              </th>,
+              <th key={`${customer.key}-handwritten`} className="hidden border-y-2 border-emerald-800 print:table-cell" />,
+            ])}
             <th className="border-y-2 border-emerald-800 px-2 py-2 text-center">
               {model.totalLineCount}
             </th>
@@ -196,14 +196,14 @@ function MarketSheetTableRow({
       </td>
 
       {/* Customer order quantities */}
-      {row.quantities.map((value, customerIndex) => (
-        <td
-          key={customers[customerIndex]?.key}
-          className="border-r border-slate-300 px-2 py-1 text-center"
-        >
+      {row.quantities.flatMap((value, customerIndex) => [
+        <td key={customers[customerIndex]?.key} className="border-r border-slate-300 px-2 py-1 text-center">
           {value > 0 ? formatQuantity(value) : ""}
-        </td>
-      ))}
+        </td>,
+        <td key={`${customers[customerIndex]?.key}-handwritten`}
+          aria-label={`Anotación manual de ${row.productName} para ${customers[customerIndex]?.name}`}
+          className="hidden min-w-16 border-r border-slate-500 px-2 py-1 print:table-cell">&nbsp;</td>,
+      ])}
 
       {/* Total demand */}
       <td className="border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold text-slate-900">

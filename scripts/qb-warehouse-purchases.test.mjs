@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { purchaseTotal, referenceCostForUnit } from "../src/lib/warehouse-purchases/model.ts";
+import { autoReferencePriceFromPurchaseUnit, purchaseTotal, referenceCostForUnit } from "../src/lib/warehouse-purchases/model.ts";
 
 const migration = readFileSync(new URL("../supabase/migrations/20261007120000_qb_warehouse_purchase_reference.sql", import.meta.url), "utf8");
 const sheet = readFileSync(new URL("../src/app/(private)/ingresos/compras-almacen/warehouse-purchase-sheet.tsx", import.meta.url), "utf8");
@@ -20,3 +20,13 @@ test("missing or unsafe conversion remains editable manually", () => { assert.eq
 test("orders without stock do not generate stock", () => { assert.doesNotMatch(migration, /insert\s+into\s+public\.inventory_movements/i); assert.match(sheet, /Guardar compra/); });
 test("stock is confirmed once through existing RPC, after real quantity", () => { assert.match(sheet, /confirmQbMerchandiseReceiptAction/); assert.match(sheet, /actualBaseQuantityRecorded/); assert.match(migration, /require_measured_warehouse_purchase_before_stock/); assert.doesNotMatch(migration, /insert\s+into\s+public\.inventory_movements/i); });
 test("conversion uses configured unit factors, not nominal carga", () => { assert.equal(referenceCostForUnit(48, { dimensionId: "weight", factorToBase: 10 }, { dimensionId: "weight", factorToBase: 1 }), 4.8); assert.match(migration, /v_base_unit\.conversion_factor_to_base\s*\/\s*v_reference_unit\.conversion_factor_to_base/); });
+test("configured physical conversion calculates reference, presentation does not", () => {
+  assert.equal(autoReferencePriceFromPurchaseUnit(28, { label: "KG", dimensionId: "weight", factorToBase: 1 }, { dimensionId: "weight", factorToBase: 0.25 }), 7);
+  assert.equal(autoReferencePriceFromPurchaseUnit(280, { label: "CARGA", dimensionId: "weight", factorToBase: 10 }, { dimensionId: "weight", factorToBase: 1 }), null);
+  assert.equal(autoReferencePriceFromPurchaseUnit(150, { label: "CHIPA", dimensionId: "count", factorToBase: 1 }, { dimensionId: "weight", factorToBase: 1 }), null);
+});
+test("manual override and missing reference remain distinguishable", () => {
+  assert.match(migration, /reference_price_origin = 'calculated'/);
+  assert.match(migration, /reference_price_origin is distinct from 'manual'/);
+  assert.match(migration, /new\.cost_base_unit_snapshot := null/);
+});
