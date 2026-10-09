@@ -122,6 +122,32 @@ function getQbParametrizationWarning(message: string) {
   return "No pudimos cargar la configuración de unidades y presentaciones. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
 }
 
+async function loadAllAllowedUnits(
+  supabase: SupabaseServerClient,
+  productIds: string[],
+) {
+  const pageSize = 1000;
+  const rows: QbProductAllowedUnit[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const result = await supabase
+      .from("qb_product_allowed_units")
+      .select(
+        "id, product_id, usage_context, unit_id, presentation_id, is_default, quantity_step, min_quantity, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+      )
+      .in("product_id", productIds)
+      .order("usage_context", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (result.error) return { data: null, error: result.error };
+    const page = (result.data ?? []) as QbProductAllowedUnit[];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+  }
+}
+
 async function loadQbParametrizationData(
   supabase: SupabaseServerClient,
   productIds: string[],
@@ -164,14 +190,7 @@ async function loadQbParametrizationData(
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
-      ? supabase
-          .from("qb_product_allowed_units")
-          .select(
-            "id, product_id, usage_context, unit_id, presentation_id, is_default, quantity_step, min_quantity, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
-          )
-          .order("usage_context", { ascending: true })
-          .in("product_id", productIds)
-          .order("sort_order", { ascending: true })
+      ? loadAllAllowedUnits(supabase, productIds)
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
       ? supabase
