@@ -4,7 +4,7 @@ import { requireRoleAccess } from "@/lib/auth/session";
 import { todayInBolivia } from "@/lib/date-time";
 import { getWarehousePurchases } from "@/lib/warehouse-purchases/data";
 
-import { WarehousePurchaseSheet } from "./warehouse-purchase-sheet";
+import { WarehousePurchaseTable } from "./warehouse-purchase-table";
 
 export default async function WarehousePurchasesPage({
   searchParams,
@@ -27,7 +27,7 @@ export default async function WarehousePurchasesPage({
         <Link href="/ingresos" className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Ver ingresos</Link>
       </div>
       {data.error ? <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{data.error}</p> : null}
-      <WarehousePurchaseSheet
+      <WarehousePurchaseTable
         date={date}
         rows={data.rows}
         products={data.catalog.products.map((product) => ({ id: product.id, name: product.name }))}

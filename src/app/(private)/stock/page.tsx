@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { PageHeader } from "@/components/layout/page-header";
 import { StockView } from "@/components/stock/stock-view";
 import { requireRoleAccess } from "@/lib/auth/session";
@@ -29,6 +31,7 @@ export default async function StockPage() {
         title="Stock"
         description="Consulta existencias, alertas y movimientos registrados con scroll continuo y búsqueda en tiempo real."
       />
+      {canManage ? <Link href="/ingresos/compras-almacen" className="inline-flex rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50">Abrir Hoja de Compras para Almacén</Link> : null}
       {data.error ? (
         <p role="alert" className="text-sm text-rose-700">
           {data.error}
