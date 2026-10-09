@@ -29,7 +29,7 @@ test("inventory role is limited to the final operational surface", () => {
   }
 });
 
-test("administrator retains the complete internal surface", () => {
+test("administrator retains the current operational routes", () => {
   for (const path of [
     "/",
     "/pedidos",
@@ -39,13 +39,13 @@ test("administrator retains the complete internal surface", () => {
     "/parametrizacion",
     "/clientes",
     "/recibos",
+    "/configuracion",
+    "/ingresos",
   ]) {
     assert.equal(canAccessPath("administrador", path), true, path);
   }
 
   for (const path of [
-    "/configuracion",
-    "/ingresos",
     "/inventario",
     "/reportes",
   ]) {
@@ -53,11 +53,11 @@ test("administrator retains the complete internal surface", () => {
   }
 });
 
-test("administrator sees product pricing and parametrization in the active menu", () => {
+test("administrator sees warehouse purchasing in the active menu", () => {
   const sidebar = readFileSync("src/components/layout/app-sidebar.tsx", "utf8");
 
-  assert.match(sidebar, /adminAvailablePaths[\s\S]*"\/productos"/);
-  assert.match(sidebar, /adminAvailablePaths[\s\S]*"\/parametrizacion"/);
+  assert.match(sidebar, /adminAvailablePaths[\s\S]*"\/ingresos"/);
+  assert.match(sidebar, /href="\/ingresos\/compras-almacen"/);
 });
 
 test("final documentation and both meeting gates exist", () => {

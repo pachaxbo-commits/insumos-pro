@@ -48,12 +48,13 @@ test("Nuevo pedido usa una cuadrícula compacta sin selector producto por produc
   assert.doesNotMatch(creator, /Agregar producto/);
 });
 
-test("la cuadrícula prioriza el promedio histórico y pagina el resto alfabéticamente", () => {
+test("la cuadrícula prioriza el historial y carga el resto alfabéticamente", () => {
   assert.match(creator, /history\?\.lines/);
   assert.match(creator, /Sugeridos por pedidos anteriores/);
   assert.match(creator, /localeCompare\(right\.name, "es"\)/);
   assert.match(creator, /const PRODUCT_BATCH_SIZE = 40/);
-  assert.match(creator, /Mostrar\{" "\}/);
+  assert.match(creator, /IntersectionObserver/);
+  assert.match(creator, /Cargando más productos/);
   assert.match(creator, /setCatalogLimit/);
 });
 

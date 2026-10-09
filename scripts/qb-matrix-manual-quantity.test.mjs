@@ -42,9 +42,10 @@ test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
   );
 });
 
-test("editar cantidades conserva el estado actual de los checks", () => {
-  assert.doesNotMatch(matrix, /preparationCheck: false/);
-  assert.doesNotMatch(matrix, /deliveryCheck: false/);
+test("editar cantidades conserva los checks; aceptar una sugerencia requiere reverificación", () => {
+  assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+preparedQuantity: value \?\? 0,/);
+  assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+deliveredQuantity: value \?\? 0,/);
+  assert.match(matrix, /StockSplitSuggestion[^\n]*preparationCheck: false/);
   assert.doesNotMatch(matrix, /preparationCheck: value !== null/);
   assert.doesNotMatch(matrix, /deliveryCheck: value !== null/);
 });
@@ -52,7 +53,7 @@ test("editar cantidades conserva el estado actual de los checks", () => {
 test("cantidad comercial y peso real permanecen visibles y editables", () => {
   assert.match(matrix, /quantityLabel = "Cantidad real"/);
   assert.match(matrix, /quantityLabel=\{stage === "preparacion" \? "Cantidad preparada" : "Cantidad entregada"\}/);
-  assert.match(matrix, />\s*Peso real\s*</);
+  assert.match(matrix, /Peso real \(opcional\)/);
   assert.match(matrix, /value=\{quantityValue\}/);
   assert.match(matrix, /value=\{displayWeight\}/);
 });
@@ -108,7 +109,7 @@ test("la cantidad preparada agrupada se distribuye entre pedidos", () => {
   );
 });
 
-test("un check manual sin cantidad toma por defecto lo solicitado", () => {
+test("un check manual sin cantidad toma lo solicitado sin inventar peso", () => {
   assert.match(
     matrix,
     /checked && line\.preparedQuantity <= 0\.000001[\s\S]*preparedQuantity: line\.requestedQuantity/,
@@ -117,8 +118,7 @@ test("un check manual sin cantidad toma por defecto lo solicitado", () => {
     matrix,
     /checked && line\.deliveredQuantity <= 0\.000001[\s\S]*line\.requestedQuantity/,
   );
-  assert.match(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
-  assert.match(matrix, /weightToKilograms\(line\.requestedQuantity, unit\)/);
+  assert.doesNotMatch(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
 });
 
 test("los checks ya guardados con cero se normalizan para el resumen", () => {
