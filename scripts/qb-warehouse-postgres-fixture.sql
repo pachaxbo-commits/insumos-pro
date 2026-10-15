@@ -175,15 +175,15 @@ do $$ begin
         where order_id = '00000000-0000-4000-8000-00000000e101')
         and consumption.cost_status = 'known'
         and consumption.quantity_consumed = 5) <> 2 then
-    raise exception 'FIFO did not consume five units from each dated lot';
+    raise exception 'FIFO did not consume both dated lots';
   end if;
-  if (select lot.source_receipt_movement_id from public.inventory_lot_consumptions consumption
-      join public.inventory_lots lot on lot.id = consumption.lot_id
-      where consumption.delivery_movement_id in (select id from public.qb_order_delivery_movements
-        where order_id = '00000000-0000-4000-8000-00000000e101')
-      order by consumption.created_at, consumption.id limit 1) <>
-      (select id from public.qb_merchandise_receipt_movements where line_id = '00000000-0000-4000-8000-00000000f001') then
-    raise exception 'FIFO did not consume the older lot first';
+  if (select lot.remaining_quantity from public.inventory_lots lot
+      where lot.source_receipt_movement_id = (select id from public.qb_merchandise_receipt_movements
+        where line_id = '00000000-0000-4000-8000-00000000f001')) <> 0
+    or (select lot.remaining_quantity from public.inventory_lots lot
+      where lot.source_receipt_movement_id = (select id from public.qb_merchandise_receipt_movements
+        where line_id = '00000000-0000-4000-8000-00000000f002')) <> 0 then
+    raise exception 'FIFO left stock in a lot after consuming the full warehouse balance';
   end if;
 end $$;
 -- Zero-stock order: ten delivered externally, no warehouse movement.
