@@ -1023,10 +1023,11 @@ function ReceiptCard({
           <p className="mt-1 text-sm text-muted-foreground">
             {receipt.customerName}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-2 text-base font-semibold text-slate-900">
             {formatBoliviaDate(receipt.periodStart, "short")} -{" "}
             {formatBoliviaDate(receipt.periodEnd, "short")}
           </p>
+          <p className="text-xs text-muted-foreground">Periodo del recibo</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge

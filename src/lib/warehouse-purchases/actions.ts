@@ -6,6 +6,49 @@ import { z } from "zod";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+const expenseSchema = z.object({
+  clientKey: z.uuid(),
+  concept: z.string().trim().min(1).max(180),
+  amount: z.coerce.number().finite().positive().max(999999999),
+});
+
+export async function saveWarehouseOperatingExpensesAction(
+  date: string,
+  rows: Array<{ clientKey: string; concept: string; amount: number }>,
+  deletedIds: string[],
+) {
+  const auth = await requireAuthenticatedUser();
+  if (auth.user.role !== "administrador" && auth.user.role !== "inventario") {
+    return { success: false, message: "No tienes permiso para guardar gastos operativos." };
+  }
+  const parsedDate = z.iso.date().safeParse(date);
+  const parsedRows = z.array(expenseSchema).max(500).safeParse(rows);
+  const parsedDeleted = z.array(z.uuid()).max(500).safeParse(deletedIds);
+  if (!parsedDate.success || !parsedRows.success || !parsedDeleted.success) {
+    return { success: false, message: "Revisa la fecha, conceptos e importes de los gastos." };
+  }
+  if (new Set(parsedRows.data.map((row) => row.clientKey)).size !== parsedRows.data.length ||
+    new Set(parsedDeleted.data).size !== parsedDeleted.data.length) {
+    return { success: false, message: "Hay filas repetidas en la lista de gastos." };
+  }
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return { success: false, message: "Supabase no disponible." };
+  const { data, error } = await supabase.rpc("save_qb_warehouse_operating_expenses", {
+    p_expense_date: parsedDate.data,
+    p_rows: parsedRows.data,
+    p_deleted_ids: parsedDeleted.data,
+  });
+  if (error) {
+    const message = error.message.includes("QB_EXPENSE_ROW_CONFLICT")
+      ? "Una fila cambió o se quitó en otra sesión. Recarga la hoja antes de guardar."
+      : "No se pudieron guardar los gastos. Revisa los datos y vuelve a intentar.";
+    return { success: false, message };
+  }
+  revalidatePath("/ingresos/compras-almacen");
+  revalidatePath("/api/ingresos/compras-almacen.xlsx");
+  return { success: true, message: `${Number(data ?? 0)} cambios guardados.` };
+}
+
 const schema = z.object({
   id: z.uuid(),
   reference_unit_id: z.preprocess((value) => value === "" || value == null ? null : value, z.uuid().nullable()),

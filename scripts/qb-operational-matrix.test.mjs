@@ -27,6 +27,7 @@ const [
   receiptDeliveryTruth,
   preparationWeightBaseline,
   actualWeightPricing,
+  visibleCheckCounts,
 ] = await Promise.all([
   read(
     "supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql",
@@ -68,6 +69,7 @@ const [
   read(
     "supabase/migrations/20260812010000_qb_actual_weight_unit_and_pricing.sql",
   ),
+  read("src/lib/operational-matrix/visible-check-counts.ts"),
 ]);
 
 const newSources = [foundation, workflows, factors, matrix, actions, docs].join(
@@ -199,7 +201,8 @@ assert.match(
   matrix,
   /disabled=\{deliveryDisabled \|\| line\.preparationCheck\}/,
 );
-assert.match(matrix, /customerLines\.filter\(\(line\) =>[\s\S]*hasDeliveryCheck\(line\)/);
+assert.match(matrix, /summarizeVisibleProductChecks\(/);
+assert.match(visibleCheckCounts, /cellLines\.every\(isChecked\)/);
 assert.match(matrix, /updateMissingDeliveryChecks/);
 assert.match(matrix, /function NoteEditor[\s\S]*<Textarea/);
 assert.match(matrix, /placeholder="Escribe una observación"/);
@@ -367,7 +370,7 @@ assert.match(
 );
 assert.match(
   receiptDocument,
-  /isExternalDocument \? "Fecha de entrega" : "Periodo"/,
+    /isDeliveryNote\s*\? isSingleDeliveryDate \? "Fecha de entrega" : "Periodo de entrega"\s*: isCustomerExport \? "Periodo del recibo" : "Periodo"/,
 );
 assert.match(
   receiptDocument,

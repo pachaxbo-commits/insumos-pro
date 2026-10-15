@@ -20,6 +20,7 @@ import {
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
 import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-scope";
+import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
 import {
   confirmMatrixDeliveryAction,
@@ -1602,17 +1603,17 @@ export function OperationalMatrix({
                   const customerLines = lines.filter((line) =>
                     orderIds.has(line.orderId),
                   );
-                  const customerRows = new Map<string, MatrixLine[]>();
-                  customerLines.forEach((line) => {
-                    const key = rowKey(line);
-                    customerRows.set(key, [
-                      ...(customerRows.get(key) ?? []),
-                      line,
-                    ]);
-                  });
-                  const completed = customerLines.filter((line) =>
-                    stage === "entrega" ? hasDeliveryCheck(line) : line.preparationCheck,
-                  ).length;
+                  // The table consolidates repeated product lines for a customer
+                  // into one cell; that cell is checked only when every source
+                  // line is checked.
+                  const counts = summarizeVisibleProductChecks(
+                    customerLines,
+                    rowKey,
+                    rowKey,
+                    (line) => stage === "entrega"
+                      ? hasDeliveryCheck(line)
+                      : line.preparationCheck,
+                  );
                   return (
                     <th
                       key={group.id}
@@ -1623,13 +1624,15 @@ export function OperationalMatrix({
                           : "bg-slate-100"
                       }`}
                     >
-                      {customerRows.size} productos · {customerLines.length} líneas
-                      {stage === "pedido" ? "" : ` · ${completed} checks`}
+                      {counts.products} productos
+                      {stage === "preparacion" || stage === "entrega"
+                        ? ` · ${counts.checks} checks`
+                        : ""}
                     </th>
                   );
                 })}
                 <th className={`sticky bottom-0 z-30 border-t bg-emerald-100 px-3 py-2 ${customerDividerClass()}`}>
-                  {rows.length} líneas
+                  {rows.length} productos
                 </th>
               </tr>
             </tfoot>

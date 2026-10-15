@@ -30,7 +30,13 @@ export default async function WarehousePurchasesPage({
       <WarehousePurchaseTable
         date={date}
         rows={data.rows}
-        products={data.catalog.products.map((product) => ({ id: product.id, name: product.name }))}
+        expenses={data.expenses}
+        products={data.catalog.products.map((product) => {
+          const settings = data.catalog.qbProductUnitSettings.find((item) => item.product_id === product.id);
+          const baseUnitId = settings?.base_inventory_unit_id ?? settings?.inventory_unit_id ?? settings?.base_unit_id;
+          const baseUnit = data.catalog.qbUnits.find((unit) => unit.id === baseUnitId);
+          return { id: product.id, name: product.name, matrixColor: product.matrix_color ?? null, baseDimensionId: baseUnit?.dimension_id ?? null };
+        })}
         units={data.catalog.qbUnits.map((unit) => ({ id: unit.id, name: unit.name, symbol: unit.symbol,
           dimensionId: unit.dimension_id, factorToBase: Number(unit.conversion_factor_to_base), isActive: unit.is_active }))}
         allowedUnits={data.catalog.qbProductAllowedUnits.map((unit) => ({
@@ -38,9 +44,11 @@ export default async function WarehousePurchasesPage({
           unitId: unit.unit_id, presentationId: unit.presentation_id, isActive: unit.is_active,
         }))}
         presentations={data.catalog.qbProductPresentations.map((presentation) => ({
-          id: presentation.id, name: presentation.name, symbol: presentation.symbol,
+          id: presentation.id, productId: presentation.product_id, name: presentation.name, symbol: presentation.symbol,
+          baseUnitId: presentation.base_unit_id, isActive: presentation.is_active, allowPurchase: presentation.allow_purchase,
         }))}
         canManage={auth.user.role === "administrador" || auth.user.role === "inventario"}
+        canConfigureUnits={auth.user.role === "administrador"}
       />
     </main>
   );

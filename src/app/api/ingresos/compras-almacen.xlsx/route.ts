@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   await requireRoleAccess("/ingresos/compras-almacen");
   const supplied = request.nextUrl.searchParams.get("date");
   const date = supplied && /^\d{4}-\d{2}-\d{2}$/.test(supplied) ? supplied : todayInBolivia();
-  const { catalog, rows, error } = await getWarehousePurchases(date);
+  const { catalog, rows, expenses, error } = await getWarehousePurchases(date);
   if (error) return new Response("No se pudo cargar la hoja de compras.", { status: 503 });
 
   const units = new Map(catalog.qbUnits.map((unit) => [unit.id, unit.name]));
@@ -35,10 +35,20 @@ export async function GET(request: NextRequest) {
     row.notes, row.status,
   ]));
   sheet.addRow(["", "TOTAL", "", "", "", rows.reduce((sum, row) => sum + row.total, 0)]);
+  sheet.addRow([]);
+  sheet.addRow(["GASTOS OPERATIVOS"]);
+  sheet.addRow(["N°", "Concepto", "", "", "", "Importe Bs"]);
+  expenses.forEach((expense, index) => sheet.addRow([index + 1, expense.concept, "", "", "", expense.amount]));
+  const expensesTotalRow = sheet.addRow(["", "SUBTOTAL GASTOS OPERATIVOS", "", "", "", expenses.reduce((sum, expense) => sum + expense.amount, 0)]);
+  const merchandiseSubtotal = rows.reduce((sum, row) => sum + row.total, 0);
+  sheet.addRow(["", "SUBTOTAL MERCADERÍA", "", "", "", merchandiseSubtotal]);
+  sheet.addRow(["", "TOTAL EGRESOS", "", "", "", merchandiseSubtotal + expenses.reduce((sum, expense) => sum + expense.amount, 0)]);
   sheet.getColumn(4).numFmt = "#,##0.######";
   for (const index of [5, 6, 8]) sheet.getColumn(index).numFmt = '"Bs "#,##0.00';
   sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: Math.max(4, rows.length + 4), column: 10 } };
   sheet.getRow(4).font = { bold: true };
+  expensesTotalRow.font = { bold: true };
+  sheet.lastRow!.font = { bold: true };
   sheet.getRow(1).font = { bold: true, size: 14 };
   sheet.getColumn(9).alignment = { wrapText: true, vertical: "top" };
   sheet.pageSetup.fitToPage = true;

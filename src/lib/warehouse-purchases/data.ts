@@ -27,6 +27,18 @@ export type WarehousePurchase = {
   baseUnitSymbol: string;
 };
 
+export type WarehouseOperatingExpense = {
+  id: string;
+  clientKey: string;
+  date: string;
+  concept: string;
+  amount: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+};
+
 type PurchaseRow = {
   id: string;
   receipt_id: string;
@@ -60,7 +72,7 @@ type PurchaseRow = {
 export async function getWarehousePurchases(date: string) {
   const catalog = await getQbIngresosData();
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { catalog, rows: [] as WarehousePurchase[], error: "Supabase no disponible." };
+  if (!supabase) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: "Supabase no disponible." };
 
   const { data, error } = await supabase
     .from("qb_merchandise_receipt_lines")
@@ -78,7 +90,7 @@ export async function getWarehousePurchases(date: string) {
     .order("created_at", { ascending: false })
     .limit(1000);
 
-  if (error) return { catalog, rows: [] as WarehousePurchase[], error: error.message };
+  if (error) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: error.message };
   const rows = ((data ?? []) as unknown as PurchaseRow[]).flatMap((row) => {
     const receipt = Array.isArray(row.receipt) ? row.receipt[0] : row.receipt;
     if (!receipt || receipt.receipt_date !== date || receipt.status === "anulado") return [];
@@ -109,5 +121,26 @@ export async function getWarehousePurchases(date: string) {
       baseUnitSymbol: row.base_unit_symbol,
     }];
   });
-  return { catalog, rows, error: null };
+  const expensesResult = await supabase
+    .from("qb_warehouse_operating_expenses")
+    .select("id, client_key, expense_date, concept, amount, created_at, updated_at, created_by, updated_by")
+    .eq("expense_date", date)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1000);
+  if (expensesResult.error) {
+    return { catalog, rows, expenses: [] as WarehouseOperatingExpense[], error: expensesResult.error.message };
+  }
+  const expenses = (expensesResult.data ?? []).map((row) => ({
+    id: row.id,
+    clientKey: row.client_key,
+    date: row.expense_date,
+    concept: row.concept,
+    amount: Number(row.amount),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+  }));
+  return { catalog, rows, expenses, error: null };
 }

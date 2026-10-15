@@ -32,6 +32,10 @@ export function ReceiptDocument({
   const isDeliveryNote = variant === "delivery-note";
   const isExternalDocument = isCustomerExport || isDeliveryNote;
   const showsPrices = !isDeliveryNote;
+  const isSingleDeliveryDate = receipt.periodStart === receipt.periodEnd;
+  const dateLabel = isDeliveryNote
+    ? isSingleDeliveryDate ? "Fecha de entrega" : "Periodo de entrega"
+    : isCustomerExport ? "Periodo del recibo" : "Periodo";
 
   return (
     <section
@@ -79,7 +83,7 @@ export function ReceiptDocument({
           <p className="text-xs font-medium uppercase text-muted-foreground">
             Cliente
           </p>
-          <p className="mt-1 font-semibold">{receipt.customerName}</p>
+          <p className="mt-1 text-lg font-semibold leading-tight">{receipt.customerName}</p>
           {!isExternalDocument ? (
             <>
               <p className="text-sm text-muted-foreground">
@@ -99,10 +103,10 @@ export function ReceiptDocument({
           }
         >
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {isExternalDocument ? "Fecha de entrega" : "Periodo"}
+            {dateLabel}
           </p>
-          <p className="mt-1 text-sm">
-            {isExternalDocument ? (
+          <p className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl print:text-2xl">
+            {isSingleDeliveryDate ? (
               formatBoliviaDate(receipt.periodEnd ?? receipt.periodStart)
             ) : (
               <>
@@ -117,7 +121,7 @@ export function ReceiptDocument({
             <p className="text-xs font-medium uppercase text-muted-foreground">
               {receipt.status === "borrador" ? "Creado" : "Emisión"}
             </p>
-            <p className="mt-1 text-sm">
+            <p className="mt-1 text-sm font-medium">
               {formatBoliviaDate(receipt.issuedAt ?? receipt.createdAt)}
             </p>
           </div>

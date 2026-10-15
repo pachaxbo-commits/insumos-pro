@@ -39,8 +39,14 @@ insert into public.qb_merchandise_receipt_lines
 values
   ('00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-00000000e001',
    '00000000-0000-4000-8000-00000000c001', '00000000-0000-4000-8000-00000000b101',
-   'universal_unit', '00000000-0000-4000-8000-00000000b001', 'KG', 10,
-   '00000000-0000-4000-8000-00000000b001', 'KG', 10, 1, 5.5, 55, false,
+   'universal_unit', '00000000-0000-4000-8000-00000000b001', 'KG', 5,
+   '00000000-0000-4000-8000-00000000b001', 'KG', 5, 1, 5.5, 27.5, false,
+   '00000000-0000-4000-8000-00000000b002', 55, 'manual', true,
+   '00000000-0000-4000-8000-00000000a001'),
+  ('00000000-0000-4000-8000-00000000f002', '00000000-0000-4000-8000-00000000e001',
+   '00000000-0000-4000-8000-00000000c001', '00000000-0000-4000-8000-00000000b101',
+   'universal_unit', '00000000-0000-4000-8000-00000000b001', 'KG', 5,
+   '00000000-0000-4000-8000-00000000b001', 'KG', 5, 1, 5.5, 27.5, false,
    '00000000-0000-4000-8000-00000000b002', 55, 'manual', true,
    '00000000-0000-4000-8000-00000000a001');
 insert into public.qb_conversion_snapshots
@@ -51,10 +57,17 @@ values
   ('00000000-0000-4000-8000-00000000a101', 'qb_merchandise_receipt_lines',
    '00000000-0000-4000-8000-00000000f001', '00000000-0000-4000-8000-00000000c001',
    'qa_weight', 'universal_unit', '00000000-0000-4000-8000-00000000b001',
-   'KG', 10, '00000000-0000-4000-8000-00000000b001', 'KG', 10, 1, '{}');
+   'KG', 5, '00000000-0000-4000-8000-00000000b001', 'KG', 5, 1, '{}'),
+  ('00000000-0000-4000-8000-00000000a102', 'qb_merchandise_receipt_lines',
+   '00000000-0000-4000-8000-00000000f002', '00000000-0000-4000-8000-00000000c001',
+   'qa_weight', 'universal_unit', '00000000-0000-4000-8000-00000000b001',
+   'KG', 5, '00000000-0000-4000-8000-00000000b001', 'KG', 5, 1, '{}');
 update public.qb_merchandise_receipt_lines
 set conversion_snapshot_id = '00000000-0000-4000-8000-00000000a101'
 where id = '00000000-0000-4000-8000-00000000f001';
+update public.qb_merchandise_receipt_lines
+set conversion_snapshot_id = '00000000-0000-4000-8000-00000000a102'
+where id = '00000000-0000-4000-8000-00000000f002';
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a002', true);
 do $$ begin
@@ -65,16 +78,23 @@ exception when others then
   if sqlerrm = 'Viewer was allowed to measure purchase' then raise; end if;
 end $$;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a001', true);
-select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000f001', 10);
+select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000f001', 5);
+select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000f002', 5);
 select public.confirm_qb_merchandise_receipt('00000000-0000-4000-8000-00000000e001');
 do $$ begin
   if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c001') <> 10 then
     raise exception 'Stock after purchase is not 10';
   end if;
-  if (select count(*) from public.qb_merchandise_receipt_movements where receipt_id = '00000000-0000-4000-8000-00000000e001') <> 1 then
-    raise exception 'Purchase did not create exactly one movement';
+  if (select count(*) from public.qb_merchandise_receipt_movements where receipt_id = '00000000-0000-4000-8000-00000000e001') <> 2
+    or (select count(*) from public.inventory_lots where product_id = '00000000-0000-4000-8000-00000000c001') <> 2 then
+    raise exception 'Purchase did not create two stock movements and FIFO lots';
   end if;
 end $$;
+update public.inventory_lots lot set received_at = case
+  when movement.line_id = '00000000-0000-4000-8000-00000000f001' then now() - interval '2 days'
+  else now() - interval '1 day' end
+from public.qb_merchandise_receipt_movements movement
+where movement.id = lot.source_receipt_movement_id;
 do $$ begin
   perform public.confirm_qb_merchandise_receipt('00000000-0000-4000-8000-00000000e001');
   raise exception 'Repeated purchase confirmation succeeded';
@@ -148,6 +168,22 @@ do $$ begin
   if (select actual_weight_kg from public.qb_order_delivery_items
       where order_item_id = '00000000-0000-4000-8000-00000000f101') is not null then
     raise exception 'Optional weight was invented';
+  end if;
+  if (select count(*) from public.inventory_lot_consumptions consumption
+      join public.inventory_lots lot on lot.id = consumption.lot_id
+      where consumption.delivery_movement_id in (select id from public.qb_order_delivery_movements
+        where order_id = '00000000-0000-4000-8000-00000000e101')
+        and consumption.cost_status = 'known'
+        and consumption.quantity_consumed = 5) <> 2 then
+    raise exception 'FIFO did not consume five units from each dated lot';
+  end if;
+  if (select lot.source_receipt_movement_id from public.inventory_lot_consumptions consumption
+      join public.inventory_lots lot on lot.id = consumption.lot_id
+      where consumption.delivery_movement_id in (select id from public.qb_order_delivery_movements
+        where order_id = '00000000-0000-4000-8000-00000000e101')
+      order by consumption.created_at, consumption.id limit 1) <>
+      (select id from public.qb_merchandise_receipt_movements where line_id = '00000000-0000-4000-8000-00000000f001') then
+    raise exception 'FIFO did not consume the older lot first';
   end if;
 end $$;
 -- Zero-stock order: ten delivered externally, no warehouse movement.
@@ -372,7 +408,7 @@ begin
   end if;
   if exists (select 1 from public.qb_receipt_lines where receipt_id = v_receipt_id
       and (delivered_base_quantity <> 10 or cost_base_unit_snapshot <> 5.5
-        or warehouse_purchase_line_id <> '00000000-0000-4000-8000-00000000f001'::uuid)) then
+        or warehouse_purchase_line_id <> '00000000-0000-4000-8000-00000000f002'::uuid)) then
     raise exception 'Receipt quantity or purchase cost is wrong';
   end if;
 end $$;
@@ -398,7 +434,7 @@ do $$ begin
   end if;
   if (select warehouse_purchase_line_id from public.qb_receipt_lines
       where id = '00000000-0000-4000-8000-00000000f103') <>
-      '00000000-0000-4000-8000-00000000f001'::uuid then
+      '00000000-0000-4000-8000-00000000f002'::uuid then
     raise exception 'Receipt did not retain purchase source';
   end if;
 end $$;
