@@ -13,10 +13,10 @@ import { getWarehousePurchaseUnits } from "@/lib/warehouse-purchases/allowed-uni
 import { WarehouseExpenseSection } from "./warehouse-expense-section";
 import { PurchaseCard } from "./warehouse-purchase-sheet";
 
-type Product = { id: string; name: string; matrixColor: string | null; baseDimensionId: string | null; hasPhysicalBase: boolean };
-type Unit = { id: string; name: string; symbol: string; dimensionId: string; factorToBase: number; isActive: boolean };
+type Product = { id: string; name: string; matrixColor: string | null; baseUnitId: string | null; baseDimensionId: string | null; baseDimensionCode: string | null; baseFactorToBase: number | null; hasPhysicalBase: boolean };
+type Unit = { id: string; name: string; symbol: string; dimensionId: string; dimensionCode: string; factorToBase: number; isActive: boolean };
 type AllowedUnit = { id: string; productId: string; context: string; unitId: string | null; presentationId: string | null; isActive: boolean };
-type Presentation = { id: string; productId: string; name: string; symbol: string; baseUnitId: string; isActive: boolean; allowPurchase: boolean };
+type Presentation = { id: string; productId: string; name: string; symbol: string; baseUnitId: string; baseQuantity: number; conversionFactorToBase: number; isActive: boolean; allowPurchase: boolean };
 const UNMEASURED_COMMERCIAL = "commercial:unmeasured";
 type Draft = { id: number; productId: string; purchaseOptionId: string; commercialLabel: string; quantity: string; unitPrice: string; referenceUnitId: string; referencePrice: string; referenceMode: "auto" | "manual"; notes: string };
 
@@ -61,7 +61,10 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     const product = products.find((item) => item.id === productId);
     return getWarehousePurchaseUnits({
       productId,
+      baseUnitId: product?.baseUnitId ?? null,
       baseDimensionId: product?.baseDimensionId ?? null,
+      baseDimensionCode: product?.baseDimensionCode ?? null,
+      baseFactorToBase: product?.baseFactorToBase ?? null,
       allowedUnits,
       units,
       presentations,
@@ -83,7 +86,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     const source = option?.unitId ? unitById.get(option.unitId) : null;
     const target = unitById.get(draft.referenceUnitId);
     return source && target && draft.unitPrice !== ""
-      ? autoReferencePriceFromPurchaseUnit(Number(draft.unitPrice),
+      ? source.dimensionCode === "legacy_dump" && source.id !== target.id ? null : autoReferencePriceFromPurchaseUnit(Number(draft.unitPrice),
         { dimensionId: source.dimensionId, factorToBase: source.factorToBase, label: `${source.name} ${source.symbol}` },
         { dimensionId: target.dimensionId, factorToBase: target.factorToBase })
       : null;

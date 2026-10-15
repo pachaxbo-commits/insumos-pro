@@ -18,18 +18,26 @@ insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_fa
 values
   ('00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000d301', 'qa_bs', 'Boliviano QA', 'BS', 1, true, true),
   ('00000000-0000-4000-8000-00000000b304', '00000000-0000-4000-8000-00000000d302', 'kg_qa_safe_correction', 'Kilogramo QA', 'KG_QA_SAFE_CORRECTION', 1, true, true);
+insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active)
+select '00000000-0000-4000-8000-00000000b305', id, 'qa_legacy_base', 'Unidad base heredada QA', 'LEGACY_BASE_QA', 1, false, true
+from public.qb_unit_dimensions where code = 'legacy_dump';
+insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active)
+select '00000000-0000-4000-8000-00000000b306', id, 'qa_legacy_other', 'Unidad secundaria heredada QA', 'LEGACY_OTHER_QA', 1, false, true
+from public.qb_unit_dimensions where code = 'legacy_dump';
 -- Simulate the legacy rows under repair; this QA fixture alone bypasses the current write guard.
 insert into public.products (id, name, unit_id, stock_current, stock_minimum, purchase_price, sale_price)
 values
   ('00000000-0000-4000-8000-00000000c301', 'Producto QA sin historial', '00000000-0000-4000-8000-00000000b301', 0, 0, 0, 0),
-  ('00000000-0000-4000-8000-00000000c302', 'Producto QA con saldo', '00000000-0000-4000-8000-00000000b301', 1, 0, 0, 0);
+  ('00000000-0000-4000-8000-00000000c302', 'Producto QA con saldo', '00000000-0000-4000-8000-00000000b301', 1, 0, 0, 0),
+  ('00000000-0000-4000-8000-00000000c303', 'Producto QA dimensión heredada', '00000000-0000-4000-8000-00000000b301', 0, 0, 0, 0);
 alter table public.qb_product_unit_settings disable trigger enforce_qb_physical_product_units;
 alter table public.qb_product_unit_settings disable trigger sync_qb_price_unit_for_orders;
 insert into public.qb_product_unit_settings
   (product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, is_qb_active)
 values
   ('00000000-0000-4000-8000-00000000c301', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', true),
-  ('00000000-0000-4000-8000-00000000c302', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', true);
+  ('00000000-0000-4000-8000-00000000c302', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000b303', true),
+  ('00000000-0000-4000-8000-00000000c303', '00000000-0000-4000-8000-00000000b305', '00000000-0000-4000-8000-00000000b305', '00000000-0000-4000-8000-00000000b305', '00000000-0000-4000-8000-00000000b305', true);
 alter table public.qb_product_unit_settings enable trigger enforce_qb_physical_product_units;
 alter table public.qb_product_unit_settings enable trigger sync_qb_price_unit_for_orders;
 
@@ -87,6 +95,21 @@ begin
         and action = 'create_qb_reception_unit') <> 1 then
     raise exception 'Purchase unit activation audit is missing or duplicated';
   end if;
+end $$;
+
+do $$
+begin
+  if public.ensure_qb_reception_unit_for_purchase(
+    '00000000-0000-4000-8000-00000000c303', '00000000-0000-4000-8000-00000000b305'
+  ) is null then raise exception 'Legacy product exact base unit was not accepted'; end if;
+  begin
+    perform public.ensure_qb_reception_unit_for_purchase(
+      '00000000-0000-4000-8000-00000000c303', '00000000-0000-4000-8000-00000000b306'
+    );
+    raise exception 'Legacy dimension cross-unit conversion was allowed';
+  exception when others then
+    if sqlerrm = 'Legacy dimension cross-unit conversion was allowed' then raise; end if;
+  end;
 end $$;
 
 rollback;

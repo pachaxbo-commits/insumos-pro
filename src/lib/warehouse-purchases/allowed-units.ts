@@ -10,7 +10,9 @@ export type WarehousePurchaseAllowedUnit = {
 export type WarehousePurchasePhysicalUnit = {
   id: string;
   dimensionId: string;
+  dimensionCode: string;
   symbol: string;
+  factorToBase: number;
   isActive: boolean;
 };
 
@@ -18,6 +20,8 @@ export type WarehousePurchasePresentation = {
   id: string;
   productId: string;
   baseUnitId: string;
+  baseQuantity: number;
+  conversionFactorToBase: number;
   isActive: boolean;
   allowPurchase: boolean;
 };
@@ -35,18 +39,24 @@ function isCurrencyQuantitySymbol(symbol: string) {
 
 export function getWarehousePurchaseUnits({
   productId,
+  baseUnitId,
   baseDimensionId,
+  baseDimensionCode,
+  baseFactorToBase,
   allowedUnits,
   units,
   presentations,
 }: {
   productId: string;
+  baseUnitId: string | null;
   baseDimensionId: string | null;
+  baseDimensionCode: string | null;
+  baseFactorToBase: number | null;
   allowedUnits: WarehousePurchaseAllowedUnit[];
   units: WarehousePurchasePhysicalUnit[];
   presentations: WarehousePurchasePresentation[];
 }): WarehousePurchaseOption[] {
-  if (!baseDimensionId) return [];
+  if (!baseUnitId || !baseDimensionId || !baseDimensionCode || typeof baseFactorToBase !== "number" || !Number.isFinite(baseFactorToBase) || baseFactorToBase <= 0) return [];
 
   const unitsById = new Map(units.map((unit) => [unit.id, unit]));
   const presentationsById = new Map(presentations.map((presentation) => [presentation.id, presentation]));
@@ -60,7 +70,15 @@ export function getWarehousePurchaseUnits({
   );
 
   const physicalUnits = units.flatMap((unit) => {
-    if (!unit.isActive || unit.dimensionId !== baseDimensionId || isCurrencyQuantitySymbol(unit.symbol)) return [];
+    const isBaseUnit = unit.id === baseUnitId;
+    if (
+      !unit.isActive ||
+      unit.dimensionId !== baseDimensionId ||
+      unit.dimensionCode !== baseDimensionCode ||
+      isCurrencyQuantitySymbol(unit.symbol) ||
+      !Number.isFinite(unit.factorToBase) || unit.factorToBase <= 0 ||
+      (!isBaseUnit && (unit.dimensionCode === "legacy_dump" || baseDimensionCode === "legacy_dump"))
+    ) return [];
 
     const existing = receptionUnitById.get(unit.id);
     // An explicitly disabled product mapping remains disabled. A missing mapping
@@ -88,7 +106,11 @@ export function getWarehousePurchaseUnits({
       !presentation.allowPurchase ||
       !presentationBaseUnit?.isActive ||
       isCurrencyQuantitySymbol(presentationBaseUnit.symbol) ||
-      presentationBaseUnit.dimensionId !== baseDimensionId
+      !Number.isFinite(presentation.baseQuantity) || presentation.baseQuantity <= 0 ||
+      !Number.isFinite(presentation.conversionFactorToBase) || presentation.conversionFactorToBase <= 0 ||
+      presentationBaseUnit.dimensionId !== baseDimensionId ||
+      presentationBaseUnit.dimensionCode !== baseDimensionCode ||
+      (baseDimensionCode === "legacy_dump" && presentation.baseUnitId !== baseUnitId)
     ) return [];
 
     return [{

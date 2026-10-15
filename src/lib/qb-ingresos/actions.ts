@@ -353,6 +353,13 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const baseUnit = baseUnitResult.data;
+  const dimensionResult = await access.supabase
+    .from("qb_unit_dimensions")
+    .select("code")
+    .eq("id", baseUnit.dimension_id)
+    .maybeSingle<{ code: string }>();
+  if (dimensionResult.error) return { success: false, message: dimensionResult.error.message };
+  const dimensionCode = dimensionResult.data?.code ?? "desconocida";
   const isCurrencyUnit = (unit: Pick<QbUnitRow, "symbol">) =>
     ["BS", "BOB"].includes(unit.symbol.trim().toUpperCase().replaceAll(".", ""));
   if (isCurrencyUnit(baseUnit)) {
@@ -387,7 +394,8 @@ export async function createQbMerchandiseReceiptAction(
       return { success: false, message: "No se pudo validar la unidad física seleccionada." };
     }
     const purchaseUnit = purchaseUnitResult.data;
-    if (!purchaseUnit?.is_active || isCurrencyUnit(purchaseUnit) || purchaseUnit.dimension_id !== baseUnit.dimension_id) {
+    if (!purchaseUnit?.is_active || isCurrencyUnit(purchaseUnit) || purchaseUnit.dimension_id !== baseUnit.dimension_id ||
+      (dimensionCode === "legacy_dump" && purchaseUnit.id !== baseUnit.id)) {
       return { success: false, message: "La unidad seleccionada no es física o no es compatible con la unidad base del producto." };
     }
     const existingMapping = existingMappingResult.data;
@@ -424,15 +432,6 @@ export async function createQbMerchandiseReceiptAction(
     }
     referenceUnit = referenceUnitData;
   }
-  const dimensionResult = await access.supabase
-    .from("qb_unit_dimensions")
-    .select("code")
-    .eq("id", baseUnit.dimension_id)
-    .maybeSingle<{ code: string }>();
-
-  if (dimensionResult.error) return { success: false, message: dimensionResult.error.message };
-
-  const dimensionCode = dimensionResult.data?.code ?? "desconocida";
   let sourceKind: "universal_unit" | "product_presentation" | "commercial_unmeasured";
   let sourceLabel: string;
   let sourceUnitId: string | null = null;
@@ -481,6 +480,9 @@ export async function createQbMerchandiseReceiptAction(
         success: false,
         message: "La unidad de recepcion y la unidad base del producto pertenecen a dimensiones distintas.",
       };
+    }
+    if (dimensionCode === "legacy_dump" && sourceUnit.id !== baseUnit.id) {
+      return { success: false, message: "Este producto usa unidades heredadas sin equivalencias seguras. Elige su unidad base o registra la presentación comercial sin equivalencia." };
     }
 
     sourceKind = "universal_unit";
@@ -536,6 +538,9 @@ export async function createQbMerchandiseReceiptAction(
         message: "La presentacion y la unidad base del producto pertenecen a dimensiones distintas.",
       };
     }
+    if (dimensionCode === "legacy_dump" && presentationBaseUnit.id !== baseUnit.id) {
+      return { success: false, message: "La presentación no tiene una equivalencia segura con la unidad base del producto." };
+    }
 
     sourceKind = "product_presentation";
     presentationId = presentation.id;
@@ -562,6 +567,7 @@ export async function createQbMerchandiseReceiptAction(
     const source = sourceUnitForReference as QbUnitRow | null;
     const target = referenceUnit as QbUnitRow | null;
     if (!source || !target || source.dimension_id !== target.dimension_id ||
+      (dimensionCode === "legacy_dump" && source.id !== target.id) ||
       source.conversion_factor_to_base <= 0 || target.conversion_factor_to_base <= 0 ||
       /carga|chipa|amarro|bandeja/i.test(`${source.name} ${source.symbol}`) ||
       input.unit_cost === null) {
