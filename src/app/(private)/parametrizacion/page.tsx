@@ -1,13 +1,24 @@
 import { QbParametrizationPanel } from "@/components/products/qb-parametrization-panel";
+import { QbPhysicalUnitCorrectionPanel } from "@/components/products/qb-physical-unit-correction-panel";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { getProductsCatalogData } from "@/lib/products/data";
+import { getPhysicalUnitCorrectionReview } from "@/lib/products/physical-unit-corrections";
 
 export default async function ParametrizacionPage() {
   const auth = await requireRoleAccess("/parametrizacion");
   const data = await getProductsCatalogData({}, { includeQbParametrization: true });
   const canManage = auth.user.role === "administrador";
+  const unitCorrectionReview = canManage
+    ? await getPhysicalUnitCorrectionReview({
+        products: data.products,
+        units: data.units,
+        qbUnits: data.qbUnits,
+        settings: data.qbProductUnitSettings,
+        presentations: data.qbProductPresentations,
+      })
+    : { candidates: [], units: [] };
 
   return (
     <div className="space-y-4">
@@ -28,6 +39,11 @@ export default async function ParametrizacionPage() {
         qbUnits={data.qbUnits}
         qbProductPresentations={data.qbProductPresentations}
         qbParametrizationWarning={data.qbParametrizationWarning}
+        canManage={canManage}
+      />
+      <QbPhysicalUnitCorrectionPanel
+        candidates={unitCorrectionReview.candidates}
+        units={unitCorrectionReview.units}
         canManage={canManage}
       />
     </div>

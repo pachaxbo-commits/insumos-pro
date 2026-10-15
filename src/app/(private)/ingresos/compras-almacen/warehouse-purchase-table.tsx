@@ -13,13 +13,14 @@ import { getWarehousePurchaseUnits } from "@/lib/warehouse-purchases/allowed-uni
 import { WarehouseExpenseSection } from "./warehouse-expense-section";
 import { PurchaseCard } from "./warehouse-purchase-sheet";
 
-type Product = { id: string; name: string; matrixColor: string | null; baseDimensionId: string | null };
+type Product = { id: string; name: string; matrixColor: string | null; baseDimensionId: string | null; hasPhysicalBase: boolean };
 type Unit = { id: string; name: string; symbol: string; dimensionId: string; factorToBase: number; isActive: boolean };
 type AllowedUnit = { id: string; productId: string; context: string; unitId: string | null; presentationId: string | null; isActive: boolean };
 type Presentation = { id: string; productId: string; name: string; symbol: string; baseUnitId: string; isActive: boolean; allowPurchase: boolean };
-type Draft = { id: number; productId: string; allowedId: string; quantity: string; unitPrice: string; referenceUnitId: string; referencePrice: string; referenceMode: "auto" | "manual"; notes: string };
+const UNMEASURED_COMMERCIAL = "commercial:unmeasured";
+type Draft = { id: number; productId: string; purchaseOptionId: string; commercialLabel: string; quantity: string; unitPrice: string; referenceUnitId: string; referencePrice: string; referenceMode: "auto" | "manual"; notes: string };
 
-const newDraft = (id: number): Draft => ({ id, productId: "", allowedId: "", quantity: "", unitPrice: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto", notes: "" });
+const newDraft = (id: number): Draft => ({ id, productId: "", purchaseOptionId: "", commercialLabel: "", quantity: "", unitPrice: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto", notes: "" });
 const money = (value: number | null) => value === null ? "—" : new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 
 export function WarehousePurchaseTable({ date, rows, expenses, products, units, allowedUnits, presentations, canManage, canConfigureUnits }: {
@@ -56,9 +57,30 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     return presentation ? `${presentation.name} (${presentation.symbol})` : "Presentación";
   }
 
+  function purchaseOptionsFor(productId: string) {
+    const product = products.find((item) => item.id === productId);
+    return getWarehousePurchaseUnits({
+      productId,
+      baseDimensionId: product?.baseDimensionId ?? null,
+      allowedUnits,
+      units,
+      presentations,
+    });
+  }
+
+  function purchaseOptionLabel(optionId: string, productId: string) {
+    const option = purchaseOptionsFor(productId).find((item) => item.id === optionId);
+    if (option?.unitId) {
+      const unit = unitById.get(option.unitId);
+      return unit ? `${unit.name} (${unit.symbol})` : "Unidad física";
+    }
+    const allowed = allowedUnits.find((item) => item.id === option?.allowedUnitId);
+    return allowed ? unitLabel(allowed) : "Presentación";
+  }
+
   function referenceFor(draft: Draft) {
-    const allowed = allowedUnits.find((item) => item.id === draft.allowedId);
-    const source = allowed?.unitId ? unitById.get(allowed.unitId) : null;
+    const option = purchaseOptionsFor(draft.productId).find((item) => item.id === draft.purchaseOptionId);
+    const source = option?.unitId ? unitById.get(option.unitId) : null;
     const target = unitById.get(draft.referenceUnitId);
     return source && target && draft.unitPrice !== ""
       ? autoReferencePriceFromPurchaseUnit(Number(draft.unitPrice),
@@ -70,10 +92,12 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
   function saveDraft(draft: Draft) {
     const auto = referenceFor(draft);
     const referencePrice = draft.referenceMode === "auto" ? auto?.toString() ?? "" : draft.referencePrice;
+    const option = purchaseOptionsFor(draft.productId).find((item) => item.id === draft.purchaseOptionId);
+    if (!option) return;
     const form = new FormData();
     Object.entries({
       receipt_date: date, reference_code: "HOJA-COMPRAS-ALMACEN", supplier_name: "",
-      product_id: draft.productId, allowed_unit_id: draft.allowedId, source_quantity: draft.quantity,
+      product_id: draft.productId, allowed_unit_id: option.allowedUnitId ?? "", purchase_unit_id: option.allowedUnitId ? "" : option.unitId ?? "", commercial_label: draft.purchaseOptionId === UNMEASURED_COMMERCIAL ? draft.commercialLabel : "", source_quantity: draft.quantity,
       unit_cost: draft.unitPrice, requires_classification: "false", notes: draft.notes,
       reference_unit_id: draft.referenceUnitId, reference_price: referencePrice,
       reference_price_origin: draft.referenceMode === "auto" && auto !== null ? "calculated" : referencePrice !== "" ? "manual" : "",
@@ -149,21 +173,16 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
             {rows.map((row, index) => <FragmentRow key={row.id} row={row} index={index} productColor={products.find((product) => product.id === row.productId)?.matrixColor ?? null} expanded={expandedId === row.id} onToggle={() => setExpandedId(expandedId === row.id ? null : row.id)} units={units} pending={pending} canManage={canManage} onUpdate={updatePurchase} onMeasure={measurePurchase} onConfirm={setConfirmId} />)}
             {drafts.map((draft, index) => {
               const product = products.find((item) => item.id === draft.productId);
-              const purchaseUnits = getWarehousePurchaseUnits({
-                productId: draft.productId,
-                baseDimensionId: product?.baseDimensionId ?? null,
-                allowedUnits,
-                units,
-                presentations,
-              });
+              const purchaseUnits = purchaseOptionsFor(draft.productId);
+              const hasPhysicalBase = Boolean(product?.hasPhysicalBase);
               const auto = referenceFor(draft);
               const referencePrice = draft.referenceMode === "auto" ? auto?.toString() ?? "" : draft.referencePrice;
               const total = draft.quantity !== "" && draft.unitPrice !== "" ? purchaseTotal(Number(draft.quantity), Number(draft.unitPrice)) : 0;
-              const valid = !!draft.productId && !!draft.allowedId && Number(draft.quantity) > 0 && draft.unitPrice !== "" && Number(draft.unitPrice) >= 0;
+              const valid = !!draft.productId && !!draft.purchaseOptionId && (draft.purchaseOptionId !== UNMEASURED_COMMERCIAL || draft.commercialLabel.trim().length > 0) && Number(draft.quantity) > 0 && draft.unitPrice !== "" && Number(draft.unitPrice) >= 0;
               return <tr key={draft.id} className="border-t bg-emerald-50/40 align-top print:hidden">
                 <td className="border-r p-2">{rows.length + index + 1}</td>
                 <td className="border-r p-2"><button type="button" onClick={() => { setPickerId(draft.id); setSearch(""); }} style={product?.matrixColor ? { borderLeft: `4px solid ${product.matrixColor}`, backgroundColor: `color-mix(in srgb, ${product.matrixColor} 16%, white)` } : undefined} className="w-full rounded-md border bg-white px-2 py-2 text-left font-medium text-slate-950 hover:border-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-700 print:[print-color-adjust:exact]">{product?.name ?? "Seleccionar producto…"}</button></td>
-                <td className="border-r p-2"><select aria-label={`Unidad de compra fila ${index + 1}`} value={draft.allowedId} onChange={(event) => updateDraft(draft.id, { allowedId: event.target.value })} disabled={!product || purchaseUnits.length === 0} className="w-full rounded-md border bg-white px-2 py-2 disabled:bg-slate-100"><option value="">{purchaseUnits.length ? "Seleccionar" : "Sin unidades válidas"}</option>{purchaseUnits.map((unit) => <option key={unit.id} value={unit.id}>{unitLabel(unit)}</option>)}</select>{product && purchaseUnits.length === 0 ? <p role="status" className="mt-1 max-w-48 text-xs text-amber-800">{!product.baseDimensionId ? "Falta una unidad física base configurada para este producto." : allowedUnits.some((item) => item.productId === product.id && item.context === "recepcion" && item.isActive) ? "Hay unidades de recepción, pero su presentación está inactiva o su dimensión no coincide con el inventario." : "Este producto no tiene una unidad física habilitada para recepción."} {canConfigureUnits ? <Link className="font-semibold underline" href="/parametrizacion">Configurar</Link> : "Solicita al administrador que configure la unidad física."}</p> : null}</td>
+                <td className="border-r p-2"><select aria-label={`Unidad de compra fila ${index + 1}`} value={draft.purchaseOptionId} onChange={(event) => updateDraft(draft.id, { purchaseOptionId: event.target.value, commercialLabel: "" })} disabled={!product || (purchaseUnits.length === 0 && !hasPhysicalBase)} className="w-full rounded-md border bg-white px-2 py-2 disabled:bg-slate-100"><option value="">{purchaseUnits.length ? "Seleccionar" : "Sin unidades físicas compatibles"}</option>{purchaseUnits.map((unit) => <option key={unit.id} value={unit.id}>{purchaseOptionLabel(unit.id, draft.productId)}</option>)}{hasPhysicalBase ? <option value={UNMEASURED_COMMERCIAL}>Presentación comercial sin equivalencia</option> : null}</select>{draft.purchaseOptionId === UNMEASURED_COMMERCIAL ? <><input aria-label={`Nombre de presentación comercial fila ${index + 1}`} value={draft.commercialLabel} onChange={(event) => updateDraft(draft.id, { commercialLabel: event.target.value })} maxLength={120} placeholder="Ej.: CARGA, CHIPA, AMARRO" className="mt-1 w-full rounded-md border px-2 py-1.5" /><p className="mt-1 max-w-48 text-xs text-amber-800">Se guarda sin conversión. Registra la cantidad física útil medida antes de ingresar stock.</p></> : null}{product && purchaseUnits.length === 0 && !hasPhysicalBase ? <p role="status" className="mt-1 max-w-48 text-xs text-amber-800">Este producto no tiene una unidad física base válida. Configura la unidad de inventario antes de registrar la compra. {canConfigureUnits ? <Link className="font-semibold underline" href="/parametrizacion">Revisar configuración</Link> : "Solicita al administrador que revise la unidad de inventario."}</p> : null}</td>
                 <td className="border-r p-2"><input aria-label={`Cantidad fila ${index + 1}`} type="number" min="0.000001" step="any" value={draft.quantity} onChange={(event) => updateDraft(draft.id, { quantity: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
                 <td className="border-r p-2"><input aria-label={`Precio unitario fila ${index + 1}`} type="number" min="0" step="any" value={draft.unitPrice} onChange={(event) => updateDraft(draft.id, { unitPrice: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
                 <td className="border-r p-2 text-right font-medium">{money(Number.isFinite(total) ? total : 0)}</td>
@@ -181,7 +200,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
       <p className="mt-2 text-xs text-slate-500 print:hidden">Guardar una fila crea un borrador. El stock cambia solamente al confirmar su ingreso físico.</p>
     </section>
     <WarehouseExpenseSection key={date} date={date} initialExpenses={expenses} merchandiseTotal={sheetTotal} canManage={canManage} />
-    {pickerId !== null ? <div role="dialog" aria-modal="true" aria-label="Seleccionar producto" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={() => setPickerId(null)} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={search} onChange={(event) => setSearch(event.target.value)} className="mb-3 w-full rounded-lg border px-3 py-2" /><div className="max-h-80 overflow-y-auto rounded-lg border">{!normalizedSearch ? <p className="p-3 text-sm text-slate-500">Escribe el nombre para buscar productos.</p> : filteredProducts.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin coincidencias.</p> : filteredProducts.map((product) => <button key={product.id} type="button" onClick={() => { updateDraft(pickerId, { productId: product.id, allowedId: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-emerald-50 focus-visible:bg-emerald-50">{product.name}</button>)}</div></div></div> : null}
+    {pickerId !== null ? <div role="dialog" aria-modal="true" aria-label="Seleccionar producto" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={() => setPickerId(null)} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={search} onChange={(event) => setSearch(event.target.value)} className="mb-3 w-full rounded-lg border px-3 py-2" /><div className="max-h-80 overflow-y-auto rounded-lg border">{!normalizedSearch ? <p className="p-3 text-sm text-slate-500">Escribe el nombre para buscar productos.</p> : filteredProducts.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin coincidencias.</p> : filteredProducts.map((product) => <button key={product.id} type="button" onClick={() => { updateDraft(pickerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-emerald-50 focus-visible:bg-emerald-50">{product.name}</button>)}</div></div></div> : null}
     {confirmId ? <div role="dialog" aria-modal="true" aria-label="Confirmar ingreso a stock" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold">Confirmar ingreso a stock</h3><p className="mt-2 text-sm">{rows.find((row) => row.receiptId === confirmId)?.productName}: esta compra sumará físicamente al stock una sola vez. Verifica que la cantidad medida sea correcta.</p>{message ? <p role="alert" className="mt-2 text-sm text-rose-700">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-2">Cancelar</button><button type="button" disabled={pending} onClick={confirmPurchase} className="rounded-lg bg-emerald-800 px-3 py-2 text-white disabled:opacity-50">Confirmar ingreso</button></div></div></div> : null}
   </div>;
 }

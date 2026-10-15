@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { getWarehousePurchaseUnits } from "../src/lib/warehouse-purchases/allowed-units.ts";
@@ -32,19 +33,28 @@ const presentations = [
   { id: "not-purchase", productId, baseUnitId: "pack-base", isActive: true, allowPurchase: false },
 ];
 
-test("purchase choices include active configured kg, count units, liters and compatible purchase presentations", () => {
+test("purchase choices include compatible catalog units and configured presentations", () => {
   const choices = getWarehousePurchaseUnits({ productId, baseDimensionId: "weight", allowedUnits: allowed, units, presentations });
-  assert.deepEqual(choices.map((item) => item.id), ["kg", "presentation"]);
-  assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: "count", allowedUnits: allowed, units, presentations }).map((item) => item.id), ["unit", "envelope"]);
-  assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: "volume", allowedUnits: allowed, units, presentations }).map((item) => item.id), ["liter"]);
+  assert.deepEqual(choices.map((item) => item.id), ["unit:pack-base", "unit:other-dimension", "presentation:pack"]);
+  assert.equal(choices[0]?.allowedUnitId, null);
+  assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: "count", allowedUnits: allowed, units, presentations }).map((item) => item.id), ["unit:unit", "unit:envelope"]);
+  assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: "volume", allowedUnits: allowed, units, presentations }).map((item) => item.id), ["unit:liter"]);
 });
 
 test("unit selector excludes inactive, wrong-context, incompatible, ambiguous, and other-product mappings", () => {
   const choices = getWarehousePurchaseUnits({ productId, baseDimensionId: "count", allowedUnits: allowed, units, presentations });
-  assert.equal(choices.some((item) => ["inactive", "order-only", "bad-presentation", "ambiguous", "other-product"].includes(item.id)), false);
+  assert.equal(choices.some((item) => ["unit:inactive-unit", "presentation:not-purchase", "order-only", "bad-presentation", "ambiguous", "other-product"].includes(item.id)), false);
   assert.equal(choices.some((item) => item.id === "money"), false);
 });
 
 test("missing physical inventory dimension yields no purchase options", () => {
   assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: null, allowedUnits: allowed, units, presentations }), []);
+  assert.deepEqual(getWarehousePurchaseUnits({ productId, baseDimensionId: "money", allowedUnits: allowed, units, presentations }), []);
+});
+
+test("selecting a catalog unit uses the scoped, audited server RPC", async () => {
+  const action = await readFile(new URL("../src/lib/qb-ingresos/actions.ts", import.meta.url), "utf8");
+  assert.match(action, /ensure_qb_reception_unit_for_purchase/);
+  assert.match(action, /p_product_id: input\.product_id, p_unit_id: input\.purchase_unit_id/);
+  assert.doesNotMatch(action, /from\("qb_product_allowed_units"\)\s*\.insert\(/);
 });

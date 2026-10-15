@@ -1067,6 +1067,35 @@ export async function upsertQbProductUnitSettingsAction(
   return { success: true, message: "Producto QB guardado correctamente." };
 }
 
+export async function setQbProductPhysicalUnitSafelyAction(
+  _previousState: ActionState,
+  formData: FormData,
+) {
+  void _previousState;
+  const access = await assertCanMutateProducts();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = z.object({
+    product_id: z.uuid(),
+    unit_id: z.uuid(),
+    confirmation: z.literal("CORREGIR"),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { success: false, message: "Confirma la corrección y selecciona una unidad física." };
+
+  const { data, error } = await access.supabase.rpc("set_qb_product_physical_unit_if_safe", {
+    p_product_id: parsed.data.product_id,
+    p_unit_id: parsed.data.unit_id,
+  });
+  if (error) return { success: false, message: error.message };
+  if (!data) return { success: false, message: "No se confirmó la corrección de unidad." };
+
+  revalidateProducts();
+  revalidateQbParametrization();
+  revalidatePath("/stock");
+  revalidatePath("/ingresos/compras-almacen");
+  return { success: true, message: "Unidad física corregida y auditada." };
+}
+
 export async function updateQbProductBasePriceAction(
   _previousState: ActionState,
   formData: FormData,

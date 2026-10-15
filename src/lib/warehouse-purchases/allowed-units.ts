@@ -14,10 +14,6 @@ export type WarehousePurchasePhysicalUnit = {
   isActive: boolean;
 };
 
-function isCurrencyQuantitySymbol(symbol: string) {
-  return ["BS", "BOB"].includes(symbol.trim().toUpperCase().replaceAll(".", ""));
-}
-
 export type WarehousePurchasePresentation = {
   id: string;
   productId: string;
@@ -25,6 +21,17 @@ export type WarehousePurchasePresentation = {
   isActive: boolean;
   allowPurchase: boolean;
 };
+
+export type WarehousePurchaseOption = {
+  id: string;
+  allowedUnitId: string | null;
+  unitId: string | null;
+  presentationId: string | null;
+};
+
+function isCurrencyQuantitySymbol(symbol: string) {
+  return ["BS", "BOB"].includes(symbol.trim().toUpperCase().replaceAll(".", ""));
+}
 
 export function getWarehousePurchaseUnits({
   productId,
@@ -38,33 +45,59 @@ export function getWarehousePurchaseUnits({
   allowedUnits: WarehousePurchaseAllowedUnit[];
   units: WarehousePurchasePhysicalUnit[];
   presentations: WarehousePurchasePresentation[];
-}) {
+}): WarehousePurchaseOption[] {
   if (!baseDimensionId) return [];
 
   const unitsById = new Map(units.map((unit) => [unit.id, unit]));
   const presentationsById = new Map(presentations.map((presentation) => [presentation.id, presentation]));
+  const productReceptionUnits = allowedUnits.filter(
+    (allowed) => allowed.productId === productId && allowed.context === "recepcion",
+  );
+  const receptionUnitById = new Map(
+    productReceptionUnits
+      .filter((allowed) => allowed.unitId && !allowed.presentationId)
+      .map((allowed) => [allowed.unitId as string, allowed]),
+  );
 
-  return allowedUnits
-    .filter((allowed) => {
-      if (allowed.productId !== productId || allowed.context !== "recepcion" || !allowed.isActive) return false;
-      // An allowed source must point to exactly one physical unit or presentation.
-      if (Boolean(allowed.unitId) === Boolean(allowed.presentationId)) return false;
+  const physicalUnits = units.flatMap((unit) => {
+    if (!unit.isActive || unit.dimensionId !== baseDimensionId || isCurrencyQuantitySymbol(unit.symbol)) return [];
 
-      if (allowed.unitId) {
-        const unit = unitsById.get(allowed.unitId);
-        return Boolean(unit?.isActive && !isCurrencyQuantitySymbol(unit.symbol) && unit.dimensionId === baseDimensionId);
-      }
+    const existing = receptionUnitById.get(unit.id);
+    // An explicitly disabled product mapping remains disabled. A missing mapping
+    // is created by the authorized server action after the user selects it.
+    if (existing && !existing.isActive) return [];
 
-      const presentation = presentationsById.get(allowed.presentationId ?? "");
-      const presentationBaseUnit = presentation ? unitsById.get(presentation.baseUnitId) : null;
-      return Boolean(
-        presentation &&
-        presentation.productId === productId &&
-        presentation.isActive &&
-        presentation.allowPurchase &&
-        presentationBaseUnit?.isActive &&
-        !isCurrencyQuantitySymbol(presentationBaseUnit.symbol) &&
-        presentationBaseUnit.dimensionId === baseDimensionId,
-      );
-    });
+    return [{
+      id: `unit:${unit.id}`,
+      allowedUnitId: existing?.id ?? null,
+      unitId: unit.id,
+      presentationId: null,
+    }];
+  });
+
+  const configuredPresentations = productReceptionUnits.flatMap((allowed) => {
+    if (!allowed.isActive || Boolean(allowed.unitId) === Boolean(allowed.presentationId)) return [];
+    if (!allowed.presentationId) return [];
+
+    const presentation = presentationsById.get(allowed.presentationId);
+    const presentationBaseUnit = presentation ? unitsById.get(presentation.baseUnitId) : null;
+    if (
+      !presentation ||
+      presentation.productId !== productId ||
+      !presentation.isActive ||
+      !presentation.allowPurchase ||
+      !presentationBaseUnit?.isActive ||
+      isCurrencyQuantitySymbol(presentationBaseUnit.symbol) ||
+      presentationBaseUnit.dimensionId !== baseDimensionId
+    ) return [];
+
+    return [{
+      id: `presentation:${presentation.id}`,
+      allowedUnitId: allowed.id,
+      unitId: null,
+      presentationId: presentation.id,
+    }];
+  });
+
+  return [...physicalUnits, ...configuredPresentations];
 }

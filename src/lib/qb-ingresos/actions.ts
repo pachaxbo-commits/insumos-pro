@@ -84,12 +84,16 @@ const booleanField = z.union([
   z.enum(["true", "false"]).transform((value) => value === "true"),
 ]);
 
+const optionalUuid = z.preprocess((value) => value === "" || value == null ? null : value, z.uuid().nullable());
+
 const createReceiptSchema = z.object({
   receipt_date: z.string().min(10, "Selecciona una fecha."),
   reference_code: optionalText,
   supplier_name: optionalText,
   product_id: z.uuid("Selecciona un producto."),
-  allowed_unit_id: z.uuid("Selecciona una unidad o presentacion de recepcion."),
+  allowed_unit_id: optionalUuid,
+  purchase_unit_id: optionalUuid,
+  commercial_label: optionalText,
   source_quantity: z.coerce
     .number()
     .finite("La cantidad recibida debe ser valida.")
@@ -101,6 +105,11 @@ const createReceiptSchema = z.object({
   reference_price: optionalNonNegativeNumber,
   reference_price_origin: z.preprocess((value) => value === "" || value == null ? null : value, z.enum(["manual", "calculated"]).nullable()),
   warehouse_purchase: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+}).superRefine((value, context) => {
+  const selectedCount = Number(Boolean(value.allowed_unit_id)) + Number(Boolean(value.purchase_unit_id)) + Number(Boolean(value.commercial_label));
+  if (selectedCount !== 1) {
+    context.addIssue({ code: "custom", message: "Selecciona una unidad física, una presentación configurada o escribe la presentación comercial sin equivalencia." });
+  }
 });
 
 const lineIdSchema = z.object({
@@ -280,13 +289,13 @@ export async function createQbMerchandiseReceiptAction(
       )
       .eq("product_id", input.product_id)
       .maybeSingle<QbProductUnitSettingsRow>(),
-    access.supabase
+    input.allowed_unit_id ? access.supabase
       .from("qb_product_allowed_units")
       .select(
         "id, product_id, usage_context, unit_id, presentation_id, quantity_step, min_quantity, is_active",
       )
       .eq("id", input.allowed_unit_id)
-      .maybeSingle<QbProductAllowedUnitRow>(),
+      .maybeSingle<QbProductAllowedUnitRow>() : Promise.resolve({ data: null, error: null }),
   ]);
 
   const firstError = productResult.error ?? settingsResult.error ?? allowedUnitResult.error;
@@ -299,32 +308,6 @@ export async function createQbMerchandiseReceiptAction(
   const settings = settingsResult.data;
   if (!settings?.is_qb_active) {
     return { success: false, message: "Configura y activa este producto para QB antes de recibir." };
-  }
-
-  const allowedUnit = allowedUnitResult.data;
-  if (
-    !allowedUnit?.is_active ||
-    allowedUnit.product_id !== input.product_id ||
-    allowedUnit.usage_context !== "recepcion"
-  ) {
-    return {
-      success: false,
-      message: "La unidad seleccionada no esta permitida para recepcion de este producto.",
-    };
-  }
-
-  if (allowedUnit.min_quantity && input.source_quantity < allowedUnit.min_quantity) {
-    return {
-      success: false,
-      message: `La cantidad minima para esta recepcion es ${allowedUnit.min_quantity}.`,
-    };
-  }
-
-  if (!isStepAligned(input.source_quantity, allowedUnit.quantity_step)) {
-    return {
-      success: false,
-      message: `La cantidad debe respetar el incremento ${allowedUnit.quantity_step}.`,
-    };
   }
 
   const requiresClassification = Boolean(
@@ -370,6 +353,63 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const baseUnit = baseUnitResult.data;
+  const isCurrencyUnit = (unit: Pick<QbUnitRow, "symbol">) =>
+    ["BS", "BOB"].includes(unit.symbol.trim().toUpperCase().replaceAll(".", ""));
+  if (isCurrencyUnit(baseUnit)) {
+    return {
+      success: false,
+      message: "Este producto tiene una unidad monetaria como base de inventario. Corrige su unidad física antes de registrar compras.",
+    };
+  }
+
+  let allowedUnit = allowedUnitResult.data;
+  let selectedPurchaseUnit: QbUnitRow | null = null;
+  const isUnmeasuredCommercial = Boolean(input.commercial_label);
+  if (isUnmeasuredCommercial && (!input.warehouse_purchase || input.allowed_unit_id || input.purchase_unit_id)) {
+    return { success: false, message: "La presentación sin equivalencia solo puede registrarse como compra de almacén." };
+  }
+  if (input.purchase_unit_id) {
+    const [purchaseUnitResult, existingMappingResult] = await Promise.all([
+      access.supabase
+        .from("qb_units")
+        .select("id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active")
+        .eq("id", input.purchase_unit_id)
+        .maybeSingle<QbUnitRow>(),
+      access.supabase
+        .from("qb_product_allowed_units")
+        .select("id, product_id, usage_context, unit_id, presentation_id, quantity_step, min_quantity, is_active")
+        .eq("product_id", input.product_id)
+        .eq("usage_context", "recepcion")
+        .eq("unit_id", input.purchase_unit_id)
+        .maybeSingle<QbProductAllowedUnitRow>(),
+    ]);
+    if (purchaseUnitResult.error || existingMappingResult.error) {
+      return { success: false, message: "No se pudo validar la unidad física seleccionada." };
+    }
+    const purchaseUnit = purchaseUnitResult.data;
+    if (!purchaseUnit?.is_active || isCurrencyUnit(purchaseUnit) || purchaseUnit.dimension_id !== baseUnit.dimension_id) {
+      return { success: false, message: "La unidad seleccionada no es física o no es compatible con la unidad base del producto." };
+    }
+    const existingMapping = existingMappingResult.data;
+    if (existingMapping && !existingMapping.is_active) {
+      return { success: false, message: "Esta unidad está deshabilitada para recepción de este producto. Pide al administrador que revise su configuración." };
+    }
+    selectedPurchaseUnit = purchaseUnit;
+    allowedUnit = existingMapping;
+  }
+  if (!isUnmeasuredCommercial && !input.purchase_unit_id && (
+    !allowedUnit?.is_active ||
+    allowedUnit.product_id !== input.product_id ||
+    allowedUnit.usage_context !== "recepcion"
+  )) {
+    return { success: false, message: "La unidad seleccionada no esta permitida para recepcion de este producto." };
+  }
+  if (allowedUnit?.min_quantity && input.source_quantity < allowedUnit.min_quantity) {
+    return { success: false, message: `La cantidad minima para esta recepcion es ${allowedUnit.min_quantity}.` };
+  }
+  if (!isStepAligned(input.source_quantity, allowedUnit?.quantity_step ?? null)) {
+    return { success: false, message: `La cantidad debe respetar el incremento ${allowedUnit?.quantity_step}.` };
+  }
   let referenceUnit: QbUnitRow | null = null;
   if (input.reference_unit_id) {
     const { data: referenceUnitData, error: referenceError } = await access.supabase
@@ -393,7 +433,7 @@ export async function createQbMerchandiseReceiptAction(
   if (dimensionResult.error) return { success: false, message: dimensionResult.error.message };
 
   const dimensionCode = dimensionResult.data?.code ?? "desconocida";
-  let sourceKind: "universal_unit" | "product_presentation";
+  let sourceKind: "universal_unit" | "product_presentation" | "commercial_unmeasured";
   let sourceLabel: string;
   let sourceUnitId: string | null = null;
   let sourceUnitForReference: QbUnitRow | null = null;
@@ -401,7 +441,28 @@ export async function createQbMerchandiseReceiptAction(
   let conversionFactorToBase: number;
   let snapshotPayload: Record<string, unknown>;
 
-  if (allowedUnit.unit_id) {
+  if (isUnmeasuredCommercial) {
+    sourceKind = "commercial_unmeasured";
+    sourceLabel = input.commercial_label!;
+    conversionFactorToBase = 0;
+    snapshotPayload = {
+      commercial_label: input.commercial_label,
+      measurement_required_before_stock: true,
+      base_unit: baseUnit,
+    };
+  } else if (input.purchase_unit_id && selectedPurchaseUnit) {
+    sourceKind = "universal_unit";
+    sourceUnitId = selectedPurchaseUnit.id;
+    sourceUnitForReference = selectedPurchaseUnit;
+    sourceLabel = `${selectedPurchaseUnit.name} (${selectedPurchaseUnit.symbol})`;
+    conversionFactorToBase =
+      Number(selectedPurchaseUnit.conversion_factor_to_base) / Number(baseUnit.conversion_factor_to_base);
+    snapshotPayload = {
+      source_unit: selectedPurchaseUnit,
+      base_unit: baseUnit,
+      selected_from_warehouse_purchase: true,
+    };
+  } else if (allowedUnit?.unit_id) {
     const unitResult = await access.supabase
       .from("qb_units")
       .select("id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active")
@@ -433,7 +494,7 @@ export async function createQbMerchandiseReceiptAction(
       base_unit: baseUnit,
       allowed_unit_id: allowedUnit.id,
     };
-  } else if (allowedUnit.presentation_id) {
+  } else if (allowedUnit?.presentation_id) {
     const presentationResult = await access.supabase
       .from("qb_product_presentations")
       .select(
@@ -487,7 +548,7 @@ export async function createQbMerchandiseReceiptAction(
       presentation,
       presentation_base_unit: presentationBaseUnit,
       base_unit: baseUnit,
-      allowed_unit_id: allowedUnit.id,
+      allowed_unit_id: allowedUnit?.id ?? null,
     };
   } else {
     return { success: false, message: "La unidad permitida no tiene unidad ni presentacion." };
@@ -509,6 +570,31 @@ export async function createQbMerchandiseReceiptAction(
     referencePriceToSave = Math.round(input.unit_cost *
       target.conversion_factor_to_base / source.conversion_factor_to_base * 100_000_000) / 100_000_000;
     referenceOriginToSave = "calculated";
+  }
+
+  if (input.purchase_unit_id && !allowedUnit) {
+    const { data: allowedUnitId, error: allowedUnitError } = await access.supabase.rpc(
+      "ensure_qb_reception_unit_for_purchase",
+      { p_product_id: input.product_id, p_unit_id: input.purchase_unit_id },
+    );
+    if (allowedUnitError || typeof allowedUnitId !== "string") {
+      return {
+        success: false,
+        message: allowedUnitError?.message ?? "No se pudo habilitar esta unidad para recepción.",
+      };
+    }
+    const { data: createdMapping, error: mappingReadError } = await access.supabase
+      .from("qb_product_allowed_units")
+      .select("id, product_id, usage_context, unit_id, presentation_id, quantity_step, min_quantity, is_active")
+      .eq("id", allowedUnitId)
+      .maybeSingle<QbProductAllowedUnitRow>();
+    if (mappingReadError || !createdMapping?.is_active) {
+      return { success: false, message: "No se pudo recuperar la unidad habilitada para recepción." };
+    }
+    allowedUnit = createdMapping;
+  }
+  if (input.purchase_unit_id && allowedUnit) {
+    snapshotPayload = { ...snapshotPayload, allowed_unit_id: allowedUnit.id };
   }
 
   const { data: receipt, error: receiptError } = await access.supabase
@@ -533,7 +619,7 @@ export async function createQbMerchandiseReceiptAction(
     .insert({
       receipt_id: receipt.id,
       product_id: input.product_id,
-      allowed_unit_id: allowedUnit.id,
+      allowed_unit_id: allowedUnit?.id ?? null,
       source_kind: sourceKind,
       source_unit_id: sourceUnitId,
       product_presentation_id: presentationId,

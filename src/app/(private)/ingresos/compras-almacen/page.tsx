@@ -35,7 +35,9 @@ export default async function WarehousePurchasesPage({
           const settings = data.catalog.qbProductUnitSettings.find((item) => item.product_id === product.id);
           const baseUnitId = settings?.base_inventory_unit_id ?? settings?.inventory_unit_id ?? settings?.base_unit_id;
           const baseUnit = data.catalog.qbUnits.find((unit) => unit.id === baseUnitId);
-          return { id: product.id, name: product.name, matrixColor: product.matrix_color ?? null, baseDimensionId: baseUnit?.dimension_id ?? null };
+          const normalizedSymbol = baseUnit?.symbol.trim().toUpperCase().replaceAll(".", "");
+          const hasPhysicalBase = Boolean(baseUnit?.is_active && normalizedSymbol !== "BS" && normalizedSymbol !== "BOB");
+          return { id: product.id, name: product.name, matrixColor: product.matrix_color ?? null, baseDimensionId: baseUnit?.dimension_id ?? null, hasPhysicalBase };
         })}
         units={data.catalog.qbUnits.map((unit) => ({ id: unit.id, name: unit.name, symbol: unit.symbol,
           dimensionId: unit.dimension_id, factorToBase: Number(unit.conversion_factor_to_base), isActive: unit.is_active }))}

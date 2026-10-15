@@ -18,7 +18,7 @@ export const QB_MERCHANDISE_RECEIPT_STATUSES = [
 export type QbMerchandiseReceiptStatus =
   (typeof QB_MERCHANDISE_RECEIPT_STATUSES)[number];
 
-export type QbMerchandiseSourceKind = "universal_unit" | "product_presentation";
+export type QbMerchandiseSourceKind = "universal_unit" | "product_presentation" | "commercial_unmeasured";
 export type QbMerchandiseMovementRole = "direct_entry" | "classified_output" | "loss";
 
 export type QbMerchandiseReceipt = {

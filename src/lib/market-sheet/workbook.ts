@@ -48,7 +48,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   });
   sheet.properties.showGridLines = false;
 
-  const lastColumn = 9 + model.customers.length;
+  const lastColumn = 9 + model.customers.length * 2;
   const lastColumnLetter = columnLetter(lastColumn);
   sheet.mergeCells(`A1:${lastColumnLetter}1`);
   sheet.getCell("A1").value = "QB INSUMOS · HOJA DE PROVISIÓN";
@@ -80,7 +80,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "CÓDIGO",
     "DESCRIPCIÓN",
     "UD",
-    ...model.customers.map((customer) => customer.name.toUpperCase()),
+    ...model.customers.flatMap(() => ["", ""]),
     "TOTAL",
     "STOCK FÍSICO",
     "RESERVADO",
@@ -88,8 +88,16 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "FALTANTE / COMPRAR",
     "COSTO DE PROVISIÓN (Bs/UD)",
   ];
+  const customerFirstColumns = model.customers.map((customer, index) => {
+    const firstColumn = 4 + index * 2;
+    return { customer, firstColumn };
+  });
   const headerRow = sheet.getRow(5);
   headerRow.values = headers;
+  customerFirstColumns.forEach(({ customer, firstColumn }) => {
+    sheet.mergeCells(5, firstColumn, 5, firstColumn + 1);
+    sheet.getCell(5, firstColumn).value = customer.name.toUpperCase();
+  });
   headerRow.height = 34;
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FF0F172A" }, size: 9 };
@@ -118,7 +126,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       index + 1,
       item.productName,
       item.unit,
-      ...item.quantities.map((quantity) => (quantity > 0 ? quantity : null)),
+      ...item.quantities.flatMap((quantity) => [quantity > 0 ? quantity : null, null]),
       item.total,
       item.stockAvailable,
       item.reserved,
@@ -146,6 +154,12 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
         right: { style: "thin", color: { argb: "FFE2E8F0" } },
       };
     });
+    for (let customerIndex = 0; customerIndex < model.customers.length; customerIndex += 1) {
+      const left = row.getCell(4 + customerIndex * 2);
+      left.border = { ...left.border, right: { style: "medium", color: { argb: "FF64748B" } } };
+      const writing = row.getCell(5 + customerIndex * 2);
+      writing.border = { ...writing.border, left: { style: "medium", color: { argb: "FF64748B" } } };
+    }
   });
 
   const totalRowNumber = model.rows.length + 6;
@@ -154,7 +168,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   totalRow.getCell(2).value = "LÍNEAS PEDIDAS";
   totalRow.getCell(3).value = "";
   model.customerLineCounts.forEach((count, index) => {
-    totalRow.getCell(index + 4).value = count;
+    totalRow.getCell(4 + index * 2).value = count;
   });
   totalRow.getCell(lastColumn - 5).value = model.totalLineCount;
   totalRow.getCell(lastColumn).value = null;
@@ -171,13 +185,24 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       bottom: { style: "medium", color: { argb: "FF047857" } },
     };
   });
+  for (let customerIndex = 0; customerIndex < model.customers.length; customerIndex += 1) {
+    const left = totalRow.getCell(4 + customerIndex * 2);
+    left.border = { ...left.border, right: { style: "medium", color: { argb: "FF047857" } } };
+    const writing = totalRow.getCell(5 + customerIndex * 2);
+    writing.border = { ...writing.border, left: { style: "medium", color: { argb: "FF047857" } } };
+  }
   totalRow.height = 24;
 
   sheet.getColumn(1).width = 6;
   sheet.getColumn(2).width = 32;
   sheet.getColumn(3).width = 12;
-  for (let column = 4; column < lastColumn; column += 1) {
-    sheet.getColumn(column).width = 13;
+  for (let index = 0; index < model.customers.length; index += 1) {
+    sheet.getColumn(4 + index * 2).width = 8;
+    sheet.getColumn(5 + index * 2).width = 12;
+  }
+  const summaryStartColumn = 4 + model.customers.length * 2;
+  for (let column = summaryStartColumn; column <= lastColumn; column += 1) {
+    sheet.getColumn(column).width = column === lastColumn ? 20 : 13;
   }
   sheet.getColumn(lastColumn).width = 20;
   sheet.autoFilter = {

@@ -39,6 +39,8 @@ export const AUDIT_ACTIONS = [
   "reset_user_access",
   "update_configuration",
   "create_qb_merchandise_receipt",
+  "create_qb_reception_unit",
+  "set_qb_product_physical_unit",
   "save_qb_merchandise_classification",
   "confirm_qb_merchandise_receipt",
   "annul_qb_merchandise_receipt",
