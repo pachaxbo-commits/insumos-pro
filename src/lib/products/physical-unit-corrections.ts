@@ -1,11 +1,13 @@
 import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getPhysicalCorrectionUnits } from "@/lib/products/physical-unit-correction-units";
 import type {
   ProductWithRelations,
   QbProductUnitSettings,
   QbProductPresentation,
   QbUnit,
+  QbUnitDimension,
   UnitOfMeasure,
 } from "@/types/products";
 
@@ -37,12 +39,14 @@ export async function getPhysicalUnitCorrectionReview({
   products,
   units,
   qbUnits,
+  qbUnitDimensions,
   settings,
   presentations,
 }: {
   products: ProductWithRelations[];
   units: UnitOfMeasure[];
   qbUnits: QbUnit[];
+  qbUnitDimensions: QbUnitDimension[];
   settings: QbProductUnitSettings[];
   presentations: QbProductPresentation[];
 }) {
@@ -121,19 +125,7 @@ export async function getPhysicalUnitCorrectionReview({
     }
   }
 
-  const legacyUnitsByAbbreviation = new Map<string, UnitOfMeasure[]>();
-  for (const unit of units.filter((item) => item.is_active)) {
-    const key = unit.abbreviation.trim().toLocaleLowerCase("es");
-    legacyUnitsByAbbreviation.set(key, [...(legacyUnitsByAbbreviation.get(key) ?? []), unit]);
-  }
-  const availableUnits = qbUnits.filter((unit) => {
-    if (!unit.is_active || isMoneySymbol(unit.symbol)) return false;
-    const matches = new Set([
-      unit.symbol.trim().toLocaleLowerCase("es"),
-      unit.code.trim().toLocaleLowerCase("es"),
-    ].flatMap((key) => legacyUnitsByAbbreviation.get(key) ?? []));
-    return matches.size === 1;
-  });
+  const availableUnits = getPhysicalCorrectionUnits(qbUnits, qbUnitDimensions, units);
 
   return {
     units: availableUnits,

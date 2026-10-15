@@ -9,15 +9,11 @@ values ('00000000-0000-4000-8000-00000000a301', 'administrador', true);
 insert into public.units_of_measure (id, name, abbreviation, is_active)
 values
   ('00000000-0000-4000-8000-00000000b301', 'Boliviano QA', 'BS', true),
-  ('00000000-0000-4000-8000-00000000b302', 'Kilogramo QA', 'KG_QA_SAFE_CORRECTION', true);
+  ('00000000-0000-4000-8000-00000000b307', 'Kilogramo QA', 'KG', true);
 insert into public.qb_unit_dimensions (id, code, name, base_unit_code)
-values
-  ('00000000-0000-4000-8000-00000000d301', 'qa_money', 'QA monetaria', 'qa_bs'),
-  ('00000000-0000-4000-8000-00000000d302', 'qa_weight', 'QA peso', 'qa_kg');
+values ('00000000-0000-4000-8000-00000000d301', 'qa_money', 'QA monetaria', 'qa_bs');
 insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active)
-values
-  ('00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000d301', 'qa_bs', 'Boliviano QA', 'BS', 1, true, true),
-  ('00000000-0000-4000-8000-00000000b304', '00000000-0000-4000-8000-00000000d302', 'kg_qa_safe_correction', 'Kilogramo QA', 'KG_QA_SAFE_CORRECTION', 1, true, true);
+values ('00000000-0000-4000-8000-00000000b303', '00000000-0000-4000-8000-00000000d301', 'qa_bs', 'Boliviano QA', 'BS', 1, true, true);
 insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active)
 select '00000000-0000-4000-8000-00000000b305', id, 'qa_legacy_base', 'Unidad base heredada QA', 'LEGACY_BASE_QA', 1, false, true
 from public.qb_unit_dimensions where code = 'legacy_dump';
@@ -44,19 +40,20 @@ alter table public.qb_product_unit_settings enable trigger sync_qb_price_unit_fo
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a301', true);
 select public.set_qb_product_physical_unit_if_safe(
   '00000000-0000-4000-8000-00000000c301',
-  '00000000-0000-4000-8000-00000000b304'
+  (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
 );
 do $$
 begin
   if (select unit_id from public.products where id = '00000000-0000-4000-8000-00000000c301')
-    <> '00000000-0000-4000-8000-00000000b302' then raise exception 'Legacy product unit not synchronized'; end if;
+    <> (select id from public.units_of_measure where name = 'KG' and abbreviation = 'KG' and is_active) then
+    raise exception 'Exact KG catalog row was not selected'; end if;
   if exists (
     select 1 from public.qb_product_unit_settings
     where product_id = '00000000-0000-4000-8000-00000000c301'
-      and (base_unit_id <> '00000000-0000-4000-8000-00000000b304'
-        or inventory_unit_id <> '00000000-0000-4000-8000-00000000b304'
-        or base_inventory_unit_id <> '00000000-0000-4000-8000-00000000b304'
-        or base_price_unit_id <> '00000000-0000-4000-8000-00000000b304')
+      and (base_unit_id <> (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
+        or inventory_unit_id <> (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
+        or base_inventory_unit_id <> (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
+        or base_price_unit_id <> (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1))
   ) then raise exception 'QB unit settings were not synchronized'; end if;
   if (select count(*) from public.audit_logs where entity_id = '00000000-0000-4000-8000-00000000c301' and action = 'set_qb_product_physical_unit') <> 1 then
     raise exception 'Unit correction audit entry missing';
@@ -65,9 +62,22 @@ end $$;
 
 do $$
 begin
+  begin
+    perform public.set_qb_product_physical_unit_if_safe(
+      '00000000-0000-4000-8000-00000000c303',
+      (select id from public.qb_units where symbol = 'LEGACY_BASE_QA')
+    );
+    raise exception 'Legacy dimension target was allowed';
+  exception when others then
+    if sqlerrm = 'Legacy dimension target was allowed' then raise; end if;
+  end;
+end $$;
+
+do $$
+begin
   perform public.set_qb_product_physical_unit_if_safe(
     '00000000-0000-4000-8000-00000000c302',
-    '00000000-0000-4000-8000-00000000b304'
+    (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
   );
   raise exception 'Product with nonzero stock was allowed to change unit';
 exception when others then
@@ -77,17 +87,17 @@ end $$;
 update public.profiles set role = 'inventario' where id = '00000000-0000-4000-8000-00000000a301';
 select public.ensure_qb_reception_unit_for_purchase(
   '00000000-0000-4000-8000-00000000c301',
-  '00000000-0000-4000-8000-00000000b304'
+  (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
 );
 select public.ensure_qb_reception_unit_for_purchase(
   '00000000-0000-4000-8000-00000000c301',
-  '00000000-0000-4000-8000-00000000b304'
+  (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)
 );
 do $$
 begin
   if (select count(*) from public.qb_product_allowed_units
       where product_id = '00000000-0000-4000-8000-00000000c301'
-        and usage_context = 'recepcion' and unit_id = '00000000-0000-4000-8000-00000000b304') <> 1 then
+        and usage_context = 'recepcion' and unit_id = (select id from public.qb_units where symbol = 'KG' and dimension_id = (select id from public.qb_unit_dimensions where code = 'peso') order by is_base desc limit 1)) <> 1 then
     raise exception 'Purchase unit activation is not idempotent';
   end if;
   if (select count(*) from public.audit_logs

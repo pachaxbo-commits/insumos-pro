@@ -15,6 +15,7 @@ export default async function ParametrizacionPage() {
         products: data.products,
         units: data.units,
         qbUnits: data.qbUnits,
+        qbUnitDimensions: data.qbUnitDimensions,
         settings: data.qbProductUnitSettings,
         presentations: data.qbProductPresentations,
       })
