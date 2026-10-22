@@ -76,7 +76,7 @@ export async function saveMatrixPreparationAction(input: unknown) {
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["administrador", "inventario"], false);
+  }, ["administrador", "inventario", "supervisor"], false);
 }
 
 export async function saveMatrixDeliveryAction(input: unknown) {
@@ -132,7 +132,7 @@ export async function finalizeMatrixPreparationAction(input: unknown) {
     p_order_id: parsed.data.orderId,
     p_expected_updated_at: parsed.data.expectedUpdatedAt,
     p_idempotency_key: parsed.data.idempotencyKey,
-  }, ["administrador", "inventario"]);
+  }, ["administrador", "inventario", "supervisor"]);
 }
 
 export async function confirmMatrixDeliveryAction(input: unknown) {

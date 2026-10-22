@@ -22,9 +22,9 @@ type Draft = { id: number; productId: string; purchaseOptionId: string; commerci
 const newDraft = (id: number): Draft => ({ id, productId: "", purchaseOptionId: "", commercialLabel: "", quantity: "", unitPrice: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto", notes: "" });
 const money = (value: number | null) => value === null ? "—" : new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 
-export function WarehousePurchaseTable({ date, rows, expenses, products, units, allowedUnits, presentations, canManage, canConfigureUnits }: {
+export function WarehousePurchaseTable({ date, rows, expenses, products, units, allowedUnits, presentations, canManage, canConfigureUnits, showExpenses }: {
   date: string; rows: WarehousePurchase[]; expenses: WarehouseOperatingExpense[]; products: Product[]; units: Unit[];
-  allowedUnits: AllowedUnit[]; presentations: Presentation[]; canManage: boolean; canConfigureUnits: boolean;
+  allowedUnits: AllowedUnit[]; presentations: Presentation[]; canManage: boolean; canConfigureUnits: boolean; showExpenses: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -158,7 +158,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
         <button className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white">Ver fecha</button>
       </form>
       <div className="flex gap-2">
-        <a href={`/api/ingresos/compras-almacen.xlsx?date=${encodeURIComponent(date)}`} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Descargar Excel</a>
+        {showExpenses ? <a href={`/api/ingresos/compras-almacen.xlsx?date=${encodeURIComponent(date)}`} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Descargar Excel</a> : null}
         <button type="button" onClick={() => window.print()} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Imprimir</button>
       </div>
     </div>
@@ -166,7 +166,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div><h2 className="font-semibold">Hoja de compras · {date}</h2><p className="text-xs text-muted-foreground">Una fila por compra. Las compras repetidas permanecen separadas.</p></div>
-        <strong>Total Bs {money(sheetTotal)}</strong>
+        {showExpenses ? <strong>Total Bs {money(sheetTotal)}</strong> : null}
       </div>
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full min-w-[1120px] border-collapse text-sm">
@@ -205,13 +205,13 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
             })}
             {rows.length === 0 && drafts.length === 0 ? <tr><td colSpan={10} className="p-5 text-center text-slate-500">No hay compras en esta fecha. Agrega una fila para comenzar.</td></tr> : null}
           </tbody>
-          <tfoot><tr className="border-t-2 bg-slate-50 font-semibold"><td colSpan={5} className="p-2 text-right">TOTAL GUARDADO</td><td className="p-2 text-right">{money(sheetTotal)}</td><td colSpan={4} /></tr></tfoot>
+          {showExpenses ? <tfoot><tr className="border-t-2 bg-slate-50 font-semibold"><td colSpan={5} className="p-2 text-right">TOTAL GUARDADO</td><td className="p-2 text-right">{money(sheetTotal)}</td><td colSpan={4} /></tr></tfoot> : null}
         </table>
       </div>
       {canManage ? <button type="button" onClick={() => { setDrafts((current) => [...current, newDraft(nextId)]); setNextId((id) => id + 1); }} className="mt-3 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50 print:hidden">+ Agregar fila</button> : null}
       <p className="mt-2 text-xs text-slate-500 print:hidden">Guardar una fila crea un borrador. El stock cambia solamente al confirmar su ingreso físico.</p>
     </section>
-    <WarehouseExpenseSection key={date} date={date} initialExpenses={expenses} merchandiseTotal={sheetTotal} canManage={canManage} />
+    {showExpenses ? <WarehouseExpenseSection key={date} date={date} initialExpenses={expenses} merchandiseTotal={sheetTotal} canManage={canManage} /> : null}
     {pickerId !== null ? <WarehouseProductPicker products={filteredProducts} query={search} onQuery={setSearch} onClose={() => setPickerId(null)} onSelect={(product) => { updateDraft(pickerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} /> : null}
     {confirmId ? <div role="dialog" aria-modal="true" aria-label="Confirmar ingreso a stock" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold">Confirmar ingreso a stock</h3><p className="mt-2 text-sm">{rows.find((row) => row.receiptId === confirmId)?.productName}: esta compra sumará físicamente al stock una sola vez. Verifica que la cantidad medida sea correcta.</p>{message?.text && !message.success ? <p role="alert" className="mt-2 text-sm text-rose-700">{message.text}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-2">Cancelar</button><button type="button" disabled={pending} onClick={confirmPurchase} className="rounded-lg bg-emerald-800 px-3 py-2 text-white disabled:opacity-50">Confirmar ingreso</button></div></div></div> : null}
   </div>;

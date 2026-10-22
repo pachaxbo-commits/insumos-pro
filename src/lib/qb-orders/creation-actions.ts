@@ -18,10 +18,10 @@ export async function getInternalOrderCreationDataAction(): Promise<
   | { success: false; message: string }
 > {
   const auth = await requireRoleAccess("/pedidos");
-  if (auth.user.role !== "administrador") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "supervisor") {
     return {
       success: false,
-      message: "Solo un administrador puede registrar pedidos.",
+      message: "No tienes permiso para registrar pedidos.",
     };
   }
 
@@ -33,7 +33,7 @@ export async function getInternalOrderCreationDataAction(): Promise<
     };
   }
 
-  const data = await getInternalOrderCreationData(supabase);
+  const data = await getInternalOrderCreationData(supabase, auth.user.role!);
   return { success: true, data };
 }
 

@@ -38,9 +38,11 @@ export function AppSidebar({
     "/historial",
   ]);
   const availableItems = mainNavigation.filter(
-    (item) =>
+    (item) => canAccessPath(user.role, item.href) && (
       item.href === workspace.href ||
-      (user.role === "administrador" && adminAvailablePaths.has(item.href)),
+      (user.role === "administrador" && adminAvailablePaths.has(item.href)) ||
+      (user.role === "supervisor" && ["/matriz-operativa", "/stock"].includes(item.href))
+    ),
   );
   const dailyFlow = [
     { href: "/pedidos", label: "1. Crear pedido" },
@@ -118,13 +120,13 @@ export function AppSidebar({
           </div>
         )}
 
-        {user.role === "administrador" ? (
+        {user.role === "administrador" || user.role === "supervisor" ? (
           <div className="mt-6">
             <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/45">
               Compras
             </p>
             <div className="mt-2 space-y-1">
-              <Link
+              {user.role === "administrador" ? <Link
                 href="/matriz-operativa/mercado"
                 aria-current={pathname === "/matriz-operativa/mercado" ? "page" : undefined}
                 onClick={onNavigate}
@@ -137,7 +139,7 @@ export function AppSidebar({
                   <span className="block text-sm font-semibold">Hoja de Provisión</span>
                   <span className="block text-xs text-sidebar-foreground/65">Vista para imprimir y Excel</span>
                 </span>
-              </Link>
+              </Link> : null}
               <Link
                 href="/ingresos/compras-almacen"
                 onClick={onNavigate}
@@ -151,6 +153,7 @@ export function AppSidebar({
                   <span className="block text-xs text-sidebar-foreground/65">Compras reales y costo referencial</span>
                 </span>
               </Link>
+              {user.role === "supervisor" ? <Link href="/recibos/operativo" onClick={onNavigate} className="flex items-center gap-3 rounded-xl bg-emerald-950/35 px-3 py-3 text-sidebar-foreground hover:bg-emerald-950/50"><span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-900"><FileSpreadsheet className="size-4" /></span><span><span className="block text-sm font-semibold">Entregas para Recibos</span><span className="block text-xs text-sidebar-foreground/65">Solo detalle operativo y costo base</span></span></Link> : null}
             </div>
           </div>
         ) : null}

@@ -58,7 +58,7 @@ type QbProductUnitSettingsRow = {
   is_qb_active: boolean;
 };
 
-const mutationRoles = new Set(["administrador", "inventario"]);
+const mutationRoles = new Set(["administrador", "inventario", "supervisor"]);
 const initialState: ActionState = { success: false };
 
 const optionalText = z.preprocess(
@@ -153,7 +153,7 @@ async function assertCanManageQbIngresos() {
     };
   }
 
-  return { allowed: true as const, supabase, userId: auth.user.id };
+  return { allowed: true as const, supabase, userId: auth.user.id, role: auth.user.role };
 }
 
 function revalidateQbIngresos() {
@@ -270,6 +270,9 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const input = parsed.data;
+  if (access.role === "supervisor" && (!input.warehouse_purchase || input.requires_classification)) {
+    return { success: false, message: "Supervisor solo puede registrar compras directas de almacén, sin clasificación administrativa." };
+  }
   if (input.reference_price !== null && input.reference_unit_id === null) {
     return { success: false, message: "Selecciona la unidad del precio referencial." };
   }

@@ -82,6 +82,25 @@ export async function getWarehousePurchases(date: string, role: UserRole) {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: "Supabase no disponible." };
 
+  if (role === "supervisor") {
+    const { data, error } = await supabase.from("qb_operational_warehouse_purchases")
+      .select("id,receipt_id,receipt_date,status,product_id,product_name,source_label,source_quantity,unit_cost,total_cost,reference_unit_id,reference_price,reference_price_origin,notes,requires_classification,actual_base_quantity_recorded,base_quantity,base_unit_id,base_unit_symbol,source_kind,allowed_unit_id,created_at,updated_at,created_by_profile_name")
+      .eq("receipt_date", date).order("created_at", { ascending: false }).limit(1000);
+    if (error) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: error.message };
+    const rows: WarehousePurchase[] = (data ?? []).map((row) => ({
+      id: row.id, receiptId: row.receipt_id, date: row.receipt_date, status: row.status,
+      productId: row.product_id, productName: row.product_name ?? "Producto", unitLabel: row.source_label,
+      quantity: Number(row.source_quantity), unitPrice: Number(row.unit_cost), total: Number(row.total_cost),
+      referenceUnitId: row.reference_unit_id, referencePrice: row.reference_price === null ? null : Number(row.reference_price),
+      referencePriceOrigin: row.reference_price_origin, notes: row.notes ?? "", actor: row.created_by_profile_name ?? "Usuario",
+      createdAt: row.created_at, updatedAt: row.updated_at, requiresClassification: row.requires_classification,
+      actualBaseQuantityRecorded: row.actual_base_quantity_recorded, baseQuantity: Number(row.base_quantity),
+      baseUnitId: row.base_unit_id, baseUnitSymbol: row.base_unit_symbol, sourceKind: row.source_kind,
+      allowedUnitId: row.allowed_unit_id, commercialLabel: row.source_kind === "commercial_unmeasured" ? row.source_label : null,
+    }));
+    return { catalog, rows, expenses: [] as WarehouseOperatingExpense[], error: null };
+  }
+
   const { data, error } = await supabase
     .from("qb_merchandise_receipt_lines")
     .select(`id, receipt_id, product_id, source_label, source_quantity, unit_cost,

@@ -12,6 +12,7 @@ import type {
   QbPreparationAllowedUnit,
 } from "@/types/qb-orders";
 import type { QbOrderStatus } from "@/types/qb-catalog";
+import type { UserRole } from "@/types/auth";
 
 type SupabaseServerClient = NonNullable<
   Awaited<ReturnType<typeof createSupabaseServerClient>>
@@ -218,18 +219,17 @@ async function getAllowedUnitsByProduct(
 
 export async function getInternalOrderCreationData(
   supabase: SupabaseServerClient,
+  role: UserRole = "administrador",
 ): Promise<QbInternalOrderCreationData> {
   const [catalog, customersResult, locationsResult] = await Promise.all([
     getQbCatalogData(),
     supabase
-      .from("customer_accounts")
+      .from("qb_operational_customers")
       .select("id, business_name, responsible_name, phone")
-      .eq("is_active", true)
       .order("business_name", { ascending: true }),
     supabase
-      .from("qb_customer_locations")
+      .from("qb_operational_customer_locations")
       .select("id, customer_account_id, label, address, is_primary")
-      .eq("is_active", true)
       .order("is_primary", { ascending: false })
       .order("sort_order", { ascending: true }),
   ]);
@@ -249,6 +249,7 @@ export async function getInternalOrderCreationData(
     products: catalog.products
       .map((product) => ({
         ...product,
+        amountBsAvailable: role === "administrador" && product.amountBsAvailable,
         allowedUnits: product.allowedUnits.filter(
           (unit) => !/^bs\.?$/i.test(unit.label.trim()),
         ),
@@ -275,6 +276,7 @@ export async function getInternalOrderCreationData(
 
 export async function getQbInternalOrdersData(
   includeCreationData = false,
+  role: UserRole = "administrador",
 ): Promise<QbInternalOrdersData> {
   noStore();
 
@@ -287,7 +289,7 @@ export async function getQbInternalOrdersData(
     };
 
   const creationPromise = includeCreationData
-    ? getInternalOrderCreationData(supabase)
+    ? getInternalOrderCreationData(supabase, role)
     : Promise.resolve(undefined);
 
   const { data: ordersData, error } = await supabase
@@ -311,19 +313,17 @@ export async function getQbInternalOrdersData(
 
   if (!orderIds.length) return { orders: [], creation: await creationPromise };
 
-  const [itemsResult, preparationResult] = await Promise.all([
-    supabase
-      .from("qb_order_items")
-      .select(
-        "id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)",
-      )
-      .in("order_id", orderIds)
-      .order("sort_order", { ascending: true }),
-    supabase
+  const itemsResult = role === "supervisor"
+    ? await supabase.from("qb_operational_order_items")
+        .select("id,order_id,product_id,allowed_unit_id,source_label,requested_quantity,order_input_mode,estimated_requested_quantity,estimated_base_quantity,base_unit_symbol,base_quantity,customer_notes,sort_order")
+        .in("order_id", orderIds).eq("order_input_mode", "quantity").order("sort_order", { ascending: true })
+    : await supabase.from("qb_order_items")
+        .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)")
+        .in("order_id", orderIds).order("sort_order", { ascending: true });
+  const preparationResult = await supabase
       .from("qb_order_preparations")
       .select("id, order_id, status, internal_notes, started_at, prepared_at")
-      .in("order_id", orderIds),
-  ]);
+      .in("order_id", orderIds);
   const { data: itemsData, error: itemsError } = itemsResult;
 
   if (itemsError) {
@@ -333,7 +333,18 @@ export async function getQbInternalOrdersData(
     };
   }
 
-  const items = (itemsData ?? []) as ItemRow[];
+  let items = (itemsData ?? []).map((row) => ({
+    ...row,
+    requested_amount_bs: role === "supervisor" ? null : (row as ItemRow).requested_amount_bs,
+    product: role === "supervisor" ? null : (row as ItemRow).product,
+  })) as ItemRow[];
+  if (role === "supervisor" && items.length) {
+    const productIds = [...new Set(items.map((item) => item.product_id))];
+    const productsResult = await supabase.from("qb_operational_products")
+      .select("id,name,stock_current").in("id", productIds);
+    const productsById = new Map((productsResult.data ?? []).map((product) => [product.id, product]));
+    items = items.map((item) => ({ ...item, product: productsById.get(item.product_id) ?? null }));
+  }
   const preparations = preparationResult.error
     ? []
     : ((preparationResult.data ?? []) as PreparationRow[]);
@@ -341,7 +352,7 @@ export async function getQbInternalOrdersData(
   const [preparationItemsResult, allowedUnitsByProduct] = await Promise.all([
     preparationIds.length
       ? supabase
-          .from("qb_order_preparation_items")
+          .from(role === "supervisor" ? "qb_operational_preparation_items" : "qb_order_preparation_items")
           .select(
             "id, preparation_id, order_item_id, status, actual_allowed_unit_id, actual_source_label, actual_quantity, actual_base_quantity, notes",
           )

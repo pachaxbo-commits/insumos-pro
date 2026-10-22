@@ -308,7 +308,9 @@ export default async function ConfiguracionPage({
                       ? "Acceso: Preparación, Inventario o Administración"
                       : role === "inventario"
                         ? "Acceso: Preparación e Inventario"
-                        : "Sin acceso operativo"}
+                        : role === "supervisor"
+                          ? "Acceso: pedidos, preparación, stock y compras físicas; sin finanzas"
+                          : "Sin acceso operativo"}
                 </p>
               </div>
             ))}

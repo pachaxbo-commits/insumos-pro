@@ -53,6 +53,22 @@ test("administrator retains the current operational routes", () => {
   }
 });
 
+test("supervisor receives only the operational surface and safe receipt projection", () => {
+  for (const path of ["/", "/pedidos", "/matriz-operativa", "/stock", "/ingresos/compras-almacen", "/recibos/operativo"]) {
+    assert.equal(canAccessPath("supervisor", path), true, path);
+  }
+  for (const path of ["/productos", "/parametrizacion", "/clientes", "/configuracion", "/ingresos", "/recibos", "/historial", "/reportes", "/api/ingresos/compras-almacen.xlsx"]) {
+    assert.equal(canAccessPath("supervisor", path), false, path);
+  }
+  const migration = readFileSync("supabase/migrations/20261022160000_qb_supervisor_operational_role.sql", "utf8");
+  const header = readFileSync("src/components/layout/app-header.tsx", "utf8");
+  assert.match(migration, /qb_operational_delivered_lines/);
+  assert.match(migration, /qb_operational_preparation_costs[\s\S]*supervisor/);
+  assert.equal(migration.includes("base_sale_price"), false);
+  assert.match(header, /user\.role === "supervisor"\s*\? \{ href: "\/recibos\/operativo"/);
+  assert.match(header, /user\.role === "supervisor"\s*\? "Compras almacén"/);
+});
+
 test("administrator sees warehouse purchasing in the active menu", () => {
   const sidebar = readFileSync("src/components/layout/app-sidebar.tsx", "utf8");
 

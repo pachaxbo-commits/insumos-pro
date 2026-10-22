@@ -4,8 +4,8 @@ import { requireRoleAccess } from "@/lib/auth/session";
 import { getQbInternalOrdersData } from "@/lib/qb-orders/data";
 
 export default async function PedidosPage() {
-  await requireRoleAccess("/pedidos");
-  const data = await getQbInternalOrdersData(false);
+  const auth = await requireRoleAccess("/pedidos");
+  const data = await getQbInternalOrdersData(false, auth.user.role!);
 
   return (
     <div className="space-y-4">

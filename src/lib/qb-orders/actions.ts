@@ -151,10 +151,10 @@ export async function createQbInternalOrderAction(
   formData: FormData,
 ): Promise<QbOrderActionState> {
   const auth = await requireRoleAccess("/pedidos");
-  if (auth.user.role !== "administrador") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "supervisor") {
     return actionState(
       false,
-      "Solo un administrador puede crear pedidos internos.",
+      "No tienes permiso para crear pedidos internos.",
     );
   }
 
@@ -278,8 +278,8 @@ export async function updateQbInternalOrderAction(
   formData: FormData,
 ): Promise<QbOrderActionState> {
   const auth = await requireRoleAccess("/pedidos");
-  if (auth.user.role !== "administrador") {
-    return actionState(false, "Solo un administrador puede editar pedidos.");
+  if (auth.user.role !== "administrador" && auth.user.role !== "supervisor") {
+    return actionState(false, "No tienes permiso para editar pedidos.");
   }
 
   const target = updateOrderTargetSchema.safeParse({

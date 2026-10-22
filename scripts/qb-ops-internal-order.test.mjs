@@ -13,11 +13,11 @@ const [page, creator, actions, data, migration, sqlContract] = await Promise.all
 ]);
 const creationActions = await read("src/lib/qb-orders/creation-actions.ts");
 
-test("Nuevo pedido solo se habilita para administrador", () => {
+test("Nuevo pedido se habilita solo para perfiles operativos autorizados", () => {
   assert.match(page, /requireRoleAccess\("\/pedidos"\)/);
   assert.match(page, /<OrderCreationWorkspace/);
-  assert.match(actions, /auth\.user\.role !== "administrador"/);
-  assert.match(creationActions, /auth\.user\.role !== "administrador"/);
+  assert.match(actions, /auth\.user\.role !== "administrador" && auth\.user\.role !== "supervisor"/);
+  assert.match(creationActions, /auth\.user\.role !== "administrador" && auth\.user\.role !== "supervisor"/);
 });
 
 test("la interfaz crea pedidos únicamente para clientes registrados", () => {
@@ -98,6 +98,13 @@ test("la función no concede ejecución pública ni anónima", () => {
   assert.match(migration, /grant execute on function[\s\S]*to authenticated;/i);
 });
 
+test("Supervisor solo crea pedidos por cantidad y no edita pedidos por importe", async () => {
+  const supervisorMigration = await read("supabase/migrations/20261022160000_qb_supervisor_operational_role.sql");
+  assert.match(supervisorMigration, /QB17_SUPERVISOR_QUANTITY_ONLY/);
+  assert.match(supervisorMigration, /Supervisor solo puede editar pedidos por cantidad/);
+  assert.match(actions, /input_mode: "quantity"/);
+});
+
 test("el contrato A-O es transaccional y termina en rollback", () => {
   assert.match(sqlContract, /\nbegin;/i);
   assert.match(sqlContract, /QB-OPS-QA-/);
@@ -119,8 +126,8 @@ test("el contrato verifica stock, idempotencia, recibo y cero pagos", () => {
 test("la pantalla carga clientes y ubicaciones solo cuando se solicitan", () => {
   assert.match(data, /includeCreationData/);
   assert.match(data, /getInternalOrderCreationData/);
-  assert.match(data, /customer_accounts/);
-  assert.match(data, /qb_customer_locations/);
+  assert.match(data, /qb_operational_customers/);
+  assert.match(data, /qb_operational_customer_locations/);
   assert.match(data, /!\/\^bs\\\.\?\$\/i/);
   assert.match(migration, /unsupported_amount_mode/);
 });

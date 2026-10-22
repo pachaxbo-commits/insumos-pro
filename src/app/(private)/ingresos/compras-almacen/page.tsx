@@ -24,7 +24,9 @@ export default async function WarehousePurchasesPage({
           <h1 className="text-2xl font-semibold">Hoja de Compras para Almacén</h1>
           <p className="mt-1 text-sm text-muted-foreground">Registra lo comprado y escribe el costo referencial útil. El ingreso físico se confirma una sola vez.</p>
         </div>
-        <Link href="/ingresos" className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Ver ingresos</Link>
+        <Link href={auth.user.role === "supervisor" ? "/stock?view=movimientos" : "/ingresos"} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">
+          {auth.user.role === "supervisor" ? "Ver movimientos de almacén" : "Ver ingresos"}
+        </Link>
       </div>
       {data.error ? <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800">{data.error}</p> : null}
       <WarehousePurchaseTable
@@ -58,7 +60,8 @@ export default async function WarehousePurchasesPage({
           conversionFactorToBase: Number(presentation.conversion_factor_to_base),
           isActive: presentation.is_active, allowPurchase: presentation.allow_purchase,
         }))}
-        canManage={auth.user.role === "administrador" || auth.user.role === "inventario"}
+        canManage={auth.user.role === "administrador" || auth.user.role === "inventario" || auth.user.role === "supervisor"}
+        showExpenses={auth.user.role === "administrador"}
         canConfigureUnits={auth.user.role === "administrador"}
       />
     </main>

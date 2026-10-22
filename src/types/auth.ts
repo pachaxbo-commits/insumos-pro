@@ -3,6 +3,7 @@ export const USER_ROLES = [
   "ventas",
   "inventario",
   "entregador",
+  "supervisor",
   "finanzas",
 ] as const;
 

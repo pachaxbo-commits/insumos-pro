@@ -79,7 +79,9 @@ export default async function MatrizOperativaPage({
             ? "Preparación y entregas"
             : isInventory
               ? "Preparar pedidos"
-              : "Registrar entregas"
+              : auth.user.role === "supervisor"
+                ? "Operación y seguimiento"
+                : "Registrar entregas"
         }
         description=""
       />

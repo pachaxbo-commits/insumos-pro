@@ -30,8 +30,11 @@ export function AppHeader({ user, appearance }: { user: SessionUser; appearance:
     user.role === "administrador"
       ? { href: "/matriz-operativa/mercado", title: "Hoja de Provisión", icon: FileSpreadsheet }
       : undefined,
-    user.role === "administrador" || user.role === "inventario"
-      ? { href: "/ingresos/compras-almacen", title: "Hoja de Compras", icon: FileSpreadsheet }
+    user.role === "administrador" || user.role === "inventario" || user.role === "supervisor"
+      ? { href: "/ingresos/compras-almacen", title: user.role === "supervisor" ? "Compras almacén" : "Hoja de Compras", icon: FileSpreadsheet }
+      : undefined,
+    user.role === "supervisor"
+      ? { href: "/recibos/operativo", title: "Entregas para Recibos", icon: FileSpreadsheet }
       : undefined,
   ].filter((item): item is NonNullable<typeof item> =>
     Boolean(item && canAccessPath(user.role, item.href)),

@@ -53,6 +53,7 @@ function formatQuantity(value: number) {
 function defaultStage(role: OperationalMatrixData["role"]): MatrixStage {
   if (role === "inventario") return "preparacion";
   if (role === "entregador") return "entrega";
+  if (role === "supervisor") return "preparacion";
   return "pedido";
 }
 
@@ -60,6 +61,11 @@ function allowedStage(
   role: OperationalMatrixData["role"],
   requested?: MatrixStage,
 ) {
+  if (role === "supervisor") {
+    return requested === "pedido" || requested === "preparacion" || requested === "resumen"
+      ? requested
+      : "preparacion";
+  }
   if (role !== "administrador") return defaultStage(role);
   return requested ?? "preparacion";
 }
@@ -1026,7 +1032,9 @@ export function OperationalMatrix({
   const canAdmin = data.role === "administrador";
   const visibleStages: MatrixStage[] = canAdmin
     ? ["pedido", "preparacion", "entrega", "resumen"]
-    : [defaultStage(data.role)];
+    : data.role === "supervisor"
+      ? ["pedido", "preparacion", "resumen"]
+      : [defaultStage(data.role)];
   const headers = stageHeaders(stage);
   const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;

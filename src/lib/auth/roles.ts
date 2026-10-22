@@ -6,6 +6,7 @@ export const roleLabels: Record<UserRole, string> = {
   ventas: "Ventas",
   inventario: "Inventario",
   entregador: "Entregador",
+  supervisor: "Supervisor",
   finanzas: "Finanzas",
 };
 
@@ -31,6 +32,7 @@ const roleRouteAccess: Record<UserRole, string[]> = {
   ventas: ["/"],
   inventario: ["/", "/matriz-operativa", "/stock"],
   entregador: ["/", "/matriz-operativa"],
+  supervisor: ["/", "/pedidos", "/matriz-operativa", "/stock", "/ingresos/compras-almacen", "/recibos/operativo"],
   finanzas: ["/"],
 };
 
@@ -65,6 +67,13 @@ export function getFocusedWorkspace(
         title: "Registrar entregas",
         description: "Anota las cantidades exactas que recibió el cliente.",
         step: "Paso 3 de 3",
+      };
+    case "supervisor":
+      return {
+        href: "/pedidos",
+        title: "Operación y pedidos",
+        description: "Gestiona pedidos operativos, compras e inventario.",
+        step: "Supervisor",
       };
     default:
       return {
