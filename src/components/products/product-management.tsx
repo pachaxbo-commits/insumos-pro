@@ -217,7 +217,7 @@ export function StockAdjustmentDialog({
   canManage,
   compact = false,
 }: {
-  product: ProductWithRelations;
+  product: Pick<ProductWithRelations, "id" | "name" | "stock_current">;
   history: Array<{ id: string; movement_type: string; quantity: number; stock_before: number; stock_after: number; reason: string; created_at: string; created_by: string | null; created_by_name: string | null }>;
   canManage: boolean;
   compact?: boolean;
