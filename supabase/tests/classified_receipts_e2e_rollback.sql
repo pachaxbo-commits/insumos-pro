@@ -168,13 +168,22 @@ begin
     and usage_context = 'recepcion'
     and presentation_id = v_vaina_presentation_id;
 
-  insert into public.qb_product_allowed_units (
-    id, product_id, usage_context, unit_id, presentation_id,
-    is_default, quantity_step, min_quantity, is_active, created_by, updated_by
-  ) values (
-    v_large_order_unit_id, v_papa_large_id, 'pedido', v_kg_id, null,
-    true, 0.001, 0.001, true, v_admin_id, v_admin_id
-  );
+  select id into v_large_order_unit_id
+  from public.qb_product_allowed_units
+  where product_id=v_papa_large_id and usage_context='pedido' and unit_id=v_kg_id;
+  if v_large_order_unit_id is null then
+    insert into public.qb_product_allowed_units (
+      id, product_id, usage_context, unit_id, presentation_id,
+      is_default, quantity_step, min_quantity, is_active, created_by, updated_by
+    ) values (
+      v_large_order_unit_id, v_papa_large_id, 'pedido', v_kg_id, null,
+      true, 0.001, 0.001, true, v_admin_id, v_admin_id
+    );
+  else
+    update public.qb_product_allowed_units
+    set is_default=true,quantity_step=0.001,min_quantity=0.001,is_active=true,updated_by=v_admin_id
+    where id=v_large_order_unit_id;
+  end if;
 
   perform public.save_qb_product_classification_configuration(
     v_papa_input_id,

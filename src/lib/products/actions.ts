@@ -1179,6 +1179,28 @@ export async function setQbProductPhysicalUnitSafelyAction(
   const access = await assertCanMutateProducts();
   if (!access.allowed) return { success: false, message: access.message };
 
+  if (formData.get("mode") === "legacy_regularization") {
+    const parsedLegacy = z.object({
+      product_id: z.uuid(),
+      legacy_unit_id: z.uuid(),
+      confirmation: z.literal("REGULARIZAR"),
+    }).safeParse(Object.fromEntries(formData));
+    if (!parsedLegacy.success) return { success: false, message: "Confirma la regularización y selecciona KG o L." };
+    const { data, error } = await access.supabase.rpc("admin_regularize_legacy_product_units", {
+      p_product_id: parsedLegacy.data.product_id,
+      p_target_unit_id: parsedLegacy.data.legacy_unit_id,
+      p_confirmation: parsedLegacy.data.confirmation,
+    });
+    if (error) return { success: false, message: error.message };
+    const result = data as { status?: string } | null;
+    if (!result || !["regularized", "already_regularized"].includes(result.status ?? "")) return { success: false, message: "No se confirmó la regularización." };
+    revalidateProducts();
+    revalidateQbParametrization();
+    revalidatePath("/stock");
+    revalidatePath("/ingresos/compras-almacen");
+    return { success: true, message: result.status === "already_regularized" ? "Este producto ya estaba regularizado; no se duplicó ninguna asociación." : "Unidades heredadas retiradas y nueva unidad física auditada." };
+  }
+
   const parsed = z.object({
     product_id: z.uuid(),
     unit_id: z.uuid(),

@@ -324,7 +324,7 @@ assert.match(
 assert.match(deliveryDateMigration, /update public\.qb_orders/);
 assert.match(
   matrixActions,
-  /\["administrador", "inventario"\]/,
+  /\["administrador", "inventario", "supervisor"\]/,
 );
 assert.match(
   matrixActions,

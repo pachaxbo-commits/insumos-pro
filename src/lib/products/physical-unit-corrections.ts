@@ -29,11 +29,30 @@ export type PhysicalUnitCorrectionCandidate = {
   referenceCounts: Record<string, number>;
   conversionSummary: string[];
   referencesUnavailable: boolean;
+  legacyRegularizationAllowed: boolean;
+  legacyAllowedUnitDetails: Array<{
+    id: string;
+    context: string;
+    unit: string;
+    active: boolean;
+    isDefault: boolean;
+    minQuantity: number | null;
+    quantityStep: number | null;
+    references: Array<{ table: string; count: number }>;
+  }>;
+  legacyRegularizationReason: string | null;
+  operationalEnabled: boolean;
 };
 
 type ProductReferenceRow = {
   product_id: string;
   reference_counts: Record<string, number> | null;
+  references_verified: boolean;
+};
+
+type LegacyUnitReferenceRow = {
+  product_id: string;
+  association_references: Record<string, Array<{ table: string; count: number }>> | null;
   references_verified: boolean;
 };
 
@@ -43,6 +62,12 @@ function normalized(value: string | null | undefined) {
 
 function isMoneySymbol(value: string | null | undefined) {
   return ["BS", "BOB"].includes((value ?? "").trim().toUpperCase().replaceAll(".", ""));
+}
+
+function isPhysicalBaseTarget(unit: QbUnit) {
+  const code = normalized(unit.code);
+  const symbol = normalized(unit.symbol);
+  return code === "kg" || code === "litro" || symbol === "kg" || symbol === "l" || symbol === "litro";
 }
 
 function targetUnit(kind: ProductCorrectionKind, units: QbUnit[], dimensions: QbUnitDimension[]) {
@@ -110,6 +135,7 @@ export async function getPhysicalUnitCorrectionReview() {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { candidates: [] as PhysicalUnitCorrectionCandidate[], units: first.qbUnits, totalProductsReviewed: products.length, auditError: "No hay conexión disponible para verificar dependencias." };
   const references = new Map<string, ProductReferenceRow>();
+  const legacyReferences = new Map<string, Record<string, Array<{ table: string; count: number }>>>();
   let referenceError: string | null = null;
   for (let offset = 0; offset < allCandidateProducts.length; offset += 500) {
     const ids = allCandidateProducts.slice(offset, offset + 500).map((product) => product.id);
@@ -119,6 +145,15 @@ export async function getPhysicalUnitCorrectionReview() {
       break;
     }
     for (const row of (refsResult.data ?? []) as ProductReferenceRow[]) references.set(row.product_id, row);
+    const legacyRefsResult = await supabase.rpc("admin_preview_legacy_unit_references", { p_product_ids: ids });
+    if (legacyRefsResult.error) {
+      referenceError = "No se pudieron verificar las referencias de las asociaciones legacy_dump.";
+      break;
+    }
+    for (const row of (legacyRefsResult.data ?? []) as LegacyUnitReferenceRow[]) {
+      legacyReferences.set(row.product_id, row.association_references ?? {});
+      if (!row.references_verified) referenceError = "No se pudieron verificar las referencias de las asociaciones legacy_dump.";
+    }
   }
   const dimensions = first.qbUnitDimensions;
   const validUnits = getPhysicalCorrectionUnits(first.qbUnits, dimensions, first.units);
@@ -152,6 +187,17 @@ export async function getPhysicalUnitCorrectionReview() {
       const unit = qbUnitsById.get(row.unit_id);
       return unit && dimensionCodeById.get(unit.dimension_id) !== expectedDimension ? [allowedUnitSummary[index] ?? unit.symbol] : [];
     });
+    const legacyAllowedUnits = productAllowedUnits.filter((row) => {
+      const unit = row.unit_id ? qbUnitsById.get(row.unit_id) : null;
+      return Boolean(unit && dimensionCodeById.get(unit.dimension_id) === "legacy_dump");
+    });
+    const associationReferences = legacyReferences.get(product.id) ?? {};
+    const hasLegacyAssociationReferences = legacyAllowedUnits.some((row) => (associationReferences[row.id] ?? []).some((reference) => reference.count > 0));
+    const nonLegacyIncompatibleUnits = productAllowedUnits.filter((row) => {
+      if (!expectedDimension || !row.unit_id) return Boolean(row.presentation_id);
+      const unit = qbUnitsById.get(row.unit_id);
+      return !unit || dimensionCodeById.get(unit.dimension_id) !== expectedDimension && dimensionCodeById.get(unit.dimension_id) !== "legacy_dump";
+    });
     const priceValues = [Number(product.purchase_price), Number(product.sale_price), Number(setting?.base_sale_price ?? 0)];
     const state = candidateReason({ kind, stock: Number(product.stock_current), prices: priceValues,
       settingsPresent: Boolean(setting), referenceCounts, referencesVerified: !referenceError && Boolean(reference?.references_verified),
@@ -163,6 +209,32 @@ export async function getPhysicalUnitCorrectionReview() {
           return `${row.name}: ${row.contained_quantity} ${from} = ${row.base_quantity} ${to}`;
         })
       : ["Sin presentaciones. Las compras comerciales deberán registrar su cantidad física útil antes de ingresar stock."];
+    let legacyRegularizationReason: string | null = null;
+    if (legacyAllowedUnits.length) {
+      if (!reference?.references_verified || referenceError) {
+        legacyRegularizationReason = "No se pudieron verificar todas las dependencias del producto.";
+      } else if (!legacyReferences.has(product.id)) {
+        legacyRegularizationReason = "No se verificaron las referencias directas de las asociaciones heredadas.";
+      } else if (hasLegacyAssociationReferences) {
+        legacyRegularizationReason = "Una o más asociaciones heredadas ya tienen referencias; no se pueden retirar.";
+      } else if (!setting) {
+        legacyRegularizationReason = "Falta configuración QB.";
+      } else if (!product.is_active || !setting.is_qb_active) {
+        legacyRegularizationReason = "El producto o su configuración QB están inactivos; primero requieren una decisión explícita de Administración.";
+      } else if (Number(product.stock_current) !== 0) {
+        legacyRegularizationReason = "Tiene stock actual distinto de cero.";
+      } else if (priceValues.some((value) => value !== 0)) {
+        legacyRegularizationReason = "Tiene precios configurados; su unidad requiere revisión antes de cambiarla.";
+      } else if (productPresentations.length) {
+        legacyRegularizationReason = "Tiene presentaciones o conversiones configuradas.";
+      } else if (nonLegacyIncompatibleUnits.length) {
+        legacyRegularizationReason = "También hay unidades incompatibles fuera de legacy_dump.";
+      } else if (!validUnits.some(isPhysicalBaseTarget)) {
+        legacyRegularizationReason = "No existe una unidad física KG o L activa para elegir.";
+      } else {
+        legacyRegularizationReason = "Puede regularizarse con confirmación individual; se retirarán las cantidades heredadas sin trasladarlas.";
+      }
+    }
     return {
       id: product.id, name: product.name, category: product.category?.name ?? "Sin categoría",
       legacyUnit: product.unit?.abbreviation ?? "Sin unidad", qbUnit: current ? `${current.name} (${current.symbol})` : "Sin configurar",
@@ -176,6 +248,21 @@ export async function getPhysicalUnitCorrectionReview() {
       allowedUnitSummary,
       referenceCounts, conversionSummary,
       referencesUnavailable: Boolean(referenceError) || !reference?.references_verified,
+      legacyRegularizationAllowed: Boolean(legacyAllowedUnits.length && legacyReferences.has(product.id) && !hasLegacyAssociationReferences && setting && reference?.references_verified && !referenceError &&
+        Number(product.stock_current) === 0 && product.is_active && setting.is_qb_active && priceValues.every((value) => value === 0) && productPresentations.length === 0 &&
+        nonLegacyIncompatibleUnits.length === 0 && validUnits.some(isPhysicalBaseTarget)),
+      legacyAllowedUnitDetails: legacyAllowedUnits.map((row) => ({
+        id: row.id,
+        context: row.usage_context,
+        unit: row.unit_id ? qbUnitsById.get(row.unit_id)?.symbol ?? "sin unidad" : "sin unidad",
+        active: row.is_active,
+        isDefault: row.is_default,
+        minQuantity: row.min_quantity === null ? null : Number(row.min_quantity),
+        quantityStep: row.quantity_step === null ? null : Number(row.quantity_step),
+        references: associationReferences[row.id] ?? [],
+      })),
+      legacyRegularizationReason,
+      operationalEnabled: Boolean(product.is_active && setting?.is_qb_active),
     } satisfies PhysicalUnitCorrectionCandidate;
   }).sort((a, b) => a.name.localeCompare(b.name, "es"));
   return { candidates, units: validUnits, totalProductsReviewed: products.length, auditError: referenceError };
