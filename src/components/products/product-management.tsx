@@ -24,10 +24,13 @@ import {
   createUnitAction,
   deactivateProductAction,
   deleteCategoryAction,
+  deleteProductPermanentlyAction,
+  retryDeletedProductImageCleanupAction,
   updateCategoryAction,
   updateProductAction,
   updateUnitAction,
 } from "@/lib/products/actions";
+import type { PendingProductImageCleanup } from "@/lib/products/data";
 import { createInventoryMovementAction } from "@/lib/inventory/actions";
 import { ProductFiltersBar } from "@/components/products/product-filters-bar";
 import { LazyProductClassificationConfiguration } from "@/components/products/lazy-product-classification-configuration";
@@ -71,6 +74,7 @@ import { Textarea } from "@/components/ui/textarea";
 type ActionState = {
   success: boolean;
   message?: string;
+  auditId?: string;
 };
 
 type ProductManagementProps = {
@@ -89,6 +93,7 @@ type ProductManagementProps = {
   qbParametrizationWarning?: string;
   canManage: boolean;
   canManagePrice: boolean;
+  pendingImageCleanups: PendingProductImageCleanup[];
   strictStockControl: boolean;
   pagination: {
     page: number;
@@ -997,6 +1002,61 @@ function ProductDeactivateForm({ productId }: { productId: string }) {
   );
 }
 
+function ProductPermanentDeleteForm({ productId, productName }: { productId: string; productName: string }) {
+  const [state, formAction, pending] = useActionState(deleteProductPermanentlyAction, initialState);
+  const [cleanupState, cleanupAction, cleanupPending] = useActionState(retryDeletedProductImageCleanupAction, initialState);
+  const [open, setOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  useActionToast(state);
+  useActionToast(cleanupState);
+
+  return <>
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setConfirmation(""); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="text-destructive hover:bg-rose-50">
+          <Trash2 className="size-4" />Eliminar definitivamente
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Eliminar definitivamente</DialogTitle>
+          <DialogDescription>
+            Se eliminará <strong>{productName}</strong> solo si no tiene stock ni relaciones con operaciones o historial. Esta acción no se puede revertir desde la interfaz. Si hay dependencias, el producto se conserva y se te explicará el motivo; puedes desactivarlo en su lugar.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="id" value={productId} />
+          <label className="block space-y-1 text-sm font-medium">Escribe ELIMINAR para confirmar
+            <Input name="confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" required />
+          </label>
+          <FormMessage state={state} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>Cancelar</Button>
+            <Button type="submit" variant="destructive" disabled={pending || confirmation !== "ELIMINAR"}>
+              {pending ? "Verificando y eliminando…" : "Eliminar definitivamente"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    {state.auditId ? <form action={cleanupAction} className="mt-2 flex items-center gap-2 text-xs">
+      <input type="hidden" name="audit_id" value={state.auditId} />
+      <span className="text-amber-800">Producto eliminado; la foto quedó pendiente.</span>
+      <Button type="submit" size="sm" variant="outline" disabled={cleanupPending}>{cleanupPending ? "Limpiando…" : "Reintentar limpieza de foto"}</Button>
+    </form> : null}
+  </>;
+}
+
+function ProductImageCleanupRow({ item }: { item: PendingProductImageCleanup }) {
+  const [state, action, pending] = useActionState(retryDeletedProductImageCleanupAction, initialState);
+  useActionToast(state);
+  return <form action={action} className="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-sm">
+    <input type="hidden" name="audit_id" value={item.id} />
+    <div><span className="font-medium">{item.product_name}</span><span className="ml-2 text-xs text-muted-foreground">{item.image_cleanup_status === "failed" ? (item.image_cleanup_error ?? "Limpieza pendiente") : "Limpieza pendiente"}</span></div>
+    <Button type="submit" size="sm" variant="outline" disabled={pending}>{pending ? "Reintentando…" : "Reintentar limpieza"}</Button>
+  </form>;
+}
+
 export function ProductManagement({
   products,
   categories,
@@ -1008,6 +1068,7 @@ export function ProductManagement({
   qbParametrizationWarning,
   canManage,
   canManagePrice,
+  pendingImageCleanups,
   strictStockControl,
   pagination,
   summary,
@@ -1046,6 +1107,10 @@ export function ProductManagement({
 
   return (
     <div className="space-y-6">
+      {canManage && pendingImageCleanups.length ? <section className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50">
+        <div className="p-3"><h2 className="font-semibold text-amber-950">Fotografías pendientes de limpieza</h2><p className="text-xs text-amber-900">El producto ya se eliminó; estos archivos se conservan hasta que sea seguro completar la limpieza.</p></div>
+        {pendingImageCleanups.map((item) => <ProductImageCleanupRow key={item.id} item={item} />)}
+      </section> : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Productos activos</p>
@@ -1249,6 +1314,7 @@ export function ProductManagement({
                             {product.is_active ? (
                               <ProductDeactivateForm productId={product.id} />
                             ) : null}
+                            <ProductPermanentDeleteForm productId={product.id} productName={product.name} />
                           </>
                         ) : (
                           <span className="text-xs text-muted-foreground">

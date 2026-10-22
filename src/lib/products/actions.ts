@@ -196,9 +196,12 @@ function productImagePath(publicUrl: string | null | undefined) {
   if (!publicUrl) return null;
   const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
   const markerIndex = publicUrl.indexOf(marker);
-  return markerIndex >= 0
-    ? decodeURIComponent(publicUrl.slice(markerIndex + marker.length))
-    : null;
+  if (markerIndex < 0) return null;
+  try {
+    return decodeURIComponent(publicUrl.slice(markerIndex + marker.length));
+  } catch {
+    return null;
+  }
 }
 
 const catalogSchema = z.object({
@@ -705,6 +708,107 @@ export async function deactivateProductAction(
 
   revalidateProducts();
   return { success: true, message: "Producto desactivado correctamente." };
+}
+
+export async function deleteProductPermanentlyAction(
+  _previousState: ActionState & { auditId?: string },
+  formData: FormData,
+): Promise<ActionState & { auditId?: string }> {
+  const access = await assertCanMutateProducts();
+  if (!access.allowed) return { success: false, message: access.message };
+  const parsed = z.object({ id: z.uuid(), confirmation: z.literal("ELIMINAR") })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { success: false, message: "Confirma escribiendo ELIMINAR." };
+  const { data, error } = await access.supabase.rpc("admin_delete_product_if_unused", {
+    p_product_id: parsed.data.id,
+    p_confirmation: parsed.data.confirmation,
+  });
+  if (error) return { success: false, message: error.message };
+  const result = data as { status?: string; message?: string; audit_id?: string; image_url?: string | null } | null;
+  if (result?.status !== "deleted" || !result.audit_id) {
+    return { success: false, message: result?.message ?? "No se pudo eliminar el producto." };
+  }
+
+  const cleanup = await cleanupDeletedProductImage(access.supabase, result.audit_id, result.image_url ?? null);
+  revalidateProducts();
+  return {
+    success: true,
+    message: cleanup.success ? "Producto eliminado definitivamente." : "Producto eliminado. La fotografía requiere limpieza; puedes reintentarlo en la sección de fotografías pendientes.",
+    auditId: cleanup.success ? undefined : result.audit_id,
+  };
+}
+
+async function cleanupDeletedProductImage(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+  auditId: string,
+  imageUrl: string | null,
+) {
+  const record = await supabase.from("product_deletion_audit")
+    .select("original_image_url,image_cleanup_status")
+    .eq("id", auditId).maybeSingle();
+  if (record.error || !record.data) return { success: false };
+  const originalUrl = imageUrl ?? record.data.original_image_url;
+  const path = productImagePath(originalUrl);
+  if (!path) {
+    const result = await supabase.rpc("admin_update_product_image_cleanup", {
+      p_audit_id: auditId, p_status: originalUrl ? "failed" : "not_applicable",
+      p_error: originalUrl ? "La URL no corresponde a una ruta administrada y verificable del bucket de productos." : null,
+    });
+    return { success: !result.error && !originalUrl };
+  }
+  if (!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(path)) {
+    await supabase.rpc("admin_update_product_image_cleanup", {
+      p_audit_id: auditId, p_status: "failed", p_error: "La ruta almacenada no coincide con el formato seguro de imágenes de QB; no se eliminó ningún archivo.",
+    });
+    return { success: false };
+  }
+  const shared = await supabase.from("products").select("id", { count: "exact", head: true }).eq("image_url", originalUrl);
+  if (shared.error) {
+    await supabase.rpc("admin_update_product_image_cleanup", { p_audit_id: auditId, p_status: "failed", p_error: "No se pudo comprobar si otro producto comparte la fotografía." });
+    return { success: false };
+  }
+  if ((shared.count ?? 0) > 0) {
+    const result = await supabase.rpc("admin_update_product_image_cleanup", { p_audit_id: auditId, p_status: "shared", p_error: null });
+    return { success: !result.error };
+  }
+  const removed = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([path]);
+  if (removed.error) {
+    // Storage removal is idempotent from the application's perspective: a
+    // retry after the file was removed but before the audit update succeeded
+    // should complete the audit instead of becoming permanently stuck.
+    const [folder, filename] = path.split("/");
+    const existing = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).list(folder, {
+      search: filename,
+      limit: 100,
+    });
+    if (!existing.error && !existing.data.some((item) => item.name === filename)) {
+      const result = await supabase.rpc("admin_update_product_image_cleanup", {
+        p_audit_id: auditId, p_status: "cleaned", p_error: null,
+      });
+      return { success: !result.error };
+    }
+    await supabase.rpc("admin_update_product_image_cleanup", { p_audit_id: auditId, p_status: "failed", p_error: existing.error?.message ?? removed.error.message });
+    return { success: false };
+  }
+  const result = await supabase.rpc("admin_update_product_image_cleanup", { p_audit_id: auditId, p_status: "cleaned", p_error: null });
+  return { success: !result.error };
+}
+
+export async function retryDeletedProductImageCleanupAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+  if (!access.allowed) return { success: false, message: access.message };
+  const auditId = formData.get("audit_id");
+  if (typeof auditId !== "string" || !z.uuid().safeParse(auditId).success) {
+    return { success: false, message: "Registro de limpieza inválido." };
+  }
+  const cleanup = await cleanupDeletedProductImage(access.supabase, auditId, null);
+  revalidateProducts();
+  return cleanup.success
+    ? { success: true, message: "Limpieza de fotografía completada." }
+    : { success: false, message: "No se completó la limpieza. La auditoría conserva el motivo y puedes reintentar." };
 }
 
 export async function createCategoryAction(

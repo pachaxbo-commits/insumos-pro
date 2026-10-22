@@ -11,15 +11,8 @@ export default async function ParametrizacionPage() {
   const data = await getProductsCatalogData({}, { includeQbParametrization: true });
   const canManage = auth.user.role === "administrador";
   const unitCorrectionReview = canManage
-    ? await getPhysicalUnitCorrectionReview({
-        products: data.products,
-        units: data.units,
-        qbUnits: data.qbUnits,
-        qbUnitDimensions: data.qbUnitDimensions,
-        settings: data.qbProductUnitSettings,
-        presentations: data.qbProductPresentations,
-      })
-    : { candidates: [], units: [] };
+    ? await getPhysicalUnitCorrectionReview()
+    : { candidates: [], units: [], totalProductsReviewed: 0, auditError: null };
 
   return (
     <div className="space-y-4">
@@ -45,6 +38,8 @@ export default async function ParametrizacionPage() {
       <QbPhysicalUnitCorrectionPanel
         candidates={unitCorrectionReview.candidates}
         units={unitCorrectionReview.units}
+        totalProductsReviewed={unitCorrectionReview.totalProductsReviewed}
+        auditError={unitCorrectionReview.auditError}
         canManage={canManage}
       />
     </div>

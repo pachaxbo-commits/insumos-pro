@@ -292,6 +292,27 @@ export const getProductReferenceData = cache(
   },
 );
 
+export type PendingProductImageCleanup = {
+  id: string;
+  original_product_id: string;
+  product_name: string;
+  image_cleanup_status: "pending" | "failed";
+  image_cleanup_error: string | null;
+  created_at: string;
+};
+
+export async function getPendingProductImageCleanups(): Promise<PendingProductImageCleanup[]> {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return [];
+  const { data, error } = await supabase.from("product_deletion_audit")
+    .select("id,original_product_id,product_name,image_cleanup_status,image_cleanup_error,created_at")
+    .in("image_cleanup_status", ["pending", "failed"])
+    .eq("result", "deleted")
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) return [];
+  return (data ?? []) as PendingProductImageCleanup[];
+}
+
 export async function getProductsCatalogData(
   filters: ProductFilters = {},
   options: ProductsCatalogOptions = {},

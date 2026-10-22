@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { requireRoleAccess } from "@/lib/auth/session";
 import {
   getProductReferenceData,
+  getPendingProductImageCleanups,
   getProductsCatalogData,
   PRODUCTS_PAGE_SIZE,
 } from "@/lib/products/data";
@@ -95,7 +96,7 @@ async function ProductsCatalogContent({
   canManage: boolean;
   canManagePrice: boolean;
 }) {
-  const [data, operationalSettings] = await Promise.all([
+  const [data, operationalSettings, pendingImageCleanups] = await Promise.all([
     getProductsCatalogData(filters, {
       includeQbParametrization: true,
       includeSummary: true,
@@ -104,6 +105,7 @@ async function ProductsCatalogContent({
       pageSize: PRODUCTS_PAGE_SIZE,
     }),
     getQbOperationalSettingsData(),
+    canManage ? getPendingProductImageCleanups() : Promise.resolve([]),
   ]);
 
   return (
@@ -126,6 +128,7 @@ async function ProductsCatalogContent({
         qbParametrizationWarning={data.qbParametrizationWarning}
         canManage={canManage}
         canManagePrice={canManagePrice}
+        pendingImageCleanups={pendingImageCleanups}
         strictStockControl={operationalSettings.strictStockControl}
         pagination={data.pagination}
         summary={data.summary}
