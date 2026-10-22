@@ -42,6 +42,7 @@ export function ProductCombobox({
 }) {
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selected = options.find((option) => option.id === value) ?? null;
   const [query, setQuery] = useState(selected?.name ?? "");
   const [open, setOpen] = useState(false);
@@ -65,6 +66,11 @@ export function ProductCombobox({
       .slice(0, maxResults);
   }, [maxResults, options, query]);
 
+  useEffect(() => {
+    if (!open) return;
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
   function choose(option: ProductComboboxOption) {
     onValueChange(option.id);
     setQuery(option.name);
@@ -82,6 +88,7 @@ export function ProductCombobox({
         aria-controls={listboxId}
         aria-expanded={open}
         aria-autocomplete="list"
+        aria-activedescendant={open && matches[activeIndex] ? `${listboxId}-option-${activeIndex}` : undefined}
         value={query}
         disabled={disabled}
         placeholder={placeholder}
@@ -97,14 +104,19 @@ export function ProductCombobox({
           if (event.key === "ArrowDown") {
             event.preventDefault();
             setOpen(true);
-            setActiveIndex((current) => Math.min(current + 1, Math.max(matches.length - 1, 0)));
+            setActiveIndex((current) => open
+              ? Math.min(current + 1, Math.max(matches.length - 1, 0))
+              : 0);
           } else if (event.key === "ArrowUp") {
             event.preventDefault();
-            setActiveIndex((current) => Math.max(current - 1, 0));
+            setOpen(true);
+            setActiveIndex((current) => open ? Math.max(current - 1, 0) : Math.max(matches.length - 1, 0));
           } else if (event.key === "Enter" && open && matches[activeIndex]) {
             event.preventDefault();
             choose(matches[activeIndex]);
           } else if (event.key === "Escape") {
+            setOpen(false);
+          } else if (event.key === "Tab") {
             setOpen(false);
           }
         }}
@@ -118,9 +130,11 @@ export function ProductCombobox({
           {matches.length ? matches.map((option, index) => (
             <button
               key={option.id}
+              id={`${listboxId}-option-${index}`}
+              ref={(element) => { optionRefs.current[index] = element; }}
               type="button"
               role="option"
-              aria-selected={option.id === value}
+              aria-selected={index === activeIndex}
               className={cn(
                 "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm",
                 index === activeIndex ? "bg-accent" : "hover:bg-accent/70",

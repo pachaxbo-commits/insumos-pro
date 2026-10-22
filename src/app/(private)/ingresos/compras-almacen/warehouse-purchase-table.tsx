@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -29,7 +29,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; success: boolean } | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [nextId, setNextId] = useState(1);
   const [pickerId, setPickerId] = useState<number | null>(null);
@@ -95,12 +95,15 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
   function saveDraft(draft: Draft) {
     const auto = referenceFor(draft);
     const referencePrice = draft.referenceMode === "auto" ? auto?.toString() ?? "" : draft.referencePrice;
+    const isUnmeasuredCommercial = draft.purchaseOptionId === UNMEASURED_COMMERCIAL;
     const option = purchaseOptionsFor(draft.productId).find((item) => item.id === draft.purchaseOptionId);
-    if (!option) return;
+    // The free-form commercial option is intentionally not part of the configured
+    // purchase options: it has no physical conversion and must be saved as such.
+    if (!option && !isUnmeasuredCommercial) return;
     const form = new FormData();
     Object.entries({
       receipt_date: date, reference_code: "HOJA-COMPRAS-ALMACEN", supplier_name: "",
-      product_id: draft.productId, allowed_unit_id: option.allowedUnitId ?? "", purchase_unit_id: option.allowedUnitId ? "" : option.unitId ?? "", commercial_label: draft.purchaseOptionId === UNMEASURED_COMMERCIAL ? draft.commercialLabel : "", source_quantity: draft.quantity,
+      product_id: draft.productId, allowed_unit_id: option?.allowedUnitId ?? "", purchase_unit_id: option?.allowedUnitId ? "" : option?.unitId ?? "", commercial_label: isUnmeasuredCommercial ? draft.commercialLabel : "", source_quantity: draft.quantity,
       unit_cost: draft.unitPrice, requires_classification: "false", notes: draft.notes,
       reference_unit_id: draft.referenceUnitId, reference_price: referencePrice,
       reference_price_origin: draft.referenceMode === "auto" && auto !== null ? "calculated" : referencePrice !== "" ? "manual" : "",
@@ -108,7 +111,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     }).forEach(([key, value]) => form.set(key, value));
     startTransition(async () => {
       const result = await createQbMerchandiseReceiptAction({ success: false }, form);
-      setMessage(result.message ?? "");
+      setMessage({ text: result.message ?? "", success: result.success });
       if (result.success) {
         setDrafts((current) => current.filter((item) => item.id !== draft.id));
         router.refresh();
@@ -121,7 +124,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     const form = new FormData(event.currentTarget);
     startTransition(async () => {
       const result = await updateWarehousePurchaseAction(form);
-      setMessage(result.message ?? "");
+      setMessage({ text: result.message ?? "", success: result.success });
       if (result.success) router.refresh();
     });
   }
@@ -131,7 +134,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     const form = new FormData(event.currentTarget);
     startTransition(async () => {
       const result = await measureWarehousePurchaseAction(form);
-      setMessage(result.message ?? "");
+      setMessage({ text: result.message ?? "", success: result.success });
       if (result.success) router.refresh();
     });
   }
@@ -143,7 +146,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
     form.set("confirmation", "CONFIRMAR");
     startTransition(async () => {
       const result = await confirmQbMerchandiseReceiptAction({ success: false }, form);
-      setMessage(result.message ?? "");
+      setMessage({ text: result.message ?? "", success: result.success });
       if (result.success) { setConfirmId(null); router.refresh(); }
     });
   }
@@ -159,7 +162,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
         <button type="button" onClick={() => window.print()} className="rounded-lg border px-3 py-2 text-sm hover:bg-muted">Imprimir</button>
       </div>
     </div>
-    {message ? <p role="status" className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900 print:hidden">{message}</p> : null}
+    {message?.text ? <p role={message.success ? "status" : "alert"} className={`rounded-lg px-3 py-2 text-sm print:hidden ${message.success ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{message.text}</p> : null}
     <section className="rounded-2xl border bg-white p-3 shadow-sm sm:p-5">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div><h2 className="font-semibold">Hoja de compras · {date}</h2><p className="text-xs text-muted-foreground">Una fila por compra. Las compras repetidas permanecen separadas.</p></div>
@@ -203,9 +206,38 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
       <p className="mt-2 text-xs text-slate-500 print:hidden">Guardar una fila crea un borrador. El stock cambia solamente al confirmar su ingreso físico.</p>
     </section>
     <WarehouseExpenseSection key={date} date={date} initialExpenses={expenses} merchandiseTotal={sheetTotal} canManage={canManage} />
-    {pickerId !== null ? <div role="dialog" aria-modal="true" aria-label="Seleccionar producto" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={() => setPickerId(null)} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={search} onChange={(event) => setSearch(event.target.value)} className="mb-3 w-full rounded-lg border px-3 py-2" /><div className="max-h-80 overflow-y-auto rounded-lg border">{!normalizedSearch ? <p className="p-3 text-sm text-slate-500">Escribe el nombre para buscar productos.</p> : filteredProducts.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin coincidencias.</p> : filteredProducts.map((product) => <button key={product.id} type="button" onClick={() => { updateDraft(pickerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-emerald-50 focus-visible:bg-emerald-50">{product.name}</button>)}</div></div></div> : null}
-    {confirmId ? <div role="dialog" aria-modal="true" aria-label="Confirmar ingreso a stock" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold">Confirmar ingreso a stock</h3><p className="mt-2 text-sm">{rows.find((row) => row.receiptId === confirmId)?.productName}: esta compra sumará físicamente al stock una sola vez. Verifica que la cantidad medida sea correcta.</p>{message ? <p role="alert" className="mt-2 text-sm text-rose-700">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-2">Cancelar</button><button type="button" disabled={pending} onClick={confirmPurchase} className="rounded-lg bg-emerald-800 px-3 py-2 text-white disabled:opacity-50">Confirmar ingreso</button></div></div></div> : null}
+    {pickerId !== null ? <WarehouseProductPicker products={filteredProducts} query={search} onQuery={setSearch} onClose={() => setPickerId(null)} onSelect={(product) => { updateDraft(pickerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} /> : null}
+    {confirmId ? <div role="dialog" aria-modal="true" aria-label="Confirmar ingreso a stock" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold">Confirmar ingreso a stock</h3><p className="mt-2 text-sm">{rows.find((row) => row.receiptId === confirmId)?.productName}: esta compra sumará físicamente al stock una sola vez. Verifica que la cantidad medida sea correcta.</p>{message?.text && !message.success ? <p role="alert" className="mt-2 text-sm text-rose-700">{message.text}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-2">Cancelar</button><button type="button" disabled={pending} onClick={confirmPurchase} className="rounded-lg bg-emerald-800 px-3 py-2 text-white disabled:opacity-50">Confirmar ingreso</button></div></div></div> : null}
   </div>;
+}
+
+function WarehouseProductPicker({ products, query, onQuery, onClose, onSelect }: {
+  products: Product[];
+  query: string;
+  onQuery: (value: string) => void;
+  onClose: () => void;
+  onSelect: (product: Product) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function moveActive(delta: number) {
+    setActiveIndex((current) => {
+      const next = Math.max(0, Math.min(products.length - 1, current + delta));
+      requestAnimationFrame(() => {
+        optionRefs.current[next]?.scrollIntoView({ block: "nearest" });
+      });
+      return next;
+    });
+  }
+
+  return <div role="dialog" aria-modal="true" aria-label="Seleccionar producto" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={onClose} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={query} onChange={(event) => { onQuery(event.target.value); setActiveIndex(0); }} onKeyDown={(event) => {
+    if (event.key === "ArrowDown" && products.length) { event.preventDefault(); moveActive(1); }
+    else if (event.key === "ArrowUp" && products.length) { event.preventDefault(); moveActive(-1); }
+    else if (event.key === "Enter" && products[activeIndex]) { event.preventDefault(); onSelect(products[activeIndex]); }
+    else if (event.key === "Escape") { event.preventDefault(); onClose(); }
+  }} className="mb-3 w-full rounded-lg border px-3 py-2" /><div ref={listRef} className="max-h-80 overflow-y-auto rounded-lg border">{!query.trim() ? <p className="p-3 text-sm text-slate-500">Escribe el nombre para buscar productos.</p> : products.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin coincidencias.</p> : products.map((product, index) => <button ref={(element) => { optionRefs.current[index] = element; }} key={product.id} type="button" onMouseEnter={() => setActiveIndex(index)} onClick={() => onSelect(product)} className={`block w-full border-b px-3 py-2 text-left text-sm ${index === activeIndex ? "bg-emerald-50 outline outline-1 outline-emerald-700" : "hover:bg-emerald-50"}`}>{product.name}</button>)}</div></div></div>;
 }
 
 function FragmentRow({ row, index, productColor, expanded, onToggle, units, pending, canManage, onUpdate, onMeasure, onConfirm }: {

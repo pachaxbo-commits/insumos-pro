@@ -34,6 +34,23 @@ test("configured physical conversion calculates reference, presentation does not
   assert.equal(autoReferencePriceFromPurchaseUnit(280, { label: "CARGA", dimensionId: "weight", factorToBase: 10 }, { dimensionId: "weight", factorToBase: 1 }), null);
   assert.equal(autoReferencePriceFromPurchaseUnit(150, { label: "CHIPA", dimensionId: "count", factorToBase: 1 }, { dimensionId: "weight", factorToBase: 1 }), null);
 });
+test("unmeasured commercial option can save without a configured unit mapping", () => {
+  assert.match(sheet, /isUnmeasuredCommercial\s*=\s*draft\.purchaseOptionId\s*===\s*UNMEASURED_COMMERCIAL/);
+  assert.match(sheet, /if\s*\(!option\s*&&\s*!isUnmeasuredCommercial\)\s*return/);
+  assert.match(sheet, /commercial_label:\s*isUnmeasuredCommercial\s*\?\s*draft\.commercialLabel/);
+  assert.match(actions, /commercial_label/);
+});
+test("commercial save errors remain visible while draft values stay in controlled inputs", () => {
+  assert.match(sheet, /role=\{message\.success\s*\?\s*"status"\s*:\s*"alert"\}/);
+  assert.match(sheet, /setDrafts\(\(current\) => current\.filter\(\(item\) => item\.id !== draft\.id\)\)/);
+});
+test("purchase product search supports keyboard selection and visible active option", () => {
+  assert.match(sheet, /event\.key === "ArrowDown"/);
+  assert.match(sheet, /event\.key === "ArrowUp"/);
+  assert.match(sheet, /event\.key === "Enter"/);
+  assert.match(sheet, /event\.key === "Escape"/);
+  assert.match(sheet, /scrollIntoView\(\{ block: "nearest" \}\)/);
+});
 test("manual override and missing reference remain distinguishable", () => {
   assert.match(migration, /reference_price_origin = 'calculated'/);
   assert.match(migration, /reference_price_origin is distinct from 'manual'/);
