@@ -457,6 +457,9 @@ console.log("\n--- PREVIOUS SUITE REGRESSION CHECKS ---");
         deliveryVersion: 1,
         deliveredBy: null,
         deliveredAt: null,
+        externalBaseQuantity: 0,
+        deliveryMovementId: null,
+        reconciliation: null,
       },
     ],
   };

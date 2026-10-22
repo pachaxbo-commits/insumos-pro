@@ -115,6 +115,7 @@ export async function getOperationalMatrixData(
   const [
     preparationItemsResult,
     deliveryItemsResult,
+    deliveryMovementsResult,
     productSettingsResult,
     unitsResult,
     unitDimensionsResult,
@@ -132,9 +133,14 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_order_delivery_items")
           .select(
-            "order_item_id, externally_sourced_quantity, delivered_quantity, delivered_base_quantity, display_unit_id, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
+            "id, order_item_id, externally_sourced_quantity, externally_sourced_base_quantity, delivered_quantity, delivered_base_quantity, display_unit_id, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name)",
           )
           .in("order_item_id", itemIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabase.from("qb_order_delivery_movements")
+          .select("id,order_id,delivery_item_id,preparation_item_id,product_id,inventory_movement_id,delivered_base_quantity,warehouse_base_quantity,delivered_at")
+          .in("order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
     productIds.length
       ? supabase
@@ -157,6 +163,7 @@ export async function getOperationalMatrixData(
   if (
     preparationItemsResult.error ||
     deliveryItemsResult.error ||
+    deliveryMovementsResult.error ||
     productSettingsResult.error ||
     unitsResult.error ||
     unitDimensionsResult.error || presentationsResult.error
@@ -165,6 +172,7 @@ export async function getOperationalMatrixData(
       `No se pudo cargar el detalle: ${
         preparationItemsResult.error?.message ??
         deliveryItemsResult.error?.message ??
+        deliveryMovementsResult.error?.message ??
         productSettingsResult.error?.message ??
         unitsResult.error?.message ??
         unitDimensionsResult.error?.message ?? presentationsResult.error?.message
@@ -193,6 +201,19 @@ export async function getOperationalMatrixData(
       row,
     ]),
   );
+  const prepItemToOrderItem = new Map((preparationItemsResult.data ?? []).map((row) => [String(row.id), String(row.order_item_id)]));
+  const deliveryMovementByItem = new Map((deliveryMovementsResult.data ?? []).flatMap((row) => {
+    const deliveryItemId = row.delivery_item_id ? String(row.delivery_item_id) : prepItemToOrderItem.get(String(row.preparation_item_id));
+    return deliveryItemId ? [[deliveryItemId, row] as const] : [];
+  }));
+  const deliveryMovementIds = (deliveryMovementsResult.data ?? []).map((row) => String(row.id));
+  const { data: reconciliationData, error: reconciliationError } = deliveryMovementIds.length
+    ? await supabase.from("qb_same_day_reconciliation_requests")
+        .select("id,delivery_movement_id,classification,status,pending_quantity,reconciled_quantity")
+        .in("delivery_movement_id", deliveryMovementIds)
+    : { data: [], error: null };
+  if (reconciliationError) throw new Error(`No se pudo cargar el estado de conciliación: ${reconciliationError.message}`);
+  const reconciliationByDelivery = new Map((reconciliationData ?? []).map((row) => [String(row.delivery_movement_id), row]));
   const productSettings = new Map(
     (productSettingsResult.data ?? []).map((row) => [
       String(row.product_id),
@@ -270,6 +291,8 @@ export async function getOperationalMatrixData(
       : categoryValue;
     const prep = prepItems.get(String(item.id));
     const delivery = deliveryItems.get(String(item.id));
+    const deliveryMovement = deliveryMovementByItem.get(String(item.id));
+    const reconciliation = deliveryMovement ? reconciliationByDelivery.get(String(deliveryMovement.id)) : undefined;
     const preparedByValue = (prep as { prepared_by?: unknown } | undefined)
       ?.prepared_by;
     const preparedBy = Array.isArray(preparedByValue)
@@ -409,6 +432,7 @@ export async function getOperationalMatrixData(
         ) || null,
       preparedAt: prep?.prepared_at_line ? String(prep.prepared_at_line) : null,
       externalQuantity: numberOr(delivery?.externally_sourced_quantity),
+      externalBaseQuantity: numberOr(delivery?.externally_sourced_base_quantity),
       deliveredQuantity,
       deliveredBaseQuantity: numberOr(delivery?.delivered_base_quantity),
       deliveryDisplayUnitId: String(
@@ -425,6 +449,14 @@ export async function getOperationalMatrixData(
       deliveredAt: delivery?.delivered_at
         ? String(delivery.delivered_at)
         : null,
+      deliveryMovementId: deliveryMovement ? String(deliveryMovement.id) : null,
+      reconciliation: reconciliation ? {
+        id: String(reconciliation.id),
+        classification: String(reconciliation.classification) as "pending" | "external_definitive" | "review",
+        status: String(reconciliation.status) as "pending" | "partial" | "reconciled" | "external_definitive" | "review",
+        pendingQuantity: numberOr(reconciliation.pending_quantity),
+        reconciledQuantity: numberOr(reconciliation.reconciled_quantity),
+      } : null,
     };
   });
   return { operationalDate, role, weightUnits, orders, lines };

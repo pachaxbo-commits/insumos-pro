@@ -71,9 +71,9 @@ export async function GET(request: NextRequest) {
     sheet.addRow({
       date: new Intl.DateTimeFormat("es-BO", { dateStyle: "short", timeStyle: "short", timeZone: "America/La_Paz" }).format(new Date(row.created_at)),
       product: row.product_name,
-      type: row.movement_type === "merma" && !row.affects_stock ? "Merma recepción · sin cambio de stock" : row.movement_type,
+      type: row.movement_type === "merma" && !row.affects_stock ? "Merma recepción · sin cambio de stock" : row.movement_type === "salida_conciliada" ? "Salida conciliada del mismo día" : row.movement_type,
       in: row.movement_type === "entrada" ? row.quantity : null,
-      out: row.movement_type === "salida" || row.movement_type === "merma" ? row.quantity : row.movement_type === "ajuste" ? delta : null,
+      out: row.movement_type === "salida" || row.movement_type === "salida_conciliada" || row.movement_type === "merma" ? row.quantity : row.movement_type === "ajuste" ? delta : null,
       unit: row.unit_symbol,
       before: row.stock_before,
       after: row.stock_after,

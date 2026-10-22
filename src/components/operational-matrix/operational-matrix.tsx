@@ -23,6 +23,7 @@ import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-s
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
 import {
+  classifySameDayDeliverySourceAction,
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
   reopenMatrixDeliveryAction,
@@ -1243,6 +1244,9 @@ export function OperationalMatrix({
                                     Frente a preparado: {formatQuantity(line.deliveredQuantity - line.preparedQuantity)} {line.sourceLabel} ·
                                     Externo calculado: {formatQuantity(Math.max(line.deliveredQuantity - line.preparedQuantity, 0))} {line.sourceLabel}
                                   </p> : null}
+                                  {stage === "entrega" && order.deliveryStatus === "confirmado" && line.deliveryMovementId && line.deliveredBaseQuantity > 0 ? (
+                                    <SameDayReconciliationControl line={line} />
+                                  ) : null}
                                 </div>
                               ) : null}
                             </div>
@@ -2330,6 +2334,9 @@ function DesktopOrderCells(props: CellProps) {
             }
             onBlur={onSaveDelivery}
           />
+          {stage === "entrega" && line.deliveryMovementId && line.deliveredBaseQuantity > 0 ? (
+            <SameDayReconciliationControl line={line} />
+          ) : null}
           <WeightPricingHint line={line} />
           {deliveryReady && !needsDeliveryReview ? (
             <span className="mt-1 block text-[9px] font-medium text-emerald-800">
@@ -2436,4 +2443,71 @@ function RowTotals({
       ) : null}
     </td>
   );
+}
+
+function SameDayReconciliationControl({ line }: { line: MatrixLine }) {
+  const router = useRouter();
+  const [classification, setClassification] = useState<"pending" | "external_definitive" | "review">("pending");
+  const [pendingQuantity, setPendingQuantity] = useState(line.externalBaseQuantity);
+  const [note, setNote] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const current = line.reconciliation;
+  const canResolvePending = current?.classification === "pending" && current.reconciledQuantity === 0;
+
+  async function submit(nextClassification: "pending" | "external_definitive" | "review") {
+    if (!line.deliveryMovementId) return;
+    setBusy(true);
+    setMessage("");
+    const result = await classifySameDayDeliverySourceAction({
+      deliveryMovementId: line.deliveryMovementId,
+      classification: nextClassification,
+      pendingQuantity: nextClassification === "pending" ? pendingQuantity : 0,
+      note,
+      idempotencyKey: idempotencyKey("reconciliation"),
+    });
+    setBusy(false);
+    setMessage(result.message);
+    if (result.success) router.refresh();
+  }
+
+  if (current && !canResolvePending) {
+    const statusLabel = current.status === "partial"
+      ? "Pendiente parcial"
+      : current.status === "reconciled"
+        ? "Conciliado"
+        : current.status === "external_definitive"
+          ? "Externo definitivo"
+          : "Revisión manual";
+    return <div className="mt-2 rounded-md border border-slate-200 bg-white/80 p-2 text-left text-[10px]" aria-live="polite">
+      <p className="font-semibold">Origen: {statusLabel}</p>
+      {current.classification === "pending" ? <p>Conciliado {formatQuantity(current.reconciledQuantity)} / {formatQuantity(current.pendingQuantity)} {line.baseUnitSymbol} · Pendiente {formatQuantity(Math.max(current.pendingQuantity-current.reconciledQuantity,0))} {line.baseUnitSymbol}</p> : null}
+      {current.classification === "pending" && current.reconciledQuantity > 0 ? <p className="mt-1 text-amber-800">Esta entrega ya afectó stock; se requiere una corrección auditada para reabrirla.</p> : null}
+    </div>;
+  }
+
+  return <div className="mt-2 space-y-2 rounded-md border border-amber-200 bg-amber-50/70 p-2 text-left text-[10px]">
+    <p className="font-semibold text-amber-950">Origen de {formatQuantity(line.externalBaseQuantity)} {line.baseUnitSymbol} externos</p>
+    <p className="text-amber-900">Clasifica el origen real. Solo la cantidad pendiente de almacén puede descontarse con una compra confirmada en esta misma jornada. El resto queda externo definitivo.</p>
+    <label className="block space-y-1"><span>Clasificación</span>
+      <select value={classification} onChange={(event) => setClassification(event.target.value as typeof classification)} className="h-9 w-full rounded-md border bg-white px-2 text-xs">
+        <option value="pending">Pendiente de compra de almacén hoy</option>
+        <option value="external_definitive">Abastecimiento externo definitivo</option>
+        <option value="review">Origen incierto · revisión administrativa</option>
+      </select>
+    </label>
+    {classification === "pending" ? <label className="block space-y-1"><span>Cantidad externa pendiente ({line.baseUnitSymbol})</span>
+      <Input type="number" min="0.001" max={line.externalBaseQuantity} step="0.001" value={pendingQuantity} onChange={(event) => setPendingQuantity(Number(event.target.value))} className="h-9 bg-white text-xs" />
+    </label> : null}
+    <label className="block space-y-1"><span>Motivo / confirmación del origen físico</span>
+      <Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} placeholder="Ej.: queda pendiente de compra para esta jornada" className="h-9 bg-white text-xs" />
+    </label>
+    <div className="flex flex-wrap gap-1">
+      <Button type="button" size="sm" disabled={busy || note.trim().length < 3 || (classification === "pending" && !(pendingQuantity > 0 && pendingQuantity <= line.externalBaseQuantity))} onClick={() => void submit(classification)}>
+        {busy ? "Guardando…" : current ? "Guardar clasificación" : "Confirmar origen"}
+      </Button>
+      {canResolvePending ? <Button type="button" size="sm" variant="outline" disabled={busy || note.trim().length < 3} onClick={() => void submit("review")}>Enviar a revisión</Button> : null}
+    </div>
+    {message ? <p role="status">{message}</p> : null}
+  </div>;
 }

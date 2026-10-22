@@ -63,6 +63,7 @@ export type MatrixLine = {
   preparedBy: string | null;
   preparedAt: string | null;
   externalQuantity: number;
+  externalBaseQuantity: number;
   deliveredQuantity: number;
   deliveredBaseQuantity: number;
   deliveryDisplayUnitId: string;
@@ -72,6 +73,14 @@ export type MatrixLine = {
   deliveryVersion: number;
   deliveredBy: string | null;
   deliveredAt: string | null;
+  deliveryMovementId: string | null;
+  reconciliation: {
+    id: string;
+    classification: "pending" | "external_definitive" | "review";
+    status: "pending" | "partial" | "reconciled" | "external_definitive" | "review";
+    pendingQuantity: number;
+    reconciledQuantity: number;
+  } | null;
 };
 
 export type OperationalMatrixData = {

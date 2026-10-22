@@ -142,10 +142,41 @@ export async function getInventoryKardexPage(filters: InventoryKardexFilters): P
     }) : [],
     affects_stock: Boolean(row.affects_stock),
   }));
+  const outboundIds = rows.filter((row) => row.movement_type === "salida").map((row) => row.id);
+  const { data: allocationData, error: allocationError } = outboundIds.length
+    ? await supabase.from("qb_same_day_reconciliation_allocations")
+        .select("inventory_movement_id,request_id")
+        .in("inventory_movement_id", outboundIds)
+    : { data: [], error: null };
+  if (allocationError) return { data: emptyKardex, error: "No pudimos cargar las referencias de conciliación." };
+  const allocations = allocationData ?? [];
+  const requestIds = [...new Set(allocations.map((allocation) => String(allocation.request_id)))];
+  const { data: requestData, error: requestError } = requestIds.length
+    ? await supabase.from("qb_same_day_reconciliation_requests")
+        .select("id,order_id")
+        .in("id", requestIds)
+    : { data: [], error: null };
+  if (requestError) return { data: emptyKardex, error: "No pudimos cargar los pedidos conciliados." };
+  const requests = requestData ?? [];
+  const orderIds = [...new Set(requests.map((request) => String(request.order_id)))];
+  const { data: orderData, error: orderError } = orderIds.length
+    ? await supabase.from("qb_orders").select("id,public_reference").in("id", orderIds)
+    : { data: [], error: null };
+  if (orderError) return { data: emptyKardex, error: "No pudimos cargar las referencias de pedidos." };
+  const requestById = new Map(requests.map((request) => [String(request.id), String(request.order_id)]));
+  const referenceByOrder = new Map((orderData ?? []).map((order) => [String(order.id), String(order.public_reference ?? "Pedido") ]));
+  const allocationByMovement = new Map(allocations.map((allocation) => [String(allocation.inventory_movement_id), requestById.get(String(allocation.request_id))]));
+  const reconciledOrderByMovement = new Map([...allocationByMovement].filter((entry): entry is [string, string] => Boolean(entry[1])));
+  const enrichedRows = rows.map((row) => {
+    const orderId = reconciledOrderByMovement.get(row.id);
+    if (!orderId) return row;
+    const orderReference = referenceByOrder.get(orderId) ?? `Pedido ${orderId.slice(0,8)}`;
+    return { ...row, movement_type: "salida_conciliada", reference: `Conciliación de entrega · ${orderReference}`, reference_href: "/matriz-operativa?mode=entrega" };
+  });
   const summaryProducts = (result?.summary?.products ?? []).map((row) => ({
     product_id: String(row.product_id), product_name: String(row.product_name), unit_symbol: String(row.unit_symbol ?? "—"),
     inbound: Number(row.inbound ?? 0), outbound: Number(row.outbound ?? 0), waste: Number(row.waste ?? 0),
     adjustment: Number(row.adjustment ?? 0), operations: Number(row.operations ?? 0), stock_current: Number(row.stock_current ?? 0),
   }));
-  return { data: { total: Number(result?.total ?? 0), rows, summary: { operations: Number(result?.summary?.operations ?? 0), products: summaryProducts } }, error: null };
+  return { data: { total: Number(result?.total ?? 0), rows: enrichedRows, summary: { operations: Number(result?.summary?.operations ?? 0), products: summaryProducts } }, error: null };
 }

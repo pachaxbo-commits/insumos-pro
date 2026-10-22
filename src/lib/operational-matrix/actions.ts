@@ -105,6 +105,24 @@ export async function saveMatrixDeliveryAction(input: unknown) {
   }, ["administrador", "entregador"], false);
 }
 
+export async function classifySameDayDeliverySourceAction(input: unknown) {
+  const parsed = z.object({
+    deliveryMovementId: id,
+    classification: z.enum(["pending", "external_definitive", "review"]),
+    pendingQuantity: quantity,
+    note: z.string().min(3).max(500),
+    idempotencyKey: key,
+  }).safeParse(input);
+  if (!parsed.success) return { success: false, message: "Clasificación de abastecimiento inválida." };
+  return rpc("classify_qb_same_day_delivery_source", {
+    p_delivery_movement_id: parsed.data.deliveryMovementId,
+    p_classification: parsed.data.classification,
+    p_pending_quantity: parsed.data.pendingQuantity,
+    p_note: parsed.data.note,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  }, ["administrador", "entregador"]);
+}
+
 export async function finalizeMatrixPreparationAction(input: unknown) {
   const parsed = z.object({
     orderId: id, expectedUpdatedAt: timestamp, idempotencyKey: key,

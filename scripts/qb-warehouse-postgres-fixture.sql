@@ -528,4 +528,146 @@ exception when others then
 end $$;
 reset role;
 
+-- Fase 3: same-day pending delivery reconciliation, using only isolated fixtures.
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a001', true);
+select public.classify_qb_same_day_delivery_source(
+  (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e201'),
+  'pending', 10, 'QA: pendiente explícita de compra local', 'qa-reconcile-001');
+select public.classify_qb_same_day_delivery_source(
+  (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e201'),
+  'pending', 10, 'QA: repetición idempotente', 'qa-reconcile-001');
+reset role;
+
+insert into public.qb_merchandise_receipts (id, receipt_date, status, created_by)
+values ('00000000-0000-4000-8000-00000000e601', current_date, 'borrador',
+  '00000000-0000-4000-8000-00000000a001');
+insert into public.qb_merchandise_receipt_lines
+  (id, receipt_id, product_id, allowed_unit_id, source_kind, source_unit_id, source_label,
+   source_quantity, base_unit_id, base_unit_symbol, base_quantity, conversion_factor_to_base,
+   unit_cost, total_cost, requires_classification, reference_unit_id, reference_price,
+   reference_price_origin, is_warehouse_purchase, created_by)
+values ('00000000-0000-4000-8000-00000000f601', '00000000-0000-4000-8000-00000000e601',
+  '00000000-0000-4000-8000-00000000c001', '00000000-0000-4000-8000-00000000b101',
+  'universal_unit', '00000000-0000-4000-8000-00000000b001', 'KG', 15,
+  '00000000-0000-4000-8000-00000000b001', 'KG', 15, 1, 8, 120, false,
+  '00000000-0000-4000-8000-00000000b002', 80, 'manual', true,
+  '00000000-0000-4000-8000-00000000a001');
+insert into public.qb_conversion_snapshots
+  (id, source_table, source_id, product_id, dimension_code, source_kind, source_unit_id,
+   source_label, source_quantity, base_unit_id, base_unit_symbol, base_quantity,
+   conversion_factor_to_base, snapshot)
+values ('00000000-0000-4000-8000-00000000a601', 'qb_merchandise_receipt_lines',
+  '00000000-0000-4000-8000-00000000f601', '00000000-0000-4000-8000-00000000c001',
+  'qa_weight', 'universal_unit', '00000000-0000-4000-8000-00000000b001', 'KG',
+  15, '00000000-0000-4000-8000-00000000b001', 'KG', 15, 1, '{}');
+update public.qb_merchandise_receipt_lines set conversion_snapshot_id = '00000000-0000-4000-8000-00000000a601'
+where id = '00000000-0000-4000-8000-00000000f601';
+select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000f601', 15);
+select public.confirm_qb_merchandise_receipt('00000000-0000-4000-8000-00000000e601');
+do $$ begin
+  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c001') <> 6 then
+    raise exception 'Expected previous stock +15 entry -10 reconciliation = 6';
+  end if;
+  if (select count(*) from public.qb_same_day_reconciliation_allocations allocation
+      join public.qb_same_day_reconciliation_requests request on request.id = allocation.request_id
+      where request.order_id = '00000000-0000-4000-8000-00000000e201') <> 2
+    or (select sum(allocation.quantity) from public.qb_same_day_reconciliation_allocations allocation
+      join public.qb_same_day_reconciliation_requests request on request.id = allocation.request_id
+      where request.order_id = '00000000-0000-4000-8000-00000000e201') <> 10 then
+    raise exception 'Expected exactly 10 reconciled units across two confirmed purchases';
+  end if;
+  if (select delivered_base_quantity from public.qb_order_delivery_items
+      where order_id = '00000000-0000-4000-8000-00000000e201') <> 10 then
+    raise exception 'Historical delivered quantity changed';
+  end if;
+  if (select count(*) from public.qb_order_delivery_movements
+      where order_id = '00000000-0000-4000-8000-00000000e201') <> 1 then
+    raise exception 'Original delivery movement was duplicated';
+  end if;
+  if (select count(*) from public.inventory_fifo_consumption_runs
+      where inventory_movement_id in (select inventory_movement_id from public.qb_same_day_reconciliation_allocations)) <> 2 then
+    raise exception 'FIFO reconciliation trace is missing or duplicated';
+  end if;
+  if (select status from public.qb_same_day_reconciliation_requests
+      where order_id = '00000000-0000-4000-8000-00000000e201') <> 'reconciled'
+    or (select pending_quantity-reconciled_quantity from public.qb_same_day_reconciliation_requests
+      where order_id = '00000000-0000-4000-8000-00000000e201') <> 0 then
+    raise exception 'The completed same-day request still has a pending balance';
+  end if;
+  if exists (select 1 from public.inventory_movements where product_id = '00000000-0000-4000-8000-00000000c001'
+      and stock_after < 0) then
+    raise exception 'Reconciliation created a negative inventory balance';
+  end if;
+  if (select cost_base_unit_snapshot from public.qb_receipt_lines
+      where id = '00000000-0000-4000-8000-00000000f103') <> 7 then
+    raise exception 'Same-day physical reconciliation changed an issued receipt cost snapshot';
+  end if;
+end $$;
+do $$ begin
+  perform public.confirm_qb_merchandise_receipt('00000000-0000-4000-8000-00000000e601');
+  raise exception 'Repeated receipt confirmation succeeded';
+exception when others then
+  if sqlerrm = 'Repeated receipt confirmation succeeded' then raise; end if;
+end $$;
+do $$ begin
+  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c001') <> 6 then
+    raise exception 'Repeated receipt confirmation changed stock';
+  end if;
+end $$;
+reset role;
+
+-- A previous Bolivia operating day is never eligible for automatic matching.
+update public.qb_order_delivery_movements
+set delivered_at = now() - interval '1 day'
+where order_id = '00000000-0000-4000-8000-00000000e301';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a002', true);
+do $$ begin
+  perform public.classify_qb_same_day_delivery_source(
+    (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e301'),
+    'review', 0, 'QA: no autorización por rol ventas', 'qa-reconcile-denied');
+  raise exception 'Sales role classified an external delivery';
+exception when others then
+  if sqlerrm = 'Sales role classified an external delivery' then raise; end if;
+end $$;
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a001', true);
+do $$ begin
+  perform public.classify_qb_same_day_delivery_source(
+    (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e301'),
+    'pending', 6, 'QA: no descontar al día siguiente', 'qa-reconcile-old-day');
+  raise exception 'Previous-day delivery was eligible for reconciliation';
+exception when others then
+  if sqlerrm = 'Previous-day delivery was eligible for reconciliation' then raise; end if;
+end $$;
+select public.classify_qb_same_day_delivery_source(
+  (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e301'),
+  'review', 0, 'QA: conservar origen histórico para revisión', 'qa-reconcile-review');
+reset role;
+do $$ begin
+  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c001') <> 6
+    or (select classification from public.qb_same_day_reconciliation_requests
+      where order_id = '00000000-0000-4000-8000-00000000e301') <> 'review' then
+    raise exception 'Prior-day ambiguous delivery changed stock or was not marked for review';
+  end if;
+end $$;
+delete from public.qb_same_day_reconciliation_events where request_id in
+  (select id from public.qb_same_day_reconciliation_requests where order_id = '00000000-0000-4000-8000-00000000e301');
+delete from public.qb_same_day_reconciliation_requests where order_id = '00000000-0000-4000-8000-00000000e301';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000a001', true);
+select public.classify_qb_same_day_delivery_source(
+  (select id from public.qb_order_delivery_movements where order_id = '00000000-0000-4000-8000-00000000e301'),
+  'external_definitive', 0, 'QA: abastecimiento externo ya resuelto', 'qa-reconcile-external');
+reset role;
+do $$ begin
+  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c001') <> 6
+    or (select classification from public.qb_same_day_reconciliation_requests
+      where order_id = '00000000-0000-4000-8000-00000000e301') <> 'external_definitive' then
+    raise exception 'Definitive external supply consumed warehouse stock';
+  end if;
+end $$;
+
 rollback;
