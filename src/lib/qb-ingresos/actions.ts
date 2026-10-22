@@ -603,6 +603,34 @@ export async function createQbMerchandiseReceiptAction(
     snapshotPayload = { ...snapshotPayload, allowed_unit_id: allowedUnit.id };
   }
 
+  if (input.warehouse_purchase) {
+    const { error } = await access.supabase.rpc("create_qb_warehouse_purchase_draft", {
+      p_receipt_date: input.receipt_date,
+      p_product_id: input.product_id,
+      p_allowed_unit_id: allowedUnit?.id ?? null,
+      p_source_kind: sourceKind,
+      p_source_unit_id: sourceUnitId,
+      p_product_presentation_id: presentationId,
+      p_source_label: sourceLabel,
+      p_source_quantity: input.source_quantity,
+      p_base_unit_id: baseUnit.id,
+      p_base_unit_symbol: baseUnit.symbol,
+      p_base_quantity: baseQuantity,
+      p_conversion_factor: conversionFactorToBase,
+      p_unit_cost: input.unit_cost ?? 0,
+      p_total_cost: totalCost,
+      p_reference_unit_id: input.reference_price === null ? null : input.reference_unit_id,
+      p_reference_price: referencePriceToSave,
+      p_reference_price_origin: referenceOriginToSave,
+      p_notes: input.notes,
+      p_dimension_code: dimensionCode,
+      p_snapshot: snapshotPayload,
+    });
+    if (error) return { success: false, message: error.message };
+    revalidateQbIngresos();
+    return { success: true, message: "Compra guardada como borrador; el ingreso físico sigue pendiente de medición." };
+  }
+
   const { data: receipt, error: receiptError } = await access.supabase
     .from("qb_merchandise_receipts")
     .insert({

@@ -46,7 +46,7 @@ export function ProductCombobox({
   const selected = options.find((option) => option.id === value) ?? null;
   const [query, setQuery] = useState(selected?.name ?? "");
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     function closeOnOutsideClick(event: PointerEvent) {
@@ -75,7 +75,7 @@ export function ProductCombobox({
     onValueChange(option.id);
     setQuery(option.name);
     setOpen(false);
-    setActiveIndex(0);
+    setActiveIndex(-1);
   }
 
   return (
@@ -93,11 +93,14 @@ export function ProductCombobox({
         disabled={disabled}
         placeholder={placeholder}
         className="rounded-xl pl-9"
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          setActiveIndex(-1);
+        }}
         onChange={(event) => {
           setQuery(event.target.value);
           setOpen(true);
-          setActiveIndex(0);
+          setActiveIndex(-1);
           if (value) onValueChange("");
         }}
         onKeyDown={(event) => {
@@ -110,7 +113,9 @@ export function ProductCombobox({
           } else if (event.key === "ArrowUp") {
             event.preventDefault();
             setOpen(true);
-            setActiveIndex((current) => open ? Math.max(current - 1, 0) : Math.max(matches.length - 1, 0));
+            setActiveIndex((current) => current < 0
+              ? Math.max(matches.length - 1, 0)
+              : open ? Math.max(current - 1, 0) : Math.max(matches.length - 1, 0));
           } else if (event.key === "Enter" && open && matches[activeIndex]) {
             event.preventDefault();
             choose(matches[activeIndex]);

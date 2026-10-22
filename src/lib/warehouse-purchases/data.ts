@@ -24,7 +24,11 @@ export type WarehousePurchase = {
   requiresClassification: boolean;
   actualBaseQuantityRecorded: boolean;
   baseQuantity: number;
+  baseUnitId: string;
   baseUnitSymbol: string;
+  sourceKind: string;
+  allowedUnitId: string | null;
+  commercialLabel: string | null;
 };
 
 export type WarehouseOperatingExpense = {
@@ -54,7 +58,10 @@ type PurchaseRow = {
   requires_classification: boolean;
   actual_base_quantity_recorded: boolean;
   base_quantity: number | string;
+  base_unit_id: string;
   base_unit_symbol: string;
+  source_kind: string;
+  allowed_unit_id: string | null;
   created_at: string;
   updated_at: string;
   product: { name: string } | { name: string }[] | null;
@@ -78,7 +85,7 @@ export async function getWarehousePurchases(date: string) {
     .from("qb_merchandise_receipt_lines")
     .select(`id, receipt_id, product_id, source_label, source_quantity, unit_cost,
       total_cost, reference_unit_id, reference_price, reference_price_origin, notes, requires_classification,
-      actual_base_quantity_recorded, base_quantity, base_unit_symbol,
+      actual_base_quantity_recorded, base_quantity, base_unit_id, base_unit_symbol, source_kind, allowed_unit_id,
       created_at, updated_at,
       product:products!qb_merchandise_receipt_lines_product_id_fkey(name),
       receipt:qb_merchandise_receipts!qb_merchandise_receipt_lines_receipt_id_fkey!inner(
@@ -118,7 +125,11 @@ export async function getWarehousePurchases(date: string) {
       requiresClassification: row.requires_classification,
       actualBaseQuantityRecorded: row.actual_base_quantity_recorded,
       baseQuantity: Number(row.base_quantity),
+      baseUnitId: row.base_unit_id,
       baseUnitSymbol: row.base_unit_symbol,
+      sourceKind: row.source_kind,
+      allowedUnitId: row.allowed_unit_id,
+      commercialLabel: row.source_kind === "commercial_unmeasured" ? row.source_label : null,
     }];
   });
   const expensesResult = await supabase
