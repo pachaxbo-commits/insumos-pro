@@ -43,6 +43,7 @@ export function ProductCombobox({
   const listboxId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const valueBeforeSearchRef = useRef(value);
   const selected = options.find((option) => option.id === value) ?? null;
   const [query, setQuery] = useState(selected?.name ?? "");
   const [open, setOpen] = useState(false);
@@ -73,6 +74,7 @@ export function ProductCombobox({
 
   function choose(option: ProductComboboxOption) {
     onValueChange(option.id);
+    valueBeforeSearchRef.current = option.id;
     setQuery(option.name);
     setOpen(false);
     setActiveIndex(-1);
@@ -94,6 +96,8 @@ export function ProductCombobox({
         placeholder={placeholder}
         className="rounded-xl pl-9"
         onFocus={() => {
+          valueBeforeSearchRef.current = value;
+          setQuery(selected?.name ?? "");
           setOpen(true);
           setActiveIndex(-1);
         }}
@@ -119,8 +123,17 @@ export function ProductCombobox({
           } else if (event.key === "Enter" && open && matches[activeIndex]) {
             event.preventDefault();
             choose(matches[activeIndex]);
-          } else if (event.key === "Escape") {
+          } else if (event.key === "Enter" && open) {
+            // Keep Enter from submitting a surrounding form while the user is
+            // still interacting with the open suggestions list.
+            event.preventDefault();
+          } else if (event.key === "Escape" && open) {
+            event.preventDefault();
+            const previousValue = valueBeforeSearchRef.current;
+            onValueChange(previousValue);
+            setQuery(options.find((option) => option.id === previousValue)?.name ?? "");
             setOpen(false);
+            setActiveIndex(-1);
           } else if (event.key === "Tab") {
             setOpen(false);
           }
