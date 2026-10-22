@@ -81,9 +81,9 @@ export async function getOperationalMatrixData(
         .select("order_id, position, row_version")
         .in("order_id", orderIds),
       supabase
-        .from("qb_order_items")
+        .from("qb_operational_order_items")
         .select(
-          "id, order_id, product_id, source_unit_id, product_presentation_id, base_unit_id, conversion_factor_to_base, source_label, base_unit_symbol, requested_quantity, base_quantity, customer_notes, row_version, product:products(name, stock_current, matrix_color, controls_actual_weight, category:product_categories(name))",
+          "id, order_id, product_id, source_unit_id, product_presentation_id, base_unit_id, conversion_factor_to_base, source_label, base_unit_symbol, requested_quantity, base_quantity, customer_notes, row_version",
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true }),
@@ -112,20 +112,35 @@ export async function getOperationalMatrixData(
     String(item.id),
   );
   const productIds = [...new Set(itemRows.map((item) => String(item.product_id)))];
+  const { data: productData, error: productError } = productIds.length
+    ? await supabase.from("qb_operational_products")
+        .select("id,name,stock_current,matrix_color,controls_actual_weight,category_name")
+        .in("id", productIds)
+    : { data: [], error: null };
+  if (productError) throw new Error("No se pudo cargar el catálogo operativo.");
+  const productsById = new Map((productData ?? []).map((product) => [String(product.id), product]));
+  const itemsWithProducts = itemRows.map((item) => {
+    const product = productsById.get(String(item.product_id));
+    return {
+      ...item,
+      product: product
+        ? { ...product, category: { name: product.category_name } }
+        : null,
+    };
+  });
   const [
     preparationItemsResult,
     deliveryItemsResult,
     deliveryMovementsResult,
-    productSettingsResult,
     unitsResult,
     unitDimensionsResult,
     presentationsResult,
   ] = await Promise.all([
     preparationIds.length
       ? supabase
-          .from("qb_order_preparation_items")
+          .from("qb_operational_preparation_items")
           .select(
-            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, provision_cost_unit, prepared_by:profiles!prepared_by_line(full_name)",
+            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by_name",
           )
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -142,12 +157,6 @@ export async function getOperationalMatrixData(
           .select("id,order_id,delivery_item_id,preparation_item_id,product_id,inventory_movement_id,delivered_base_quantity,warehouse_base_quantity,delivered_at")
           .in("order_id", orderIds)
       : Promise.resolve({ data: [], error: null }),
-    productIds.length
-      ? supabase
-          .from("qb_product_unit_settings")
-          .select("product_id, base_price_unit_id, base_sale_price")
-          .in("product_id", productIds)
-      : Promise.resolve({ data: [], error: null }),
     supabase
       .from("qb_units")
       .select(
@@ -160,11 +169,19 @@ export async function getOperationalMatrixData(
           .in("product_id", productIds).eq("is_active", true).order("sort_order")
       : Promise.resolve({ data: [], error: null }),
   ]);
+  const productSettingsResult = role === "administrador" && productIds.length
+    ? await supabase.from("qb_product_unit_settings")
+        .select("product_id, base_price_unit_id, base_sale_price")
+        .in("product_id", productIds)
+    : { data: [], error: null };
+  const preparationCostsResult = await supabase.from("qb_operational_preparation_costs")
+    .select("order_item_id, provision_cost_unit")
+    .in("order_item_id", itemIds);
   if (
     preparationItemsResult.error ||
     deliveryItemsResult.error ||
     deliveryMovementsResult.error ||
-    productSettingsResult.error ||
+    productSettingsResult.error || preparationCostsResult.error ||
     unitsResult.error ||
     unitDimensionsResult.error || presentationsResult.error
   ) {
@@ -173,7 +190,7 @@ export async function getOperationalMatrixData(
         preparationItemsResult.error?.message ??
         deliveryItemsResult.error?.message ??
         deliveryMovementsResult.error?.message ??
-        productSettingsResult.error?.message ??
+        productSettingsResult.error?.message ?? preparationCostsResult.error?.message ??
         unitsResult.error?.message ??
         unitDimensionsResult.error?.message ?? presentationsResult.error?.message
       }`,
@@ -219,6 +236,9 @@ export async function getOperationalMatrixData(
       String(row.product_id),
       row,
     ]),
+  );
+  const preparationCosts = new Map(
+    (preparationCostsResult.data ?? []).map((row) => [String(row.order_item_id), row.provision_cost_unit]),
   );
   const units = new Map(
     (unitsResult.data ?? []).map((row) => [String(row.id), row]),
@@ -281,7 +301,7 @@ export async function getOperationalMatrixData(
     })
     .sort((a, b) => a.position - b.position);
 
-  const lines: MatrixLine[] = itemRows.map((item) => {
+  const lines: MatrixLine[] = itemsWithProducts.map((item) => {
     const product = Array.isArray(item.product)
       ? item.product[0]
       : item.product;
@@ -293,11 +313,8 @@ export async function getOperationalMatrixData(
     const delivery = deliveryItems.get(String(item.id));
     const deliveryMovement = deliveryMovementByItem.get(String(item.id));
     const reconciliation = deliveryMovement ? reconciliationByDelivery.get(String(deliveryMovement.id)) : undefined;
-    const preparedByValue = (prep as { prepared_by?: unknown } | undefined)
-      ?.prepared_by;
-    const preparedBy = Array.isArray(preparedByValue)
-      ? preparedByValue[0]
-      : preparedByValue;
+    const preparedByName = (prep as { prepared_by_name?: unknown } | undefined)
+      ?.prepared_by_name;
     const deliveredByValue = (
       delivery as { delivered_by_profile?: unknown } | undefined
     )?.delivered_by_profile;
@@ -411,9 +428,9 @@ export async function getOperationalMatrixData(
         : null,
       hasWeightBasedPrice,
       provisionCostUnit:
-        (prep as { provision_cost_unit?: unknown } | undefined)?.provision_cost_unit !== null &&
-        typeof (prep as { provision_cost_unit?: unknown } | undefined)?.provision_cost_unit !== "undefined"
-          ? numberOr((prep as { provision_cost_unit?: unknown }).provision_cost_unit)
+        preparationCosts.get(String(item.id)) !== null &&
+        typeof preparationCosts.get(String(item.id)) !== "undefined"
+          ? numberOr(preparationCosts.get(String(item.id)))
           : null,
       requestedQuantity,
       requestedBaseQuantity,
@@ -426,10 +443,7 @@ export async function getOperationalMatrixData(
       preparationActualWeightKg,
       preparationNote: String(prep?.notes ?? ""),
       preparationVersion: numberOr(prep?.row_version),
-      preparedBy:
-        String(
-          (preparedBy as { full_name?: unknown } | null)?.full_name ?? "",
-        ) || null,
+      preparedBy: String(preparedByName ?? "") || null,
       preparedAt: prep?.prepared_at_line ? String(prep.prepared_at_line) : null,
       externalQuantity: numberOr(delivery?.externally_sourced_quantity),
       externalBaseQuantity: numberOr(delivery?.externally_sourced_base_quantity),

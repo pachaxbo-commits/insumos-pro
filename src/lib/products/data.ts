@@ -78,6 +78,7 @@ type ProductsCatalogOptions = {
   parametrizationScope?: "full" | "list";
   page?: number;
   pageSize?: number;
+  dataScope?: "administrator" | "operational";
 };
 
 export type ProductReferenceData = {
@@ -153,10 +154,10 @@ async function loadQbParametrizationData(
   productIds: string[],
   qbUnits: QbUnit[],
   scope: "full" | "list",
+  includeFinancial = true,
 ): Promise<QbParametrizationData> {
   const [
     dimensionsResult,
-    settingsResult,
     presentationsResult,
     allowedUnitsResult,
     classificationOutputsResult,
@@ -169,15 +170,6 @@ async function loadQbParametrizationData(
           )
           .order("sort_order", { ascending: true })
           .order("name", { ascending: true })
-      : Promise.resolve({ data: [], error: null }),
-    productIds.length
-      ? supabase
-          .from("qb_product_unit_settings")
-          .select(
-            "product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, internal_notes, notes, created_by, updated_by, created_at, updated_at",
-          )
-          .in("product_id", productIds)
-          .order("updated_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
       ? supabase
@@ -203,6 +195,24 @@ async function loadQbParametrizationData(
           .order("label", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
   ]);
+  const settingsResult = !productIds.length
+    ? { data: [] as QbProductUnitSettings[], error: null }
+    : includeFinancial
+      ? await supabase.from("qb_product_unit_settings")
+          .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, internal_notes, notes, created_by, updated_by, created_at, updated_at")
+          .in("product_id", productIds)
+          .order("updated_at", { ascending: false })
+          .then((result) => ({ data: (result.data ?? []) as unknown as QbProductUnitSettings[], error: result.error }))
+      : await supabase.from("qb_operational_product_unit_settings")
+          .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, notes, created_by, updated_by, created_at, updated_at")
+          .in("product_id", productIds)
+          .order("updated_at", { ascending: false })
+          .then((result) => ({
+            data: (result.data ?? []).map((row) => ({
+              ...row, base_price_unit_id: null, base_sale_price: null, internal_notes: null,
+            })) as unknown as QbProductUnitSettings[],
+            error: result.error,
+          }));
 
   const qbError =
     dimensionsResult.error ??
@@ -316,7 +326,7 @@ export async function getProductsCatalogData(
   let matchingProductIds: string[] | null = null;
   if (normalizedSearch) {
     let directoryQuery = supabase
-      .from("products")
+      .from("qb_operational_products")
       .select("id, name, sku")
       .order("name", { ascending: true });
     if (filters.category && filters.category !== "all") {
@@ -341,12 +351,15 @@ export async function getProductsCatalogData(
           .map((product) => product.id);
   }
 
-  let productsQuery = supabase
-    .from("products")
-    .select(
-      "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, matrix_color, controls_actual_weight, requires_classification, is_sellable, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, is_active, created_at, updated_at, category:product_categories(id, name, description, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
-      { count: "exact" },
-    )
+  let productsQuery = options.dataScope === "operational"
+    ? supabase.from("qb_operational_products").select(
+        "id, name, sku, category_id, unit_id, stock_current, stock_min, image_url, matrix_color, controls_actual_weight, requires_classification, is_sellable, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, is_active, created_at, updated_at, category_name, category_description, category_catalog_slug, category_catalog_sort_order, category_is_active, unit_name, unit_abbreviation, unit_is_active",
+        { count: "exact" },
+      )
+    : supabase.from("products").select(
+        "id, name, sku, category_id, unit_id, stock_current, stock_min, purchase_price, sale_price, supplier_name, image_url, matrix_color, controls_actual_weight, requires_classification, is_sellable, catalog_description, catalog_sort_order, catalog_min_quantity, catalog_quantity_step, is_active, created_at, updated_at, category:product_categories(id, name, description, catalog_slug, catalog_sort_order, is_active, created_at, updated_at), unit:units_of_measure(id, name, abbreviation, is_active, created_at, updated_at)",
+        { count: "exact" },
+      )
     .order("created_at", { ascending: false });
 
   if (matchingProductIds) {
@@ -375,12 +388,12 @@ export async function getProductsCatalogData(
   const referencePromise = getProductReferenceData();
   const summaryProductsPromise = options.includeSummary
     ? supabase
-        .from("products")
+        .from("qb_operational_products")
         .select("id, stock_current, stock_min, is_active")
     : Promise.resolve({ data: [], error: null });
   const visibleSettingsPromise = options.includeSummary
     ? supabase
-        .from("qb_product_unit_settings")
+        .from("qb_operational_product_unit_settings")
         .select("product_id")
         .eq("is_qb_active", true)
         .eq("is_visible_in_qb_catalog", true)
@@ -413,7 +426,20 @@ export async function getProductsCatalogData(
     };
   }
 
-  const allRows = (productsResult.data ?? []) as unknown as ProductQueryRow[];
+  const allRows = options.dataScope === "operational"
+    ? (productsResult.data ?? []).map((row) => {
+        const category = referenceData.categories.find((item) => item.id === row.category_id) ?? null;
+        const unit = referenceData.units.find((item) => item.id === row.unit_id) ?? null;
+        return {
+          ...row,
+          purchase_price: 0,
+          sale_price: 0,
+          supplier_name: null,
+          category,
+          unit,
+        } as unknown as ProductQueryRow;
+      })
+    : (productsResult.data ?? []) as unknown as ProductQueryRow[];
   const stockFilteredRows =
     filters.stock === "low"
       ? allRows.filter((product) => getStockStatus(product) !== "ok")
@@ -437,6 +463,7 @@ export async function getProductsCatalogData(
           productIds,
           referenceData.qbUnits,
           options.parametrizationScope ?? "full",
+          options.dataScope !== "operational",
         )
       : Promise.resolve(getEmptyQbParametrizationData()),
     productIds.length

@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  await requireRoleAccess("/ingresos/compras-almacen");
+  const auth = await requireRoleAccess("/ingresos/compras-almacen");
   const supplied = request.nextUrl.searchParams.get("date");
   const date = supplied && /^\d{4}-\d{2}-\d{2}$/.test(supplied) ? supplied : todayInBolivia();
-  const { catalog, rows, expenses, error } = await getWarehousePurchases(date);
+  const { catalog, rows, expenses, error } = await getWarehousePurchases(date, auth.user.role!);
   if (error) return new Response("No se pudo cargar la hoja de compras.", { status: 503 });
 
   const units = new Map(catalog.qbUnits.map((unit) => [unit.id, unit.name]));

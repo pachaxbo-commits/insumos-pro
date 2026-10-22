@@ -6,7 +6,7 @@ import {
   getStockStatus,
 } from "@/lib/products/utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Profile } from "@/types/auth";
+import type { Profile, UserRole } from "@/types/auth";
 import type {
   ProductCategory,
   ProductWithRelations,
@@ -99,13 +99,13 @@ function getQbIngresosWarning(message: string) {
   return "No pudimos cargar el registro de ingresos. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
 }
 
-export async function getQbIngresosData(): Promise<QbIngresosData> {
+export async function getQbIngresosData(role: UserRole): Promise<QbIngresosData> {
   noStore();
 
   const [catalogData, supabase] = await Promise.all([
     getProductsCatalogData(
       { status: "active" },
-      { includeQbParametrization: true },
+      { includeQbParametrization: true, dataScope: role === "administrador" ? "administrator" : "operational" },
     ),
     createSupabaseServerClient(),
   ]);
@@ -157,6 +157,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
   }
 
   const rows = (receiptsResult.data ?? []) as unknown as ReceiptQueryRow[];
+  const productsById = new Map(catalogData.products.map((product) => [product.id, product]));
 
   return {
     ...baseData,
@@ -176,7 +177,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
 
             return {
               ...line,
-              product: product ? normalizeProduct(product) : null,
+              product: product ? normalizeProduct(product) : productsById.get(line.product_id) ?? null,
               classification_results: (line.classification_results ?? [])
                 .map((result) => {
                   const outputProduct = Array.isArray(result.output_product)
@@ -187,7 +188,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
                     ...result,
                     output_product: outputProduct
                       ? normalizeProduct(outputProduct)
-                      : null,
+                      : result.output_product_id ? productsById.get(result.output_product_id) ?? null : null,
                   };
                 })
                 .sort(
@@ -204,7 +205,7 @@ export async function getQbIngresosData(): Promise<QbIngresosData> {
                   ...movement,
                   product: movementProduct
                     ? normalizeProduct(movementProduct)
-                    : null,
+                    : movement.product_id ? productsById.get(movement.product_id) ?? null : null,
                 };
               }),
             };

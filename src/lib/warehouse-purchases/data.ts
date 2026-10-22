@@ -2,6 +2,7 @@ import "server-only";
 
 import { getQbIngresosData } from "@/lib/qb-ingresos/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { UserRole } from "@/types/auth";
 
 export type WarehousePurchase = {
   id: string;
@@ -76,8 +77,8 @@ type PurchaseRow = {
   }[] | null;
 };
 
-export async function getWarehousePurchases(date: string) {
-  const catalog = await getQbIngresosData();
+export async function getWarehousePurchases(date: string, role: UserRole) {
+  const catalog = await getQbIngresosData(role);
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: "Supabase no disponible." };
 
@@ -110,7 +111,7 @@ export async function getWarehousePurchases(date: string) {
       date: receipt.receipt_date,
       status: receipt.status,
       productId: row.product_id,
-      productName: product?.name ?? "Producto",
+      productName: product?.name ?? catalog.products.find((item) => item.id === row.product_id)?.name ?? "Producto",
       unitLabel: row.source_label,
       quantity: Number(row.source_quantity),
       unitPrice: Number(row.unit_cost),

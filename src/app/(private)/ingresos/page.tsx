@@ -8,7 +8,7 @@ import { getQbIngresosData } from "@/lib/qb-ingresos/data";
 
 export default async function IngresosPage() {
   const auth = await requireRoleAccess("/ingresos");
-  const data = await getQbIngresosData();
+  const data = await getQbIngresosData(auth.user.role!);
   const canManage = auth.user.role === "administrador" || auth.user.role === "inventario";
 
   return (

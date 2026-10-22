@@ -15,7 +15,7 @@ export default async function WarehousePurchasesPage({
   const params = await searchParams;
   const date = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
     ? params.date : todayInBolivia();
-  const data = await getWarehousePurchases(date);
+  const data = await getWarehousePurchases(date, auth.user.role!);
   return (
     <main className="qb-warehouse-purchase-print-page space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">

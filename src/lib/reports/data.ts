@@ -221,12 +221,12 @@ function userName(profiles: Map<string, Row>, id: unknown) {
   return str(profile?.full_name, str(profile?.email, "No registrado"));
 }
 
-async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
+async function fetchBundle(filters: QbReportFilters, role: UserRole): Promise<Bundle | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
 
   const productsQuery = supabase
-    .from("products")
+    .from("qb_operational_products")
     .select("id, name, sku, category_id, unit_id, stock_current, stock_min, is_active, requires_classification, is_sellable, is_qb_loss_product, created_at, updated_at")
     .order("name", { ascending: true });
 
@@ -244,8 +244,8 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     supabase.from("product_categories").select("id, name, is_active").order("name", { ascending: true }),
     supabase.from("qb_units").select("id, symbol, name").order("sort_order", { ascending: true }),
     supabase
-      .from("qb_product_unit_settings")
-      .select("product_id, base_unit_id, base_inventory_unit_id, base_price_unit_id, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active"),
+      .from("qb_operational_product_unit_settings")
+      .select("product_id, base_unit_id, base_inventory_unit_id, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active"),
     supabase
       .from("qb_product_classification_outputs")
       .select("id, source_product_id, output_product_id, output_type, label, is_active"),
@@ -344,8 +344,8 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
       : Promise.resolve({ data: [], error: null }),
     orderIds.length
       ? supabase
-          .from("qb_order_items")
-          .select("id, order_id, product_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, base_quantity, base_unit_symbol, customer_notes")
+          .from("qb_operational_order_items")
+          .select("id, order_id, product_id, source_label, requested_quantity, order_input_mode, estimated_requested_quantity, base_quantity, base_unit_symbol, customer_notes")
           .in("order_id", orderIds)
           .limit(2500)
       : Promise.resolve({ data: [], error: null }),
@@ -386,10 +386,18 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
       : Promise.resolve({ data: [], error: null }),
   ]);
 
+  const adminOrderAmounts = role === "administrador" && orderIds.length
+    ? await supabase.from("qb_order_items")
+        .select("id, requested_amount_bs")
+        .in("order_id", orderIds)
+        .limit(2500)
+    : { data: [], error: null };
+
   if (
     merchandiseLinesResult.error ||
     classificationResultsResult.error ||
     orderItemsResult.error ||
+    adminOrderAmounts.error ||
     preparationsResult.error ||
     deliveryMovementsResult.error ||
     receiptOrdersResult.error ||
@@ -433,7 +441,13 @@ async function fetchBundle(filters: QbReportFilters): Promise<Bundle | null> {
     merchandiseLines: (merchandiseLinesResult.data ?? []) as Row[],
     classificationResults: (classificationResultsResult.data ?? []) as Row[],
     orders: (ordersResult.data ?? []) as Row[],
-    orderItems: (orderItemsResult.data ?? []) as Row[],
+    orderItems: (() => {
+      const amountsById = new Map((adminOrderAmounts.data ?? []).map((row) => [getId(row.id), row.requested_amount_bs]));
+      return ((orderItemsResult.data ?? []) as Row[]).map((row) => ({
+        ...row,
+        ...(role === "administrador" ? { requested_amount_bs: amountsById.get(getId(row.id)) ?? null } : {}),
+      }));
+    })(),
     preparations: (preparationsResult.data ?? []) as Row[],
     preparationItems,
     deliveryMovements,
@@ -904,7 +918,7 @@ export async function getQbReportsData(
     return emptyData(permissions, "Tu rol actual no tiene acceso a Reportes.");
   }
 
-  const bundle = await fetchBundle(filters);
+  const bundle = await fetchBundle(filters, role);
   if (!bundle) {
     return emptyData(
       permissions,

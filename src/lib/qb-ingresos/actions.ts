@@ -278,12 +278,12 @@ export async function createQbMerchandiseReceiptAction(
   }
   const [productResult, settingsResult, allowedUnitResult] = await Promise.all([
     access.supabase
-      .from("products")
+      .from("qb_operational_products")
       .select("id, name, is_active, requires_classification")
       .eq("id", input.product_id)
       .maybeSingle<{ id: string; name: string; is_active: boolean; requires_classification: boolean }>(),
     access.supabase
-      .from("qb_product_unit_settings")
+      .from("qb_operational_product_unit_settings")
       .select(
         "product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, is_classifiable, classification_mode, is_qb_active",
       )

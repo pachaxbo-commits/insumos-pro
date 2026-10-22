@@ -71,17 +71,17 @@ export async function getStockProducts(): Promise<{ products: StockProductRow[];
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { products: [], error: "Supabase no está disponible." };
   const { data: productData, error: productError } = await supabase
-    .from("products")
-    .select("id,name,category_id,stock_current,stock_min,is_active,category:product_categories(name)")
+    .from("qb_operational_products")
+    .select("id,name,category_id,stock_current,stock_min,is_active,category_name")
     .order("name", { ascending: true });
   if (productError) return { products: [], error: "No pudimos cargar las existencias." };
   const products = (productData ?? []) as unknown as Array<{
     id: string; name: string; category_id: string | null; stock_current: number | string;
     stock_min: number | string; is_active: boolean;
-    category: { name: string } | Array<{ name: string }> | null;
+    category_name: string | null;
   }>;
   if (!products.length) return { products: [], error: null };
-  const { data: settingsData } = await supabase.from("qb_product_unit_settings")
+  const { data: settingsData } = await supabase.from("qb_operational_product_unit_settings")
     .select("product_id,base_inventory_unit_id,inventory_unit_id,base_unit_id")
     .in("product_id", products.map((product) => product.id));
   const settings = (settingsData ?? []) as Array<{
@@ -98,12 +98,11 @@ export async function getStockProducts(): Promise<{ products: StockProductRow[];
     products: products.map((product) => {
       const setting = settingsByProduct.get(product.id);
       const unitId = setting?.base_inventory_unit_id ?? setting?.inventory_unit_id ?? setting?.base_unit_id;
-      const category = Array.isArray(product.category) ? product.category[0] : product.category;
       return {
         id: product.id,
         name: product.name,
         categoryId: product.category_id,
-        categoryName: category?.name ?? "Sin categoría",
+        categoryName: product.category_name ?? "Sin categoría",
         stockCurrent: Number(product.stock_current ?? 0),
         stockMin: Number(product.stock_min ?? 0),
         unitSymbol: unitId ? symbols.get(unitId) ?? "Unidad sin configurar" : "Unidad sin configurar",
