@@ -27,6 +27,9 @@ export type ResetPreview = {
 };
 
 export async function getTestDataResetPreview(mode: ResetMode) {
+  if (!testDataResetEnabled()) {
+    return { data: null, error: "La limpieza de datos de prueba no está disponible en este entorno." };
+  }
   await requireRoleAccess("/configuracion/datos-prueba");
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { data: null, error: "Supabase no está disponible." };
@@ -40,7 +43,7 @@ export async function resetTestDataAction(
 ): Promise<ResetActionState> {
   const auth = await requireRoleAccess("/configuracion/datos-prueba");
   if (auth.user.role !== "administrador") return { success: false, message: "Acceso denegado." };
-  if (!testDataResetEnabled()) return { success: false, message: "La limpieza está desactivada en el servidor." };
+  if (!testDataResetEnabled()) return { success: false, message: "La limpieza de datos de prueba no está disponible en este entorno." };
   const mode = formData.get("mode");
   if (mode !== "receipts" && mode !== "orders" && mode !== "stock") return { success: false, message: "Selecciona un grupo válido." };
   if (formData.get("confirmation") !== "BORRAR DATOS") return { success: false, message: "Escribe BORRAR DATOS exactamente." };

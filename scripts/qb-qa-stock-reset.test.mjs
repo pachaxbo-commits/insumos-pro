@@ -3,18 +3,27 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const migration = await readFile(new URL("../supabase/migrations/20260930200000_qb_qa_stock_reset.sql", import.meta.url), "utf8");
+const retirementMigration = await readFile(new URL("../supabase/migrations/20261022180000_disable_legacy_test_resets.sql", import.meta.url), "utf8");
+const archiveGuardMigration = await readFile(new URL("../supabase/migrations/20261024130000_qb_cleanup_issued_receipt_archive_guard.sql", import.meta.url), "utf8");
 const actions = await readFile(new URL("../src/lib/test-data-reset/actions.ts", import.meta.url), "utf8");
+const config = await readFile(new URL("../src/lib/test-data-reset/config.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../src/app/(private)/configuracion/datos-prueba/page.tsx", import.meta.url), "utf8");
 const form = await readFile(new URL("../src/components/settings/test-data-reset-form.tsx", import.meta.url), "utf8");
 
-test("stock QA remains gated by admin, server flag and exact confirmation", () => {
+test("legacy reset is unavailable in Production and blocked at the database API", () => {
   assert.match(migration, /auth\.role\(\) <> 'service_role'/);
   assert.match(migration, /p\.is_active = true and p\.role = 'administrador'/);
   assert.match(migration, /p_confirmation is distinct from 'BORRAR DATOS'/);
-  assert.match(migration, /grant execute on function public\.reset_qb_stock_test_data\(uuid, text\) to service_role/);
+  assert.match(retirementMigration, /revoke all on function public\.execute_qb_test_data_reset\(uuid, text, text\)[\s\S]*from public, anon, authenticated, service_role/);
+  assert.match(retirementMigration, /revoke all on function public\.reset_qb_stock_test_data\(uuid, text\)[\s\S]*from public, anon, authenticated, service_role/);
+  assert.match(archiveGuardMigration, /session_user in \('postgres','supabase_admin'\)/);
+  assert.match(archiveGuardMigration, /current_user in \('postgres','supabase_admin'\)/);
+  assert.match(archiveGuardMigration, /current_setting\('qb\.prepublication_cleanup_run_id'/);
   assert.match(actions, /if \(!testDataResetEnabled\(\)\)/);
-  assert.match(actions, /if \(auth\.user\.role !== "administrador"\)/);
-  assert.match(actions, /reset_qb_stock_test_data/);
+  assert.match(actions, /auth\.user\.role !== "administrador"/);
+  assert.match(config, /return false/);
+  assert.doesNotMatch(config, /ALLOW_TEST_DATA_RESET ===/);
+  assert.ok(page.indexOf("if (!enabled)") < page.indexOf("Promise.all"));
 });
 
 test("stock reset is atomic and clears FIFO, receipts, ledger before balances", () => {

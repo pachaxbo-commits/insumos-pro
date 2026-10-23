@@ -41,10 +41,15 @@ Los eventos operativos que referencian operaciones eliminadas pasan juntos al
 archivo. El registro conserva la fila completa, clave original, hash, lote y
 clasificación. Las auditorías de seguridad, administrativas y de unidades siguen
 en sus tablas activas. No se deshabilitan constraints ni se borran logs a ciegas.
-La bóveda no está expuesta a PostgREST ni a roles de aplicación. La recuperación
-consiste en restaurar el respaldo verificado en una base separada; no se promete
-reinsertar arbitrariamente snapshots en tablas activas ya que podría reactivar
-operaciones de prueba.
+Las filas archivadas pueden contener nombres, correos, teléfonos y otros datos
+personales. La bóveda no está expuesta a PostgREST ni a `anon`, `authenticated`
+o `service_role`; el acceso requiere una sesión directa de administrador de
+PostgreSQL. Los respaldos y exportaciones de esa bóveda deben cifrarse, limitarse
+a operadores autorizados y conservarse solo durante el plazo que apruebe el
+propietario conforme a su política de retención. Ese plazo aún debe aprobarse.
+La recuperación consiste en restaurar el respaldo verificado en una base
+separada; no se promete reinsertar arbitrariamente snapshots en tablas activas
+ya que podría reactivar operaciones de prueba.
 
 ## Ejecución controlada futura
 
@@ -67,3 +72,18 @@ operaciones de prueba.
 El ejecutor no debe correrse en Production hasta que el propietario apruebe el
 alcance exacto de una vista previa reciente. Si aparece una fila nueva o editada,
 la función rechaza el snapshot y exige repetir la revisión.
+
+## Retiro de resets heredados
+
+`/configuracion/datos-prueba` deja de mostrar formularios ni solicitar vistas
+previas en Production. La acción de servidor comprueba el entorno, el dominio
+productivo y el ref Supabase productivo antes de consultar o ejecutar RPC; la
+bandera `ALLOW_TEST_DATA_RESET` no puede habilitarlo allí por accidente. La
+migración `20261022180000_disable_legacy_test_resets.sql` revoca `EXECUTE` de
+las dos RPC destructivas heredadas para todos los roles de aplicación, incluido
+`service_role`. Las pruebas QA deben usar fixtures y transacciones con rollback;
+la limpieza heredada queda retirada en todos los entornos.
+La migración incremental `20261024130000_qb_cleanup_issued_receipt_archive_guard.sql`
+mantiene la protección de recibos emitidos y permite su archivo solamente dentro
+de la rutina autorizada de limpieza con sesión y propietario administrador de
+PostgreSQL.
