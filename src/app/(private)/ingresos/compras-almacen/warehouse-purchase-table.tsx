@@ -34,6 +34,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
   const [pickerId, setPickerId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const productPickerTriggers = useRef(new Map<number, HTMLButtonElement>());
 
   const unitById = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
   const presentationById = useMemo(() => new Map(presentations.map((item) => [item.id, item])), [presentations]);
@@ -192,7 +193,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
               const valid = !!draft.productId && !!draft.purchaseOptionId && (draft.purchaseOptionId !== UNMEASURED_COMMERCIAL || draft.commercialLabel.trim().length > 0) && Number(draft.quantity) > 0 && draft.unitPrice !== "" && Number(draft.unitPrice) >= 0;
               return <tr key={draft.id} className="border-t bg-emerald-50/40 align-top print:hidden">
                 <td className="border-r p-2">{rows.length + index + 1}</td>
-                <td className="border-r p-2"><button type="button" onClick={() => { setPickerId(draft.id); setSearch(""); }} style={product?.matrixColor ? { borderLeft: `4px solid ${product.matrixColor}`, backgroundColor: `color-mix(in srgb, ${product.matrixColor} 16%, white)` } : undefined} className="w-full rounded-md border bg-white px-2 py-2 text-left font-medium text-slate-950 hover:border-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-700 print:[print-color-adjust:exact]">{product?.name ?? "Seleccionar producto…"}</button></td>
+                <td className="border-r p-2"><button ref={(element) => { if (element) productPickerTriggers.current.set(draft.id, element); else productPickerTriggers.current.delete(draft.id); }} type="button" onClick={() => { setPickerId(draft.id); setSearch(""); }} style={product?.matrixColor ? { borderLeft: `4px solid ${product.matrixColor}`, backgroundColor: `color-mix(in srgb, ${product.matrixColor} 16%, white)` } : undefined} className="w-full rounded-md border bg-white px-2 py-2 text-left font-medium text-slate-950 hover:border-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-700 print:[print-color-adjust:exact]">{product?.name ?? "Seleccionar producto…"}</button></td>
                 <td className="border-r p-2"><select aria-label={`Unidad de compra fila ${index + 1}`} value={draft.purchaseOptionId} onChange={(event) => updateDraft(draft.id, { purchaseOptionId: event.target.value, commercialLabel: "" })} disabled={!product || (purchaseUnits.length === 0 && !hasPhysicalBase)} className="w-full rounded-md border bg-white px-2 py-2 disabled:bg-slate-100"><option value="">{purchaseUnits.length ? "Seleccionar" : "Sin unidades físicas compatibles"}</option>{purchaseUnits.map((unit) => <option key={unit.id} value={unit.id}>{purchaseOptionLabel(unit.id, draft.productId)}</option>)}{hasPhysicalBase ? <option value={UNMEASURED_COMMERCIAL}>Presentación comercial sin equivalencia</option> : null}</select>{draft.purchaseOptionId === UNMEASURED_COMMERCIAL ? <><input aria-label={`Nombre de presentación comercial fila ${index + 1}`} value={draft.commercialLabel} onChange={(event) => updateDraft(draft.id, { commercialLabel: event.target.value })} maxLength={120} placeholder="Ej.: CARGA, CHIPA, AMARRO" className="mt-1 w-full rounded-md border px-2 py-1.5" /><p className="mt-1 max-w-48 text-xs text-amber-800">Se guarda sin conversión. Registra la cantidad física útil medida antes de ingresar stock.</p></> : null}{product && purchaseUnits.length === 0 && !hasPhysicalBase ? <p role="status" className="mt-1 max-w-48 text-xs text-amber-800">Este producto no tiene una unidad física base válida. Configura la unidad de inventario antes de registrar la compra. {canConfigureUnits ? <Link className="font-semibold underline" href="/parametrizacion">Revisar configuración</Link> : "Solicita al administrador que revise la unidad de inventario."}</p> : null}</td>
                 <td className="border-r p-2"><input aria-label={`Cantidad fila ${index + 1}`} type="number" min="0.000001" step="any" value={draft.quantity} onChange={(event) => updateDraft(draft.id, { quantity: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
                 <td className="border-r p-2"><input aria-label={`Precio unitario fila ${index + 1}`} type="number" min="0" step="any" value={draft.unitPrice} onChange={(event) => updateDraft(draft.id, { unitPrice: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
@@ -212,7 +213,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
       <p className="mt-2 text-xs text-slate-500 print:hidden">Guardar una fila crea un borrador. El stock cambia solamente al confirmar su ingreso físico.</p>
     </section>
     {showExpenses ? <WarehouseExpenseSection key={date} date={date} initialExpenses={expenses} merchandiseTotal={sheetTotal} canManage={canManage} /> : null}
-    {pickerId !== null ? <WarehouseProductPicker products={filteredProducts} query={search} onQuery={setSearch} onClose={() => setPickerId(null)} onSelect={(product) => { updateDraft(pickerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); }} /> : null}
+    {pickerId !== null ? <WarehouseProductPicker products={filteredProducts} query={search} onQuery={setSearch} onClose={() => { const triggerId = pickerId; setPickerId(null); requestAnimationFrame(() => productPickerTriggers.current.get(triggerId)?.focus()); }} onSelect={(product) => { const triggerId = pickerId; updateDraft(triggerId, { productId: product.id, purchaseOptionId: "", commercialLabel: "", referenceUnitId: "", referencePrice: "", referenceMode: "auto" }); setPickerId(null); requestAnimationFrame(() => productPickerTriggers.current.get(triggerId)?.focus()); }} /> : null}
     {confirmId ? <div role="dialog" aria-modal="true" aria-label="Confirmar ingreso a stock" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 className="text-lg font-semibold">Confirmar ingreso a stock</h3><p className="mt-2 text-sm">{rows.find((row) => row.receiptId === confirmId)?.productName}: esta compra sumará físicamente al stock una sola vez. Verifica que la cantidad medida sea correcta.</p>{message?.text && !message.success ? <p role="alert" className="mt-2 text-sm text-rose-700">{message.text}</p> : null}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmId(null)} className="rounded-lg border px-3 py-2">Cancelar</button><button type="button" disabled={pending} onClick={confirmPurchase} className="rounded-lg bg-emerald-800 px-3 py-2 text-white disabled:opacity-50">Confirmar ingreso</button></div></div></div> : null}
   </div>;
 }
@@ -225,8 +226,33 @@ function WarehouseProductPicker({ products, query, onQuery, onClose, onSelect }:
   onSelect: (product: Product) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(-1);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function keepTabInsideDialog(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    ));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   function moveActive(delta: number) {
     setActiveIndex((current) => {
@@ -240,11 +266,10 @@ function WarehouseProductPicker({ products, query, onQuery, onClose, onSelect }:
     });
   }
 
-  return <div role="dialog" aria-modal="true" aria-label="Seleccionar producto" className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={onClose} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={query} onChange={(event) => { onQuery(event.target.value); setActiveIndex(-1); }} onKeyDown={(event) => {
+  return <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Seleccionar producto" onKeyDown={keepTabInsideDialog} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4 print:hidden"><div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-semibold">Seleccionar producto</h3><button type="button" onClick={onClose} aria-label="Cerrar selector de producto" className="rounded-md border px-2 py-1">Cerrar</button></div><input autoFocus aria-label="Buscar producto" placeholder="Buscar producto…" value={query} onChange={(event) => { onQuery(event.target.value); setActiveIndex(-1); }} onKeyDown={(event) => {
     if (event.key === "ArrowDown" && products.length) { event.preventDefault(); moveActive(1); }
     else if (event.key === "ArrowUp" && products.length) { event.preventDefault(); moveActive(-1); }
     else if (event.key === "Enter" && products[activeIndex]) { event.preventDefault(); onSelect(products[activeIndex]); }
-    else if (event.key === "Escape") { event.preventDefault(); onClose(); }
   }} className="mb-3 w-full rounded-lg border px-3 py-2" /><div ref={listRef} role="listbox" aria-label="Productos encontrados" className="max-h-80 overflow-y-auto rounded-lg border">{!query.trim() ? <p className="p-3 text-sm text-slate-500">Escribe el nombre para buscar productos.</p> : products.length === 0 ? <p className="p-3 text-sm text-slate-500">Sin coincidencias.</p> : products.map((product, index) => <button ref={(element) => { optionRefs.current[index] = element; }} key={product.id} type="button" role="option" aria-selected={index === activeIndex} tabIndex={-1} onMouseEnter={() => setActiveIndex(index)} onClick={() => onSelect(product)} className={`block w-full border-b px-3 py-2 text-left text-sm ${index === activeIndex ? "bg-emerald-50 outline outline-1 outline-emerald-700" : "hover:bg-emerald-50"}`}>{product.name}</button>)}</div></div></div>;
 }
 
