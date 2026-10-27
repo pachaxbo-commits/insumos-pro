@@ -31,11 +31,20 @@ test("purchase by commercial CARGA keeps commercial total independent from measu
 });
 
 test("selected order products are a live alphabetical view of the submitted line state", () => {
-  assert.match(creator, /Productos seleccionados/);
-  assert.match(creator, /\.sort\(\(left, right\) => \(productIndex\.get\(left\.productId\)/);
+  assert.match(creator, /Ver seleccionados/);
+  assert.match(creator, /Dialog open=\{cartOpen\}/);
+  assert.match(creator, /Carrito · Productos seleccionados/);
+  assert.match(creator, /h-\[min\(82dvh,44rem\)\]/);
+  assert.match(creator, /sm:w-\[min\(32rem,100vw\)\]/);
+  assert.match(creator, /const selectedLinesAlphabetical = useMemo/);
+  assert.match(creator, /localeCompare\([\s\S]*?"es"/);
+  assert.match(creator, /selectedLinesAlphabetical\.map/);
   assert.match(creator, /lines\.map/);
   assert.match(creator, /onClick=\{\(\) => toggleProduct\(line\.productId\)\}/);
   assert.match(creator, /returnToSelectedProduct\(line\.productId\)/);
+  assert.match(creator, /focusProductAfterCartCloseRef/);
+  assert.match(creator, /onCloseAutoFocus=\{\(event\) =>/);
+  assert.doesNotMatch(creator, /selected-order-products/);
   assert.match(creator, /onKeyDown=\{\(event\) => \{\s*if \(event\.key === "Enter"\) event\.preventDefault\(\);/);
 });
 
