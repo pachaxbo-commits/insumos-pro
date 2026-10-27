@@ -45,7 +45,7 @@ async function rpc(
     if (name === "confirm_qb_matrix_delivery" && error.message.includes("QB_STOCK_INSUFFICIENT")) {
       const orderId = String(payload.p_order_id ?? "");
       const { data: deliveryItems, error: deliveryItemsError } = await supabase.from("qb_order_delivery_items")
-        .select("product_id,prepared_base_quantity_snapshot")
+        .select("product_id,warehouse_used_base_quantity,prepared_base_quantity_snapshot")
         .eq("order_id", orderId);
       if (deliveryItemsError) {
         return { success: false, message: "No se pudo leer la cantidad preparada para explicar el bloqueo. Recarga la matriz y vuelve a revisar la entrega." };
@@ -63,13 +63,14 @@ async function rpc(
       const productsById = new Map((products ?? []).map((product) => [String(product.id), product]));
       const insufficient = (deliveryItems ?? []).find((item) => {
         const product = productsById.get(String(item.product_id));
-        return product && Number(product.stock_current ?? 0) + 0.000001 < Number(item.prepared_base_quantity_snapshot ?? 0);
+        const requestedWarehouse = Number(item.warehouse_used_base_quantity ?? item.prepared_base_quantity_snapshot ?? 0);
+        return product && Number(product.stock_current ?? 0) + 0.000001 < requestedWarehouse;
       });
       if (insufficient) {
         const product = productsById.get(String(insufficient.product_id));
         const unit = product?.unit_abbreviation ? ` ${product.unit_abbreviation}` : "";
         const quantity = (value: unknown) => new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(Number(value ?? 0));
-        const needed = Number(insufficient.prepared_base_quantity_snapshot ?? 0);
+        const needed = Number(insufficient.warehouse_used_base_quantity ?? insufficient.prepared_base_quantity_snapshot ?? 0);
         const available = Number(product?.stock_current ?? 0);
         return {
           success: false,
@@ -105,10 +106,14 @@ export async function saveMatrixPreparationAction(input: unknown) {
     actualWeightKg: quantity.nullable(),
     displayUnitId,
     note: z.string().max(500),
+    pendingBaseQuantity: quantity,
+    externalBaseQuantity: quantity,
+    reviewBaseQuantity: quantity,
+    originPlanConfirmed: z.boolean(),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_item_with_unit", {
+  return rpc("save_qb_matrix_preparation_origin_with_unit", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
@@ -116,6 +121,10 @@ export async function saveMatrixPreparationAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
+    p_pending_base_quantity: parsed.data.pendingBaseQuantity,
+    p_external_base_quantity: parsed.data.externalBaseQuantity,
+    p_review_base_quantity: parsed.data.reviewBaseQuantity,
+    p_origin_plan_confirmed: parsed.data.originPlanConfirmed,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "inventario", "supervisor"], false);
 }
@@ -130,10 +139,15 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     actualWeightKg: quantity.nullable(),
     displayUnitId,
     note: z.string().max(500),
+    warehouseBaseQuantity: quantity,
+    pendingBaseQuantity: quantity,
+    externalDefinitiveBaseQuantity: quantity,
+    reviewBaseQuantity: quantity,
+    sourceOriginConfirmed: z.boolean(),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Entrega invalida." };
-  return rpc("save_qb_matrix_delivery_item_with_unit", {
+  return rpc("save_qb_matrix_delivery_origin_with_unit", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_externally_sourced_quantity: parsed.data.externalQuantity,
@@ -142,6 +156,11 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     p_actual_weight_kg: parsed.data.actualWeightKg,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
+    p_warehouse_base_quantity: parsed.data.warehouseBaseQuantity,
+    p_pending_base_quantity: parsed.data.pendingBaseQuantity,
+    p_external_definitive_base_quantity: parsed.data.externalDefinitiveBaseQuantity,
+    p_review_base_quantity: parsed.data.reviewBaseQuantity,
+    p_source_origin_confirmed: parsed.data.sourceOriginConfirmed,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "entregador"], false);
 }

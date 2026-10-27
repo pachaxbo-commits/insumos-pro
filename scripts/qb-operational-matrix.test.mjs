@@ -28,6 +28,7 @@ const [
   preparationWeightBaseline,
   actualWeightPricing,
   visibleCheckCounts,
+  explicitOrigin,
 ] = await Promise.all([
   read(
     "supabase/migrations/20260723130000_qb_operational_matrix_foundation.sql",
@@ -70,9 +71,10 @@ const [
     "supabase/migrations/20260812010000_qb_actual_weight_unit_and_pricing.sql",
   ),
   read("src/lib/operational-matrix/visible-check-counts.ts"),
+  read("supabase/migrations/20261027100000_qb_explicit_delivery_origin.sql"),
 ]);
 
-const newSources = [foundation, workflows, factors, matrix, actions, docs].join(
+const newSources = [foundation, workflows, factors, matrix, actions, docs, explicitOrigin].join(
   "\n",
 );
 const matrixData = await read("src/lib/operational-matrix/data.ts");
@@ -122,8 +124,11 @@ assert.match(
   workflows,
   /v_role not in \('admin', 'administrador', 'inventario'\)/,
 );
-assert.match(actions, /save_qb_matrix_preparation_item/);
-assert.match(actions, /save_qb_matrix_delivery_item/);
+assert.match(actions, /save_qb_matrix_preparation_origin_with_unit/);
+assert.match(actions, /save_qb_matrix_delivery_origin_with_unit/);
+assert.match(explicitOrigin, /save_qb_matrix_preparation_item_with_unit/);
+assert.match(explicitOrigin, /save_qb_matrix_delivery_item_with_unit/);
+assert.match(explicitOrigin, /warehouse_used_base_quantity/);
 assert.match(actions, /Number\.isFinite\(Date\.parse\(value\)\)/);
 assert.doesNotMatch(actions, /expectedUpdatedAt: z\.string\(\)\.datetime\(\)/);
 assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
@@ -151,8 +156,9 @@ assert.match(matrix, /scrollIntoView/);
 assert.match(matrixData, /customer_account_id/);
 assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
-assert.match(matrix, /const shouldCopyWeight/);
-assert.match(matrix, /line\.preparationActualWeightKg !== null/);
+assert.match(matrix, /function applyAutomaticDeliveryValues\(lines: MatrixLine\[\]\)/);
+assert.match(matrix, /Delivery is a physical event/);
+assert.doesNotMatch(matrix, /deliveredQuantity:\s*line\.preparedQuantity/);
 assert.doesNotMatch(matrixData, /rawDeliveryWeight <= 0\.000001/);
 assert.match(
   matrixData,
@@ -190,16 +196,16 @@ assert.match(
 );
 assert.match(matrix, /function QuantityEditor/);
 assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
-assert.match(matrix, /deliveryCheck: true/);
+assert.match(matrix, /deliveryCheck: checked/);
 assert.match(matrix, /function hasDeliveryCheck/);
 assert.match(
   matrix,
-  /return line\.preparationCheck \|\| line\.deliveryCheck/,
+  /return line\.deliveryCheck/,
 );
 assert.match(matrix, /Check de Entrega faltante/);
 assert.match(
   matrix,
-  /disabled=\{deliveryDisabled \|\| line\.preparationCheck\}/,
+  /disabled=\{deliveryDisabled\}/,
 );
 assert.match(matrix, /summarizeVisibleProductChecks\(/);
 assert.match(visibleCheckCounts, /cellLines\.every\(isChecked\)/);
@@ -299,7 +305,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(matrix, /needsDeliveryReview && !line\.deliveryCheck\s+\? null/);
 assert.match(matrix, /!line\.deliveredAt &&\s+line\.deliveryVersion === 0/);
-assert.match(matrix, /line\.deliveredQuantity - line\.preparedQuantity/);
+assert.doesNotMatch(matrix, /Externo calculado/);
 assert.match(
   legacyFlow,
   /'admin', 'administrador', 'inventario', 'entregador'/,
