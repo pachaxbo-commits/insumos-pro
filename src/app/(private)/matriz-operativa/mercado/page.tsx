@@ -37,9 +37,15 @@ export default async function MarketPrintPage({
     pendingSummary.oldestPendingDate ?? todayInBolivia(),
   );
 
-  const data = !isAllPending
-    ? await getOperationalMatrixData(date, auth.user.role)
-    : null;
+  let data: Awaited<ReturnType<typeof getOperationalMatrixData>> | null = null;
+  let dataError = false;
+  if (!isAllPending) {
+    try {
+      data = await getOperationalMatrixData(date, auth.user.role);
+    } catch {
+      dataError = true;
+    }
+  }
   const model = data ? buildMarketSheetModel(data) : null;
 
   return (
@@ -87,7 +93,12 @@ export default async function MarketPrintPage({
         </p>
       </div>
 
-      {isAllPending ? (
+      {dataError ? (
+        <section role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <h2 className="font-semibold">No se pudo cargar la Hoja de Provisión</h2>
+          <p className="mt-1">No se pudieron consultar los pedidos y sus cantidades para {date}. Actualiza la página o prueba otra fecha; el inventario no fue modificado.</p>
+        </section>
+      ) : isAllPending ? (
         <AllPendingSummaryView
           summary={pendingSummary}
           basePath="/matriz-operativa/mercado"

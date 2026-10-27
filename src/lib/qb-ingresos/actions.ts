@@ -631,7 +631,7 @@ export async function createQbMerchandiseReceiptAction(
     });
     if (error) return { success: false, message: error.message };
     revalidateQbIngresos();
-    return { success: true, message: "Compra guardada como borrador; el ingreso físico sigue pendiente de medición." };
+    return { success: true, message: "Compra guardada como borrador. El total comercial quedó registrado; ahora puedes ingresar la cantidad física realmente recibida en Cargar stock. El stock cambiará al confirmar el ingreso." };
   }
 
   const { data: receipt, error: receiptError } = await access.supabase

@@ -144,6 +144,7 @@ export function InternalOrderCreator({
   const historyRequestRef = useRef(0);
   const catalogSentinelRef = useRef<HTMLDivElement>(null);
   const catalogScrollContainerRef = useRef<HTMLDivElement>(null);
+  const selectedProductToFocusRef = useRef<string | null>(null);
   const selectedCustomer = customers.find(
     (customer) => customer.id === customerId,
   );
@@ -267,6 +268,16 @@ export function InternalOrderCreator({
   }, [catalogGroups.alphabetical.length]);
 
   useEffect(() => {
+    const productId = selectedProductToFocusRef.current;
+    if (!productId) return;
+    const target = document.querySelector<HTMLElement>(`[data-order-product-id="${productId}"]`);
+    if (!target) return;
+    selectedProductToFocusRef.current = null;
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.focus({ preventScroll: true });
+  }, [catalogGroups.latest, catalogGroups.visibleAlphabetical, selectedCategory, productSearch]);
+
+  useEffect(() => {
     const request = ++historyRequestRef.current;
     if (!customerId || !locationId) return;
 
@@ -349,6 +360,15 @@ export function InternalOrderCreator({
     setSelectionMessage("");
   }
 
+  function returnToSelectedProduct(productId: string) {
+    const product = productIndex.get(productId);
+    if (!product) return;
+    selectedProductToFocusRef.current = productId;
+    setSelectedCategory("all");
+    setProductSearch(product.name);
+    setCatalogLimit(PRODUCT_BATCH_SIZE);
+  }
+
   function productRow(productId: string) {
     const product = productIndex.get(productId);
     if (!product) return null;
@@ -367,6 +387,7 @@ export function InternalOrderCreator({
 
     return (
       <div
+        data-order-product-id={product.id}
         key={product.id}
         role="button"
         tabIndex={0}
@@ -968,6 +989,9 @@ export function InternalOrderCreator({
                 type="search"
                 value={productSearch}
                 onChange={(event) => handleProductSearchChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
                 placeholder="Buscar por producto o categoría"
                 aria-label="Buscar en todos los productos"
                 className="h-11 border-2 border-slate-300 bg-white pl-9 text-base focus-visible:border-blue-600"
@@ -1007,6 +1031,34 @@ export function InternalOrderCreator({
                 </div>
               ) : null}
             </div>
+
+            <section aria-labelledby="selected-order-products" className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 sm:p-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 id="selected-order-products" className="font-semibold text-emerald-950">Productos seleccionados</h4>
+                  <p className="text-xs text-slate-600">Resumen alfabético del mismo formulario; editar o quitar aquí actualiza el pedido.</p>
+                </div>
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-emerald-900">{lines.length} {lines.length === 1 ? "producto" : "productos"}</span>
+              </div>
+              {lines.length ? <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {[...lines].sort((left, right) => (productIndex.get(left.productId)?.name ?? "").localeCompare(productIndex.get(right.productId)?.name ?? "", "es"))
+                  .map((line) => {
+                    const product = productIndex.get(line.productId);
+                    const unit = product?.allowedUnits.find((item) => item.id === line.allowedUnitId);
+                    return <li key={line.key} className="flex min-w-0 items-start justify-between gap-2 rounded-lg border bg-white p-2.5 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900">{product?.name ?? "Producto"}</p>
+                        <p className="text-xs tabular-nums text-slate-700">{line.quantity || "—"} {unit?.label ?? "Unidad"}</p>
+                        {line.notes.trim() ? <p className="mt-1 line-clamp-2 text-xs text-slate-500">{line.notes}</p> : null}
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button type="button" size="xs" variant="outline" onClick={() => returnToSelectedProduct(line.productId)}>Editar</Button>
+                        <Button type="button" size="xs" variant="ghost" className="text-rose-700" onClick={() => toggleProduct(line.productId)}>Quitar</Button>
+                      </div>
+                    </li>;
+                  })}
+              </ul> : <p className="rounded-lg border border-dashed bg-white px-3 py-4 text-center text-sm text-slate-500">Todavía no seleccionaste productos.</p>}
+            </section>
 
             {/* Mobile Floating Bottom Bar */}
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur-xs sm:hidden">
