@@ -18,7 +18,7 @@ test("todos los productos muestran cantidad y peso sin depender de la bandera de
   assert.match(matrix, /line\.deliveryActualWeightKg !== null\s*\?/);
 });
 
-test("entrega hereda peso opcional y conserva el cero ingresado explícitamente", () => {
+test("entrega conserva el peso opcional sin inferirlo de preparación", () => {
   const start = matrix.indexOf("function applyAutomaticDeliveryValues(");
   const end = matrix.indexOf("function mergeServerLines(", start);
   const js = ts.transpileModule(`export ${matrix.slice(start, end)}`, {
@@ -28,9 +28,9 @@ test("entrega hereda peso opcional y conserva el cero ingresado explícitamente"
   runInNewContext(js, { exports: exported, hasCompletePreparation: () => true });
   const base = { controlsActualWeight: false, preparedAt: "saved", preparationCheck: true, deliveredAt: null, deliveryVersion: 0, preparedQuantity: 5,
     deliveredQuantity: 0, preparationActualWeightKg: 0.416, deliveryActualWeightKg: null };
-  assert.equal(exported.applyAutomaticDeliveryValues([base])[0].deliveryActualWeightKg, 0.416);
+  assert.equal(exported.applyAutomaticDeliveryValues([base])[0].deliveryActualWeightKg, null);
   assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveryActualWeightKg: 0 }])[0].deliveryActualWeightKg, 0);
-  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, preparationActualWeightKg: 0 }])[0].deliveryActualWeightKg, 0);
+  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, preparationActualWeightKg: 0 }])[0].deliveryActualWeightKg, null);
   assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveredAt: "saved", deliveryActualWeightKg: 0.25 }])[0].deliveryActualWeightKg, 0.25);
 });
 

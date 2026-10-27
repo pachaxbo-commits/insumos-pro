@@ -27,6 +27,7 @@ declare
   v_pending_order uuid;
   v_pending_item uuid;
   v_pending_updated_at timestamptz;
+  v_pending_version integer;
   v_pending_movements integer;
   v_denied boolean;
   v_conflict boolean;
@@ -220,16 +221,63 @@ begin
   );
   select id into v_pending_item from public.qb_order_items where order_id = v_pending_order;
   perform set_config('request.jwt.claim.sub', v_inventory::text, true);
+  -- Compatibility guard: the previous UI only calls this RPC and cannot
+  -- confirm the new origin fields. It must fail closed without finalizing.
+  perform public.save_qb_matrix_preparation_item(
+    v_pending_item, 0, 0, false, 'legacy-client compatibility probe', 'legacy-prep-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  v_denied := false;
+  begin
+    perform public.finalize_qb_matrix_preparation(
+      v_pending_order, v_pending_updated_at, 'legacy-finalize-prep-contract'
+    );
+  exception when others then
+    v_denied := sqlerrm like 'Revisa y confirma el reparto del origen%';
+  end;
+  if not coalesce(v_denied, false)
+    or (select status from public.qb_orders where id = v_pending_order) <> 'en_preparacion'
+    or (select stock_current from public.products where id = v_product) <> 97
+  then
+    raise exception 'QB_MATRIX_LEGACY_PREPARATION_DID_NOT_FAIL_CLOSED';
+  end if;
+
+  select row_version into v_pending_version
+  from public.qb_order_preparation_items where order_item_id = v_pending_item;
   perform public.save_qb_matrix_preparation_origin_with_unit(
-    v_pending_item, 0, 0, false, null, 'original', null,
+    v_pending_item, v_pending_version, 0, false, null, 'original', null,
     5, 0, 0, true, 'prepare-pending-only-contract'
   );
   select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
   perform public.finalize_qb_matrix_preparation(v_pending_order, v_pending_updated_at, 'finalize-pending-only-contract');
 
   perform set_config('request.jwt.claim.sub', v_delivery::text, true);
+  -- The old delivery UI cannot provide source_origin_confirmed. Its finalizer
+  -- must leave the order prepared and must not debit stock or create a movement.
+  perform public.save_qb_matrix_delivery_item(
+    v_pending_item, 0, 5, 5, true, 'legacy-client compatibility probe', 'legacy-delivery-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  v_denied := false;
+  begin
+    perform public.confirm_qb_matrix_delivery(
+      v_pending_order, v_pending_updated_at, 'legacy-finalize-delivery-contract'
+    );
+  exception when others then
+    v_denied := sqlerrm like 'Revisa la entrega física y confirma el origen real%';
+  end;
+  if not coalesce(v_denied, false)
+    or (select status from public.qb_orders where id = v_pending_order) <> 'preparado'
+    or (select stock_current from public.products where id = v_product) <> 97
+    or exists (select 1 from public.qb_order_delivery_movements where order_id = v_pending_order)
+  then
+    raise exception 'QB_MATRIX_LEGACY_DELIVERY_DID_NOT_FAIL_CLOSED';
+  end if;
+
+  select row_version into v_pending_version
+  from public.qb_order_delivery_items where order_item_id = v_pending_item;
   perform public.save_qb_matrix_delivery_origin_with_unit(
-    v_pending_item, 0, 5, 5, true, null, 'original', null,
+    v_pending_item, v_pending_version, 5, 5, true, null, 'original', null,
     0, 5, 0, 0, true, 'delivery-pending-only-contract'
   );
   select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;

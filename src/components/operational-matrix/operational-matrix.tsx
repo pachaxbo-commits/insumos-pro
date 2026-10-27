@@ -2176,7 +2176,7 @@ function OriginSplitEditor({ line, stage, disabled, onChange }: {
     ? [
         { key: "warehouse", label: "Desde almacén", base: line.preparedQuantity * factor },
         { key: "pending", label: "Pendiente de ingreso hoy", base: line.plannedPendingBaseQuantity },
-        { key: "external", label: "Abastecimiento externo definitivo", base: line.plannedExternalBaseQuantity },
+        { key: "external", label: "Externo definitivo", base: line.plannedExternalBaseQuantity },
         { key: "review", label: "Origen por verificar", base: line.plannedReviewBaseQuantity },
       ]
     : [
@@ -2190,6 +2190,12 @@ function OriginSplitEditor({ line, stage, disabled, onChange }: {
     pendingToday: preparation ? line.plannedPendingBaseQuantity : line.deliveryPendingBaseQuantity,
     externalDefinitive: preparation ? line.plannedExternalBaseQuantity : line.deliveryExternalBaseQuantity,
     review: preparation ? line.plannedReviewBaseQuantity : line.deliveryReviewBaseQuantity,
+  };
+  const originDescriptions: Record<string, string> = {
+    warehouse: "Se descontará del stock disponible cuando se confirme la entrega.",
+    pending: "La mercadería ya se entregará al cliente, pero todavía debe registrarse su ingreso físico. Un ingreso compatible confirmado durante la misma jornada conciliará la cantidad correspondiente.",
+    external: "Se compra directamente para el cliente y no se descontará del almacén.",
+    review: "Todavía no se conoce la procedencia. Debe resolverse antes de confirmar la entrega.",
   };
   const total = originDistributionTotal(origin);
   const expected = preparation
@@ -2221,21 +2227,23 @@ function OriginSplitEditor({ line, stage, disabled, onChange }: {
       <legend className="px-1 text-[11px] font-semibold text-sky-950">
         {preparation ? "¿De dónde saldrá este producto?" : "Origen físico de lo entregado"}
       </legend>
-      <p className="mb-2 text-[10px] text-slate-700">
+      <p className="mb-2 text-xs leading-5 text-slate-700">
         {preparation
           ? `Pedido: ${formatQuantity(line.requestedQuantity)} ${line.sourceLabel}. La preparación no descuenta stock.`
           : `Entrega física: ${formatQuantity(expected)} ${line.baseUnitSymbol}. Solo almacén descuenta stock; el pendiente se concilia únicamente con un ingreso de hoy.`}
       </p>
       {preparation ? (
-        <p className="mb-2 text-[10px] font-medium text-slate-800">
+        <p className="mb-2 text-xs leading-5 font-medium text-slate-800">
           Desde almacén: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
           {` · existencia informativa: ${formatQuantity(line.stockCurrent)} ${line.baseUnitSymbol}`}
+          <span className="mt-0.5 block font-normal text-slate-600">{originDescriptions.warehouse}</span>
         </p>
       ) : null}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {components.filter((item) => !preparation || item.key !== "warehouse").map((item) => (
-          <label key={item.key} className="block space-y-0.5 text-[10px] font-medium text-slate-800">
-          <span>{item.label} ({preparation ? line.sourceLabel : line.baseUnitSymbol})</span>
+          <label key={item.key} className="block space-y-1 text-xs font-medium leading-4 text-slate-800">
+          <span className="block">{item.label} ({preparation ? line.sourceLabel : line.baseUnitSymbol})</span>
+            <span className="block min-h-8 text-[11px] font-normal leading-4 text-slate-600">{originDescriptions[item.key]}</span>
             <DecimalInput
               label={`${item.label} de ${line.productName}`}
             value={preparation ? baseQuantityToSource(item.base, factor) : item.base}
