@@ -68,13 +68,15 @@ test("delivery denial reports product and available quantity while server stock 
 });
 
 test("origin choices explain their inventory effect and same-day rule", () => {
-  assert.match(matrix, /warehouse: "Se descontará del stock disponible cuando se confirme la entrega\."/);
-  assert.match(matrix, /Pendiente de ingreso hoy/);
-  assert.match(matrix, /label: "Externo definitivo"/);
-  assert.match(matrix, /Un ingreso compatible confirmado durante la misma jornada conciliará la cantidad correspondiente\./);
-  assert.match(matrix, /Se compra directamente para el cliente y no se descontará del almacén\./);
-  assert.match(matrix, /Todavía no se conoce la procedencia\. Debe resolverse antes de confirmar la entrega\./);
-  assert.match(matrix, /text-\[11px\] font-normal leading-4 text-slate-600/);
+  assert.match(matrix, /Origen de la mercadería · este pedido/);
+  assert.match(matrix, /warehouse: "Todos los productos entregados en este pedido salen del almacén\. Al confirmar, se descuenta únicamente la cantidad realmente entregada/);
+  assert.match(matrix, /pending: "La mercadería se entregó físicamente, pero su ingreso al almacén todavía no está registrado\./);
+  assert.match(matrix, /external: "La mercadería se compró directamente por fuera para ese cliente\. Se registra la entrega normalmente, sin descontar inventario\./);
+  assert.match(matrix, /<option value="warehouse">Desde almacén<\/option>/);
+  assert.match(matrix, /<option value="pending">Ingreso pendiente de hoy<\/option>/);
+  assert.match(matrix, /<option value="external">Venta externa<\/option>/);
+  assert.match(matrix, /Origen mixto/);
+  assert.match(matrix, /Antes de confirmar la entrega, indica de dónde salió la mercadería\./);
 });
 
 test("receipt summary counts sending and payment state without inventing ledger movements", () => {
