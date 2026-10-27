@@ -989,6 +989,9 @@ export function InternalOrderCreator({
                 type="search"
                 value={productSearch}
                 onChange={(event) => handleProductSearchChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
                 placeholder="Buscar por producto o categoría"
                 aria-label="Buscar en todos los productos"
                 className="h-11 border-2 border-slate-300 bg-white pl-9 text-base focus-visible:border-blue-600"

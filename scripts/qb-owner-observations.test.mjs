@@ -36,6 +36,7 @@ test("selected order products are a live alphabetical view of the submitted line
   assert.match(creator, /lines\.map/);
   assert.match(creator, /onClick=\{\(\) => toggleProduct\(line\.productId\)\}/);
   assert.match(creator, /returnToSelectedProduct\(line\.productId\)/);
+  assert.match(creator, /onKeyDown=\{\(event\) => \{\s*if \(event\.key === "Enter"\) event\.preventDefault\(\);/);
 });
 
 test("provision link opens the date-specific sheet and route reports data failures", () => {
