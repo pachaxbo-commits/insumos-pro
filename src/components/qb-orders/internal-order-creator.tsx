@@ -16,6 +16,8 @@ import {
   Plus,
   Search,
   Send,
+  ShoppingCart,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   createQbInternalOrderAction,
   updateQbInternalOrderAction,
@@ -132,6 +142,7 @@ export function InternalOrderCreator({
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [catalogLimit, setCatalogLimit] = useState(PRODUCT_BATCH_SIZE);
   const [selectionMessage, setSelectionMessage] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
   const [stepMessage, setStepMessage] = useState("");
   const [state, setState] = useState<QbOrderActionState>(initialState);
   const [pending, startTransition] = useTransition();
@@ -145,6 +156,7 @@ export function InternalOrderCreator({
   const catalogSentinelRef = useRef<HTMLDivElement>(null);
   const catalogScrollContainerRef = useRef<HTMLDivElement>(null);
   const selectedProductToFocusRef = useRef<string | null>(null);
+  const focusProductAfterCartCloseRef = useRef(false);
   const selectedCustomer = customers.find(
     (customer) => customer.id === customerId,
   );
@@ -155,6 +167,16 @@ export function InternalOrderCreator({
   const productIndex = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products],
+  );
+  const selectedLinesAlphabetical = useMemo(
+    () =>
+      [...lines].sort((left, right) =>
+        (productIndex.get(left.productId)?.name ?? "").localeCompare(
+          productIndex.get(right.productId)?.name ?? "",
+          "es",
+        ),
+      ),
+    [lines, productIndex],
   );
 
   const categoryFilters = useMemo(() => {
@@ -275,7 +297,7 @@ export function InternalOrderCreator({
     selectedProductToFocusRef.current = null;
     target.scrollIntoView({ block: "center", behavior: "smooth" });
     target.focus({ preventScroll: true });
-  }, [catalogGroups.latest, catalogGroups.visibleAlphabetical, selectedCategory, productSearch]);
+  }, [cartOpen, catalogGroups.latest, catalogGroups.visibleAlphabetical, selectedCategory, productSearch]);
 
   useEffect(() => {
     const request = ++historyRequestRef.current;
@@ -364,9 +386,68 @@ export function InternalOrderCreator({
     const product = productIndex.get(productId);
     if (!product) return;
     selectedProductToFocusRef.current = productId;
+    focusProductAfterCartCloseRef.current = true;
+    setCartOpen(false);
     setSelectedCategory("all");
     setProductSearch(product.name);
     setCatalogLimit(PRODUCT_BATCH_SIZE);
+  }
+
+  function selectedProductsList() {
+    return selectedLinesAlphabetical.length ? (
+      <ul className="space-y-2">
+        {selectedLinesAlphabetical.map((line) => {
+          const product = productIndex.get(line.productId);
+          const unit = product?.allowedUnits.find(
+            (item) => item.id === line.allowedUnitId,
+          );
+          return (
+            <li
+              key={line.key}
+              className="flex min-w-0 items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="break-words font-semibold text-slate-900">
+                  {product?.name ?? "Producto"}
+                </p>
+                <p className="mt-0.5 text-xs tabular-nums text-slate-700">
+                  {line.quantity || "—"} {unit?.label ?? "Unidad"}
+                </p>
+                {line.notes.trim() ? (
+                  <p className="mt-1 whitespace-pre-wrap break-words text-xs text-slate-500">
+                    {line.notes}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => returnToSelectedProduct(line.productId)}
+                >
+                  Editar
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  className="text-rose-700"
+                  onClick={() => toggleProduct(line.productId)}
+                  aria-label={`Quitar ${product?.name ?? "producto"}`}
+                >
+                  Quitar
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    ) : (
+      <p className="rounded-lg border border-dashed bg-white px-3 py-8 text-center text-sm text-slate-500">
+        Todavía no seleccionaste productos.
+      </p>
+    );
   }
 
   function productRow(productId: string) {
@@ -847,7 +928,66 @@ export function InternalOrderCreator({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Ver productos seleccionados: ${lines.length}`}
+                      className="border-emerald-300 font-semibold text-emerald-900 hover:bg-emerald-50"
+                    >
+                      <ShoppingCart className="size-4" aria-hidden="true" />
+                      <span>Ver seleccionados</span>
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[11px] tabular-nums">
+                        {lines.length}
+                      </span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent
+                    showCloseButton={false}
+                    onCloseAutoFocus={(event) => {
+                      if (focusProductAfterCartCloseRef.current) {
+                        event.preventDefault();
+                        focusProductAfterCartCloseRef.current = false;
+                      }
+                    }}
+                    className="fixed inset-x-0 bottom-0 left-0 top-auto z-50 flex h-[min(82dvh,44rem)] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-t-2xl border border-slate-200 bg-white p-0 shadow-2xl sm:inset-y-0 sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:w-[min(32rem,100vw)] sm:max-w-none sm:rounded-l-2xl sm:rounded-tr-none sm:translate-x-0 sm:translate-y-0"
+                  >
+                    <DialogHeader className="shrink-0 border-b border-emerald-100 p-4 pr-14 sm:p-5 sm:pr-16">
+                      <DialogTitle className="text-lg font-semibold text-emerald-950">
+                        Carrito · Productos seleccionados
+                      </DialogTitle>
+                      <DialogDescription>
+                        {lines.length} {lines.length === 1 ? "producto" : "productos"} · Orden alfabético
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Cerrar carrito"
+                      className="absolute right-3 top-3"
+                      onClick={() => setCartOpen(false)}
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </Button>
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+                      {selectedProductsList()}
+                    </div>
+                    <div className="shrink-0 border-t bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setCartOpen(false)}
+                      >
+                        Seguir seleccionando
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
                 <Button
                   type="button"
                   variant="outline"
@@ -1031,34 +1171,6 @@ export function InternalOrderCreator({
                 </div>
               ) : null}
             </div>
-
-            <section aria-labelledby="selected-order-products" className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 sm:p-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h4 id="selected-order-products" className="font-semibold text-emerald-950">Productos seleccionados</h4>
-                  <p className="text-xs text-slate-600">Resumen alfabético del mismo formulario; editar o quitar aquí actualiza el pedido.</p>
-                </div>
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-emerald-900">{lines.length} {lines.length === 1 ? "producto" : "productos"}</span>
-              </div>
-              {lines.length ? <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {[...lines].sort((left, right) => (productIndex.get(left.productId)?.name ?? "").localeCompare(productIndex.get(right.productId)?.name ?? "", "es"))
-                  .map((line) => {
-                    const product = productIndex.get(line.productId);
-                    const unit = product?.allowedUnits.find((item) => item.id === line.allowedUnitId);
-                    return <li key={line.key} className="flex min-w-0 items-start justify-between gap-2 rounded-lg border bg-white p-2.5 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-900">{product?.name ?? "Producto"}</p>
-                        <p className="text-xs tabular-nums text-slate-700">{line.quantity || "—"} {unit?.label ?? "Unidad"}</p>
-                        {line.notes.trim() ? <p className="mt-1 line-clamp-2 text-xs text-slate-500">{line.notes}</p> : null}
-                      </div>
-                      <div className="flex shrink-0 gap-1">
-                        <Button type="button" size="xs" variant="outline" onClick={() => returnToSelectedProduct(line.productId)}>Editar</Button>
-                        <Button type="button" size="xs" variant="ghost" className="text-rose-700" onClick={() => toggleProduct(line.productId)}>Quitar</Button>
-                      </div>
-                    </li>;
-                  })}
-              </ul> : <p className="rounded-lg border border-dashed bg-white px-3 py-4 text-center text-sm text-slate-500">Todavía no seleccionaste productos.</p>}
-            </section>
 
             {/* Mobile Floating Bottom Bar */}
             <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur-xs sm:hidden">
