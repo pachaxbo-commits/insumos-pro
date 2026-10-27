@@ -51,6 +51,8 @@ export type MatrixLine = {
   provisionCostUnit: number | null;
   requestedQuantity: number;
   requestedBaseQuantity: number;
+  /** Canonical base quantity for one unit in the order's source unit. */
+  basePerSourceQuantity: number;
   requestedNote: string;
   requestedVersion: number;
   preparedQuantity: number;
@@ -59,6 +61,10 @@ export type MatrixLine = {
   preparationCheck: boolean;
   preparationActualWeightKg: number | null;
   preparationNote: string;
+  originPlanConfirmed: boolean;
+  plannedPendingBaseQuantity: number;
+  plannedExternalBaseQuantity: number;
+  plannedReviewBaseQuantity: number;
   preparationVersion: number;
   preparedBy: string | null;
   preparedAt: string | null;
@@ -70,6 +76,11 @@ export type MatrixLine = {
   deliveryCheck: boolean;
   deliveryActualWeightKg: number | null;
   deliveryNote: string;
+  deliveryWarehouseBaseQuantity: number;
+  deliveryPendingBaseQuantity: number;
+  deliveryExternalBaseQuantity: number;
+  deliveryReviewBaseQuantity: number;
+  deliverySourceConfirmed: boolean;
   deliveryVersion: number;
   deliveredBy: string | null;
   deliveredAt: string | null;

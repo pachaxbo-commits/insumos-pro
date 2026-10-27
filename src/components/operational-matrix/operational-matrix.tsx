@@ -23,6 +23,13 @@ import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-s
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
 import {
+  baseQuantityToSource,
+  originDistributionIsResolved,
+  originDistributionMatches,
+  originDistributionTotal,
+  sourceQuantityToBase,
+} from "@/lib/operational-matrix/origin-distribution";
+import {
   classifySameDayDeliverySourceAction,
   confirmMatrixDeliveryAction,
   correctMatrixRequestAction,
@@ -198,7 +205,14 @@ function sumLines(
     | "preparedBaseQuantity"
     | "externalQuantity"
     | "deliveredQuantity"
-    | "deliveredBaseQuantity",
+    | "deliveredBaseQuantity"
+    | "plannedPendingBaseQuantity"
+    | "plannedExternalBaseQuantity"
+    | "plannedReviewBaseQuantity"
+    | "deliveryWarehouseBaseQuantity"
+    | "deliveryPendingBaseQuantity"
+    | "deliveryExternalBaseQuantity"
+    | "deliveryReviewBaseQuantity",
 ) {
   return lines.reduce((total, line) => total + line[field], 0);
 }
@@ -235,6 +249,9 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     ...first,
     requestedQuantity: sumLines(lines, "requestedQuantity"),
     requestedBaseQuantity: sumLines(lines, "requestedBaseQuantity"),
+    basePerSourceQuantity: sumLines(lines, "requestedQuantity") > 0
+      ? sumLines(lines, "requestedBaseQuantity") / sumLines(lines, "requestedQuantity")
+      : first.basePerSourceQuantity,
     requestedNote: uniqueText(lines.map((line) => line.requestedNote)).join(
       " | ",
     ),
@@ -245,6 +262,10 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     preparationNote: uniqueText(lines.map((line) => line.preparationNote)).join(
       " | ",
     ),
+    originPlanConfirmed: lines.every((line) => line.originPlanConfirmed),
+    plannedPendingBaseQuantity: sumLines(lines, "plannedPendingBaseQuantity"),
+    plannedExternalBaseQuantity: sumLines(lines, "plannedExternalBaseQuantity"),
+    plannedReviewBaseQuantity: sumLines(lines, "plannedReviewBaseQuantity"),
     preparedAt: lines.every((line) => line.preparedAt)
       ? first.preparedAt
       : null,
@@ -256,6 +277,11 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     deliveryNote: uniqueText(lines.map((line) => line.deliveryNote)).join(
       " | ",
     ),
+    deliveryWarehouseBaseQuantity: sumLines(lines, "deliveryWarehouseBaseQuantity"),
+    deliveryPendingBaseQuantity: sumLines(lines, "deliveryPendingBaseQuantity"),
+    deliveryExternalBaseQuantity: sumLines(lines, "deliveryExternalBaseQuantity"),
+    deliveryReviewBaseQuantity: sumLines(lines, "deliveryReviewBaseQuantity"),
+    deliverySourceConfirmed: lines.every((line) => line.deliverySourceConfirmed),
   };
 }
 
@@ -276,39 +302,17 @@ function distributeValue(lines: MatrixLine[], total: number) {
 }
 
 function hasCompletePreparation(line: MatrixLine) {
-  return Boolean(
-    line.preparedAt && line.preparationCheck && !line.preparationNote.trim(),
-  );
+  return Boolean(line.preparedAt && line.originPlanConfirmed);
 }
 
 function hasDeliveryCheck(line: MatrixLine) {
-  return line.preparationCheck || line.deliveryCheck;
+  return line.deliveryCheck;
 }
 
 function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
-  return lines.map((line) => {
-    if (!line.preparedAt || !line.preparationCheck || line.deliveredAt) return line;
-
-    const shouldCopyQuantity = line.deliveryVersion === 0;
-    const shouldCopyWeight =
-      line.preparationActualWeightKg !== null &&
-      line.deliveryActualWeightKg === null;
-
-    if (!shouldCopyQuantity && !shouldCopyWeight) return line;
-    return {
-      ...line,
-      ...(shouldCopyQuantity
-        ? {
-            deliveredQuantity: line.preparedQuantity,
-            deliveryDisplayUnitId: line.preparationDisplayUnitId,
-            deliveryCheck: true,
-          }
-        : {}),
-      ...(shouldCopyWeight
-        ? { deliveryActualWeightKg: line.preparationActualWeightKg }
-        : {}),
-    };
-  });
+  // Delivery is a physical event. Never infer that requested/prepared quantity
+  // was delivered or that an unclassified remainder came from an external source.
+  return lines;
 }
 
 function mergeServerLines(
@@ -340,6 +344,10 @@ function mergeServerLines(
         preparationCheck: current.preparationCheck,
         preparationActualWeightKg: current.preparationActualWeightKg,
         preparationNote: current.preparationNote,
+        originPlanConfirmed: current.originPlanConfirmed,
+        plannedPendingBaseQuantity: current.plannedPendingBaseQuantity,
+        plannedExternalBaseQuantity: current.plannedExternalBaseQuantity,
+        plannedReviewBaseQuantity: current.plannedReviewBaseQuantity,
         preparationVersion: current.preparationVersion,
         preparedBy: current.preparedBy,
         preparedAt: current.preparedAt,
@@ -355,6 +363,11 @@ function mergeServerLines(
         deliveryCheck: current.deliveryCheck,
         deliveryActualWeightKg: current.deliveryActualWeightKg,
         deliveryNote: current.deliveryNote,
+        deliveryWarehouseBaseQuantity: current.deliveryWarehouseBaseQuantity,
+        deliveryPendingBaseQuantity: current.deliveryPendingBaseQuantity,
+        deliveryExternalBaseQuantity: current.deliveryExternalBaseQuantity,
+        deliveryReviewBaseQuantity: current.deliveryReviewBaseQuantity,
+        deliverySourceConfirmed: current.deliverySourceConfirmed,
         deliveryVersion: current.deliveryVersion,
         deliveredBy: current.deliveredBy,
         deliveredAt: current.deliveredAt,
@@ -602,6 +615,15 @@ export function OperationalMatrix({
       typeof patch.deliveredQuantity === "number"
         ? distributeValue(groupedLines, patch.deliveredQuantity)
         : [];
+    const distributedBaseFields = new Map<string, number[]>();
+    for (const field of [
+      "plannedPendingBaseQuantity", "plannedExternalBaseQuantity", "plannedReviewBaseQuantity",
+      "deliveryWarehouseBaseQuantity", "deliveryPendingBaseQuantity",
+      "deliveryExternalBaseQuantity", "deliveryReviewBaseQuantity",
+    ] as const) {
+      const value = patch[field];
+      if (typeof value === "number") distributedBaseFields.set(field, distributeValue(groupedLines, value));
+    }
     const indexById = new Map(
       groupedLines.map((line, index) => [line.orderItemId, index]),
     );
@@ -635,6 +657,9 @@ export function OperationalMatrix({
         next.deliveryActualWeightKg =
           patch.deliveryActualWeightKg === null ? null : deliveryWeights[index];
       }
+      for (const [field, values] of distributedBaseFields) {
+        (next[field as keyof MatrixLine] as number) = values[index] ?? 0;
+      }
       return next;
     });
     linesRef.current = updatedLines;
@@ -648,7 +673,7 @@ export function OperationalMatrix({
     setFormStatus("pendiente");
     const missingIds = new Set(
       groupedLines
-        .filter((line) => !line.preparationCheck)
+        .filter((line) => !line.deliveryCheck)
         .map((line) => line.orderItemId),
     );
     if (!missingIds.size) return;
@@ -658,19 +683,6 @@ export function OperationalMatrix({
       return {
         ...line,
         deliveryCheck: checked,
-        deliveredQuantity:
-          checked && line.deliveredQuantity <= 0.000001
-            ? line.requestedQuantity
-            : line.deliveredQuantity,
-        deliveryDisplayUnitId:
-          checked && line.deliveryVersion === 0
-            ? line.preparationDisplayUnitId
-            : line.deliveryDisplayUnitId,
-        deliveryActualWeightKg:
-          checked &&
-          line.deliveryActualWeightKg === null
-            ? line.preparationActualWeightKg
-            : line.deliveryActualWeightKg,
       };
     });
     linesRef.current = updatedLines;
@@ -696,6 +708,7 @@ export function OperationalMatrix({
         const response = result.data as {
           row_version?: unknown;
           order_updated_at?: unknown;
+          delivered_base_quantity?: unknown;
         };
         const version = Number(response.row_version);
         if (Number.isInteger(version)) {
@@ -704,6 +717,9 @@ export function OperationalMatrix({
               ? {
                   ...line,
                   [versionField]: Math.max(line[versionField], version),
+                  ...(versionField === "deliveryVersion" && Number.isFinite(Number(response.delivered_base_quantity))
+                    ? { deliveredBaseQuantity: Number(response.delivered_base_quantity) }
+                    : {}),
                 }
               : line,
           );
@@ -756,10 +772,15 @@ export function OperationalMatrix({
           orderItemId: line.orderItemId,
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
-          preparationCheck: line.preparationCheck,
+          preparationCheck: line.originPlanConfirmed &&
+            Math.abs(line.preparedQuantity - line.requestedQuantity) <= 0.000001,
           actualWeightKg: line.preparationActualWeightKg,
           displayUnitId: line.preparationDisplayUnitId,
           note: line.preparationNote,
+          pendingBaseQuantity: line.plannedPendingBaseQuantity,
+          externalBaseQuantity: line.plannedExternalBaseQuantity,
+          reviewBaseQuantity: line.plannedReviewBaseQuantity,
+          originPlanConfirmed: line.originPlanConfirmed,
           idempotencyKey: idempotencyKey("prep"),
         });
         finishSave(line.orderItemId, result, "preparationVersion");
@@ -809,10 +830,7 @@ export function OperationalMatrix({
             result: { success: false, message: "Línea no disponible." },
           };
         }
-        const externalQuantity = Math.max(
-          line.deliveredQuantity - line.preparedQuantity,
-          0,
-        );
+        const externalQuantity = Math.max(line.deliveredQuantity - line.preparedQuantity, 0);
         const effectiveDeliveryCheck = hasDeliveryCheck(line);
         const result = await saveMatrixDeliveryAction({
           orderItemId: line.orderItemId,
@@ -828,6 +846,11 @@ export function OperationalMatrix({
             (!line.preparedAt || !line.preparationCheck
               ? "Cantidad final registrada por Entrega."
               : ""),
+          warehouseBaseQuantity: line.deliveryWarehouseBaseQuantity,
+          pendingBaseQuantity: line.deliveryPendingBaseQuantity,
+          externalDefinitiveBaseQuantity: line.deliveryExternalBaseQuantity,
+          reviewBaseQuantity: line.deliveryReviewBaseQuantity,
+          sourceOriginConfirmed: line.deliverySourceConfirmed,
           idempotencyKey: idempotencyKey("delivery"),
         });
         finishSave(line.orderItemId, result, "deliveryVersion");
@@ -954,6 +977,19 @@ export function OperationalMatrix({
         );
         return;
       }
+      const unresolvedOrigin = groupLines.find((line) => !line.deliverySourceConfirmed ||
+        !originDistributionIsResolved({
+          warehouse: line.deliveryWarehouseBaseQuantity,
+          pendingToday: line.deliveryPendingBaseQuantity,
+          externalDefinitive: line.deliveryExternalBaseQuantity,
+          review: line.deliveryReviewBaseQuantity,
+        }, expectedDeliveryBaseQuantity(line)));
+      if (unresolvedOrigin) {
+        setMessage(
+          `Confirma el origen real de ${unresolvedOrigin.productName}: almacén, pendiente de ingreso hoy y externo deben sumar exactamente lo entregado; no puede quedar cantidad por revisar.`,
+        );
+        return;
+      }
       if (
         groupLines.some(
           (line) =>
@@ -978,7 +1014,7 @@ export function OperationalMatrix({
     if (
       action === "confirm" &&
       !window.confirm(
-        `¿Confirmar la entrega de ${label}? Esta acción registrará al usuario responsable.`,
+        `¿Confirmas la entrega física de ${label}?\n\nSolo se descontará de almacén la cantidad indicada como "Desde almacén". El pendiente de ingreso hoy usará la conciliación vigente de la misma jornada. El abastecimiento externo no mueve stock.`,
       )
     ) {
       return;
@@ -1155,7 +1191,7 @@ export function OperationalMatrix({
                     ? ["pendiente_preparacion", "en_preparacion"].includes(order.status)
                     : order.deliveryStatus !== "confirmado";
                   const pending = orderLines.filter((line) => stage === "preparacion"
-                    ? !line.preparationCheck : !hasDeliveryCheck(line) || line.deliveryVersion === 0).length;
+                    ? !line.originPlanConfirmed : !hasDeliveryCheck(line) || !line.deliverySourceConfirmed || line.deliveryVersion === 0).length;
                   return (
                     <article key={order.id} className="rounded-md border">
                       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
@@ -1194,7 +1230,7 @@ export function OperationalMatrix({
                               ) : null}
                               {stage === "preparacion" || stage === "entrega" ? (
                                 <div className="space-y-2">
-                                  {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
+                                  {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false, originPlanConfirmed: false })} /> : null}
                                   {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
                                     {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
@@ -1211,34 +1247,33 @@ export function OperationalMatrix({
                                     sourceUnitHint={line.baseUnitSymbol}
                                     weightUnits={data.weightUnits}
                                     disabled={!editable}
-                                    onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0 } : { deliveredQuantity: value ?? 0 })}
+                                    onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0, originPlanConfirmed: false } : { deliveredQuantity: value ?? 0, deliverySourceConfirmed: false })}
                                     onUnitChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
                                     onWeightChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
                                     onBlur={() => void saveFormLine(line.orderItemId)}
                                   />
+                                  <OriginSplitEditor
+                                    line={line}
+                                    stage={stage}
+                                    disabled={!editable || (stage === "entrega" && order.deliveryStatus === "confirmado")}
+                                    onChange={(patch) => updateGroupedLines([line], patch)}
+                                  />
                                   <WeightPricingHint line={line} />
                                   <label className="flex items-center gap-2 text-xs font-medium">
                                     <CheckEditor
-                                      label={stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
-                                      checked={stage === "preparacion" ? line.preparationCheck : hasDeliveryCheck(line)}
+                                      label={stage === "preparacion" ? "Distribución de origen revisada" : "Entrega física verificada"}
+                                      checked={stage === "preparacion" ? line.originPlanConfirmed : line.deliveryCheck}
                                       disabled={stage === "preparacion"
-                                        ? !editable || (!line.preparationCheck && line.preparedQuantity > 0 && Math.abs(line.preparedQuantity - line.requestedQuantity) > 0.000001)
-                                        : !editable || line.preparationCheck}
+                                        ? !editable
+                                        : !editable}
                                       onChange={(checked) => {
-                                        if (stage === "preparacion") updateGroupedLines([line], {
-                                          preparationCheck: checked,
-                                          ...(checked && line.preparedQuantity <= 0 ? { preparedQuantity: line.requestedQuantity } : {}),
-                                        });
+                                        if (stage === "preparacion") updateGroupedLines([line], { originPlanConfirmed: checked });
                                         else updateMissingDeliveryChecks([line], checked);
                                       }}
                                       onBlur={() => void saveFormLine(line.orderItemId)}
                                     />
-                                    {stage === "preparacion" ? "Preparación verificada" : "Entrega verificada"}
+                                    {stage === "preparacion" ? "Origen revisado" : "Entrega física verificada"}
                                   </label>
-                                  {stage === "preparacion" && !line.preparationCheck && line.preparedQuantity > 0 &&
-                                    Math.abs(line.preparedQuantity - line.requestedQuantity) > 0.000001 ? (
-                                    <p className="text-xs text-amber-800">El check actual exige preparar exactamente lo solicitado.</p>
-                                  ) : null}
                                   <label className="block space-y-1 text-xs font-medium">Observación
                                     <NoteEditor
                                       label={"Observación de " + stage + " para " + line.productName}
@@ -1247,11 +1282,7 @@ export function OperationalMatrix({
                                       onBlur={() => void saveFormLine(line.orderItemId)}
                                     />
                                   </label>
-                                  {stage === "entrega" ? <p className="text-xs text-muted-foreground">
-                                    Frente a solicitado: {formatQuantity(line.deliveredQuantity - line.requestedQuantity)} {line.sourceLabel} ·
-                                    Frente a preparado: {formatQuantity(line.deliveredQuantity - line.preparedQuantity)} {line.sourceLabel} ·
-                                    Externo calculado: {formatQuantity(Math.max(line.deliveredQuantity - line.preparedQuantity, 0))} {line.sourceLabel}
-                                  </p> : null}
+                                  {stage === "entrega" ? <p className="text-xs text-muted-foreground">El origen externo no se calcula automáticamente. Verifica cada componente según la mercadería realmente entregada.</p> : null}
                                   {stage === "entrega" && order.deliveryStatus === "confirmado" && line.deliveryMovementId && line.deliveredBaseQuantity > 0 ? (
                                     <SameDayReconciliationControl line={line} />
                                   ) : null}
@@ -1567,7 +1598,7 @@ export function OperationalMatrix({
                             onSaveMissingDeliveryCheck={() =>
                               void saveGroupedDelivery(
                                 groupedLines
-                                  .filter((item) => !item.preparationCheck)
+                                  .filter((item) => !item.deliveryCheck)
                                   .map((item) => item.orderItemId),
                               )
                             }
@@ -1623,8 +1654,8 @@ export function OperationalMatrix({
                     rowKey,
                     rowKey,
                     (line) => stage === "entrega"
-                      ? hasDeliveryCheck(line)
-                      : line.preparationCheck,
+                      ? hasDeliveryCheck(line) && line.deliverySourceConfirmed
+                      : line.originPlanConfirmed,
                   );
                   return (
                     <th
@@ -2133,6 +2164,129 @@ function StockSplitSuggestion({ line, disabled, onAccept }: {
   );
 }
 
+function OriginSplitEditor({ line, stage, disabled, onChange }: {
+  line: MatrixLine;
+  stage: "preparacion" | "entrega";
+  disabled: boolean;
+  onChange: (patch: Partial<MatrixLine>) => void;
+}) {
+  const factor = line.basePerSourceQuantity > 0 ? line.basePerSourceQuantity : 1;
+  const preparation = stage === "preparacion";
+  const components = preparation
+    ? [
+        { key: "warehouse", label: "Desde almacén", base: line.preparedQuantity * factor },
+        { key: "pending", label: "Pendiente de ingreso hoy", base: line.plannedPendingBaseQuantity },
+        { key: "external", label: "Externo definitivo", base: line.plannedExternalBaseQuantity },
+        { key: "review", label: "Origen por verificar", base: line.plannedReviewBaseQuantity },
+      ]
+    : [
+        { key: "warehouse", label: "Entregado desde almacén", base: line.deliveryWarehouseBaseQuantity },
+        { key: "pending", label: "Entregado · pendiente de ingreso hoy", base: line.deliveryPendingBaseQuantity },
+        { key: "external", label: "Entregado · externo definitivo", base: line.deliveryExternalBaseQuantity },
+        { key: "review", label: "Entregado · origen por verificar", base: line.deliveryReviewBaseQuantity },
+      ];
+  const origin = {
+    warehouse: components[0]?.base ?? 0,
+    pendingToday: preparation ? line.plannedPendingBaseQuantity : line.deliveryPendingBaseQuantity,
+    externalDefinitive: preparation ? line.plannedExternalBaseQuantity : line.deliveryExternalBaseQuantity,
+    review: preparation ? line.plannedReviewBaseQuantity : line.deliveryReviewBaseQuantity,
+  };
+  const originDescriptions: Record<string, string> = {
+    warehouse: "Se descontará del stock disponible cuando se confirme la entrega.",
+    pending: "La mercadería ya se entregará al cliente, pero todavía debe registrarse su ingreso físico. Un ingreso compatible confirmado durante la misma jornada conciliará la cantidad correspondiente.",
+    external: "Se compra directamente para el cliente y no se descontará del almacén.",
+    review: "Todavía no se conoce la procedencia. Debe resolverse antes de confirmar la entrega.",
+  };
+  const total = originDistributionTotal(origin);
+  const expected = preparation
+    ? line.requestedBaseQuantity
+    : expectedDeliveryBaseQuantity(line);
+  const matches = originDistributionMatches(origin, expected);
+
+  const update = (key: string, value: number | null) => {
+    const normalizedValue = Math.max(value ?? 0, 0);
+    const baseValue = preparation
+      ? sourceQuantityToBase(normalizedValue, factor)
+      : Number(normalizedValue.toFixed(6));
+    if (preparation) {
+      const field = key === "pending" ? "plannedPendingBaseQuantity"
+        : key === "external" ? "plannedExternalBaseQuantity"
+        : "plannedReviewBaseQuantity";
+      onChange({ [field]: baseValue, originPlanConfirmed: false });
+    } else {
+      const field = key === "warehouse" ? "deliveryWarehouseBaseQuantity"
+        : key === "pending" ? "deliveryPendingBaseQuantity"
+        : key === "external" ? "deliveryExternalBaseQuantity"
+        : "deliveryReviewBaseQuantity";
+      onChange({ [field]: baseValue, deliverySourceConfirmed: false });
+    }
+  };
+
+  return (
+    <fieldset className="mt-2 rounded-md border border-sky-200 bg-sky-50/70 p-2 text-left">
+      <legend className="px-1 text-[11px] font-semibold text-sky-950">
+        {preparation ? "¿De dónde saldrá este producto?" : "Origen físico de lo entregado"}
+      </legend>
+      <p className="mb-2 text-xs leading-5 text-slate-700">
+        {preparation
+          ? `Pedido: ${formatQuantity(line.requestedQuantity)} ${line.sourceLabel}. La preparación no descuenta stock.`
+          : `Entrega física: ${formatQuantity(expected)} ${line.baseUnitSymbol}. Solo almacén descuenta stock; el pendiente se concilia únicamente con un ingreso de hoy.`}
+      </p>
+      {preparation ? (
+        <p className="mb-2 text-xs leading-5 font-medium text-slate-800">
+          Desde almacén: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
+          {` · existencia informativa: ${formatQuantity(line.stockCurrent)} ${line.baseUnitSymbol}`}
+          <span className="mt-0.5 block font-normal text-slate-600">{originDescriptions.warehouse}</span>
+        </p>
+      ) : null}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {components.filter((item) => !preparation || item.key !== "warehouse").map((item) => (
+          <label key={item.key} className="block space-y-1 text-xs font-medium leading-4 text-slate-800">
+          <span className="block">{item.label} ({preparation ? line.sourceLabel : line.baseUnitSymbol})</span>
+            <span className="block min-h-8 text-[11px] font-normal leading-4 text-slate-600">{originDescriptions[item.key]}</span>
+            <DecimalInput
+              label={`${item.label} de ${line.productName}`}
+            value={preparation ? baseQuantityToSource(item.base, factor) : item.base}
+              disabled={disabled}
+              attention={false}
+              onChange={(value) => update(item.key, value)}
+              onBlur={() => undefined}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[10px]">
+        <span className="font-semibold">Distribuido: {formatQuantity(total / factor)} / {formatQuantity(expected / factor)} {line.sourceLabel}</span>
+        <span className={matches ? "text-emerald-800" : "font-semibold text-amber-800"}>
+          {matches ? "Las cantidades coinciden" : "Completa la distribución; no se asignará un origen automáticamente"}
+        </span>
+      </div>
+      {!preparation && line.deliveryReviewBaseQuantity > 0.000001 ? (
+        <p className="mt-1 text-[10px] font-semibold text-amber-900">Resuelve la cantidad por verificar antes de confirmar la entrega.</p>
+      ) : null}
+      {!preparation ? (
+        <label className="mt-2 flex items-start gap-2 border-t border-sky-200 pt-2 text-[10px] font-semibold text-sky-950">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-emerald-700"
+            aria-label={`Confirmar origen físico de ${line.productName}`}
+            checked={line.deliverySourceConfirmed}
+            disabled={disabled || !matches || line.deliveryReviewBaseQuantity > 0.000001}
+            onChange={(event) => onChange({ deliverySourceConfirmed: event.target.checked })}
+          />
+          Confirmo que esta distribución corresponde al origen real de la mercadería entregada.
+        </label>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function expectedDeliveryBaseQuantity(line: MatrixLine) {
+  return line.deliveredBaseQuantity > 0
+    ? line.deliveredBaseQuantity
+    : line.deliveredQuantity * line.basePerSourceQuantity;
+}
+
 function DesktopOrderCells(props: CellProps) {
   const {
     line,
@@ -2187,9 +2341,6 @@ function DesktopOrderCells(props: CellProps) {
     );
   }
   if (stage === "preparacion") {
-    const canMarkPreparationComplete =
-      line.preparedQuantity <= 0.000001 ||
-      Math.abs(line.preparedQuantity - line.requestedQuantity) < 0.000001;
     return (
       <>
         <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
@@ -2199,20 +2350,10 @@ function DesktopOrderCells(props: CellProps) {
         </td>
         <td style={cellStyle} className={cellClass}>
           <CheckEditor
-            label={`Check bodega ${line.productName}`}
-            checked={line.preparationCheck}
-            disabled={
-              !editable ||
-              (!line.preparationCheck && !canMarkPreparationComplete)
-            }
-            onChange={(checked) =>
-              onChange({
-                preparationCheck: checked,
-                ...(checked && line.preparedQuantity <= 0.000001
-                  ? { preparedQuantity: line.requestedQuantity }
-                  : {}),
-              })
-            }
+            label={`Distribución de origen revisada ${line.productName}`}
+            checked={line.originPlanConfirmed}
+            disabled={!editable}
+            onChange={(checked) => onChange({ originPlanConfirmed: checked })}
             onBlur={onSavePreparation}
           />
         </td>
@@ -2231,6 +2372,7 @@ function DesktopOrderCells(props: CellProps) {
             onQuantityChange={(value) =>
               onChange({
                 preparedQuantity: value ?? 0,
+              originPlanConfirmed: false,
               })
             }
             onUnitChange={(value) =>
@@ -2244,7 +2386,8 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSavePreparation}
           />
           <WeightPricingHint line={line} />
-          <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => onChange({ preparedQuantity: quantity, preparationCheck: false })} />
+          <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => onChange({ preparedQuantity: quantity, preparationCheck: false, originPlanConfirmed: false })} />
+          <OriginSplitEditor line={line} stage="preparacion" disabled={!editable} onChange={onChange} />
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (
@@ -2297,7 +2440,7 @@ function DesktopOrderCells(props: CellProps) {
                 : `Check de Entrega faltante ${line.productName}`
             }
             checked={hasDeliveryCheck(line)}
-            disabled={deliveryDisabled || line.preparationCheck}
+            disabled={deliveryDisabled}
             onChange={onToggleMissingDeliveryCheck}
             onBlur={onSaveMissingDeliveryCheck}
           />
@@ -2346,6 +2489,7 @@ function DesktopOrderCells(props: CellProps) {
             <SameDayReconciliationControl line={line} />
           ) : null}
           <WeightPricingHint line={line} />
+          <OriginSplitEditor line={line} stage="entrega" disabled={deliveryDisabled || Boolean(line.deliveredAt)} onChange={onChange} />
           {deliveryReady && !needsDeliveryReview ? (
             <span className="mt-1 block text-[9px] font-medium text-emerald-800">
               Valor inicial de Inventario · editable
@@ -2462,6 +2606,27 @@ function SameDayReconciliationControl({ line }: { line: MatrixLine }) {
   const [busy, setBusy] = useState(false);
   const current = line.reconciliation;
   const canResolvePending = current?.classification === "pending" && current.reconciledQuantity === 0;
+
+  if (line.deliverySourceConfirmed) {
+    const statusLabel = current?.status === "partial"
+      ? "Conciliación parcial"
+      : current?.status === "reconciled"
+        ? "Conciliado"
+        : current?.status === "pending"
+          ? "Pendiente de ingreso de hoy"
+          : current?.status === "external_definitive"
+            ? "Externo definitivo"
+            : current?.status === "review"
+              ? "Revisión"
+              : "Sin componente externo";
+    return <div className="mt-2 rounded-md border border-slate-200 bg-white/80 p-2 text-left text-[10px]" aria-live="polite">
+      <p className="font-semibold">Origen físico confirmado · {statusLabel}</p>
+      <p>Almacén {formatQuantity(line.deliveryWarehouseBaseQuantity)} {line.baseUnitSymbol}
+        {` · Pendiente hoy ${formatQuantity(line.deliveryPendingBaseQuantity)} ${line.baseUnitSymbol}`}
+        {` · Externo ${formatQuantity(line.deliveryExternalBaseQuantity)} ${line.baseUnitSymbol}`}</p>
+      {current?.classification === "pending" ? <p>Conciliado {formatQuantity(current.reconciledQuantity)} / {formatQuantity(current.pendingQuantity)} {line.baseUnitSymbol}.</p> : null}
+    </div>;
+  }
 
   async function submit(nextClassification: "pending" | "external_definitive" | "review") {
     if (!line.deliveryMovementId) return;

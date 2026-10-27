@@ -13,6 +13,7 @@ declare
   v_product uuid := extensions.gen_random_uuid();
   v_allowed uuid := extensions.gen_random_uuid();
   v_unit uuid;
+  v_dimension uuid;
   v_order uuid;
   v_item uuid;
   v_reference text;
@@ -22,6 +23,12 @@ declare
   v_movements integer;
   v_audits integer;
   v_receipt uuid;
+  v_origin_result jsonb;
+  v_pending_order uuid;
+  v_pending_item uuid;
+  v_pending_updated_at timestamptz;
+  v_pending_version integer;
+  v_pending_movements integer;
   v_denied boolean;
   v_conflict boolean;
 begin
@@ -29,16 +36,21 @@ begin
   from public.profiles
   where role in ('admin', 'administrador') and is_active
   order by id limit 1;
-  select id into v_unit from public.qb_units where code = 'kg' and is_active limit 1;
-  if v_unit is null then
-    raise exception 'QB_MATRIX_FIXTURE_BASE_MISSING';
-  end if;
   if v_admin is null then
     v_admin := extensions.gen_random_uuid();
     insert into auth.users (id, email, created_at, updated_at)
     values (v_admin, 'matrix-admin@example.test', now(), now());
     insert into public.profiles (id, email, full_name, role, is_active)
     values (v_admin, 'matrix-admin@example.test', 'Matrix Admin', 'administrador', true);
+  end if;
+  select id into v_unit from public.qb_units where code = 'kg' and is_active limit 1;
+  if v_unit is null then
+    v_dimension := extensions.gen_random_uuid();
+    insert into public.qb_unit_dimensions (id, code, name, base_unit_code, is_active, sort_order)
+    values (v_dimension, 'matrix_workflow_' || replace(extensions.gen_random_uuid()::text, '-', ''), 'Matrix workflow fixture', 'kg', true, 900);
+    insert into public.qb_units (id, dimension_id, code, name, symbol, conversion_factor_to_base, is_base, is_active, sort_order)
+    values (extensions.gen_random_uuid(), v_dimension, 'kg', 'Kilogramo', 'KG', 1, true, true, 900)
+    returning id into v_unit;
   end if;
 
   insert into auth.users (id, email, created_at, updated_at)
@@ -74,13 +86,20 @@ begin
     v_product, v_unit, v_unit, v_unit, v_unit, 10, true,
     false, 'none', true, v_admin, v_admin
   );
-  insert into public.qb_product_allowed_units (
-    id, product_id, usage_context, unit_id, is_default,
-    quantity_step, min_quantity, is_active, created_by, updated_by
-  ) values (
-    v_allowed, v_product, 'pedido', v_unit, true,
-    1, 1, true, v_admin, v_admin
-  );
+  select id into v_allowed
+  from public.qb_product_allowed_units
+  where product_id = v_product and usage_context = 'pedido' and is_active
+  order by is_default desc, created_at
+  limit 1;
+  if v_allowed is null then
+    insert into public.qb_product_allowed_units (
+      id, product_id, usage_context, unit_id, is_default,
+      quantity_step, min_quantity, is_active, created_by, updated_by
+    ) values (
+      v_allowed, v_product, 'pedido', v_unit, true,
+      1, 1, true, v_admin, v_admin
+    );
+  end if;
 
   perform set_config('request.jwt.claim.sub', v_admin::text, true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', v_admin, 'role', 'authenticated')::text, true);
@@ -108,9 +127,18 @@ begin
   if not coalesce(v_denied, false) then raise exception 'QB_MATRIX_DELIVERY_PREPARED'; end if;
 
   perform set_config('request.jwt.claim.sub', v_inventory::text, true);
-  perform public.save_qb_matrix_preparation_item(v_item, 0, 3, false, null, 'prepare-partial-contract');
+  v_origin_result := public.save_qb_matrix_preparation_origin_with_unit(
+    v_item, 0, 3, false, null, 'original', null,
+    0, 2, 0, true, 'prepare-origin-contract'
+  );
+  if coalesce((v_origin_result->>'origin_plan_confirmed')::boolean,false) is not true then
+    raise exception 'QB_MATRIX_PREPARATION_ORIGIN_NOT_CONFIRMED';
+  end if;
   begin
-    perform public.save_qb_matrix_preparation_item(v_item, 0, 3, false, null, 'prepare-stale-contract');
+    perform public.save_qb_matrix_preparation_origin_with_unit(
+      v_item, 0, 3, false, null, 'original', null,
+      0, 2, 0, true, 'prepare-stale-contract'
+    );
   exception when sqlstate '40001' then v_conflict := true; end;
   if not coalesce(v_conflict, false) then raise exception 'QB_MATRIX_STALE_PREPARATION_ACCEPTED'; end if;
 
@@ -130,7 +158,13 @@ begin
   exception when others then v_denied := sqlerrm like 'Explica la diferencia%'; end;
   if not coalesce(v_denied, false) then raise exception 'QB_MATRIX_DIFFERENCE_WITHOUT_NOTE'; end if;
 
-  perform public.save_qb_matrix_delivery_item(v_item, 0, 2, 5, true, null, 'delivery-complete-contract');
+  v_origin_result := public.save_qb_matrix_delivery_origin_with_unit(
+    v_item, 0, 2, 5, true, null, 'original', null,
+    3, 0, 2, 0, true, 'delivery-origin-contract'
+  );
+  if coalesce((v_origin_result->>'source_origin_confirmed')::boolean,false) is not true then
+    raise exception 'QB_MATRIX_DELIVERY_ORIGIN_NOT_CONFIRMED';
+  end if;
   select updated_at into v_updated_at from public.qb_orders where id = v_order;
   perform public.confirm_qb_matrix_delivery(v_order, v_updated_at, v_confirmation_key);
 
@@ -169,6 +203,98 @@ begin
     or (select delivered_base_quantity from public.qb_order_delivery_movements where order_id = v_order) <> 5
   then
     raise exception 'QB_MATRIX_EXTERNAL_STOCK_OR_RECEIPT_CONTRACT_FAILED';
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  select created_order_id into v_pending_order
+  from public.create_qb_internal_catalog_order(
+    'registered', v_customer, v_location,
+    null, null, null, null, null, null, null,
+    'Pending origin workflow contract',
+    jsonb_build_array(jsonb_build_object(
+      'product_id', v_product,
+      'allowed_unit_id', v_allowed,
+      'quantity', 5,
+      'notes', 'Pending origin workflow contract'
+    )),
+    extensions.gen_random_uuid()::text
+  );
+  select id into v_pending_item from public.qb_order_items where order_id = v_pending_order;
+  perform set_config('request.jwt.claim.sub', v_inventory::text, true);
+  -- Compatibility guard: the previous UI only calls this RPC and cannot
+  -- confirm the new origin fields. It must fail closed without finalizing.
+  perform public.save_qb_matrix_preparation_item(
+    v_pending_item, 0, 0, false, 'legacy-client compatibility probe', 'legacy-prep-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  v_denied := false;
+  begin
+    perform public.finalize_qb_matrix_preparation(
+      v_pending_order, v_pending_updated_at, 'legacy-finalize-prep-contract'
+    );
+  exception when others then
+    v_denied := sqlerrm like 'Revisa y confirma el reparto del origen%';
+  end;
+  if not coalesce(v_denied, false)
+    or (select status from public.qb_orders where id = v_pending_order) <> 'en_preparacion'
+    or (select stock_current from public.products where id = v_product) <> 97
+  then
+    raise exception 'QB_MATRIX_LEGACY_PREPARATION_DID_NOT_FAIL_CLOSED';
+  end if;
+
+  select row_version into v_pending_version
+  from public.qb_order_preparation_items where order_item_id = v_pending_item;
+  perform public.save_qb_matrix_preparation_origin_with_unit(
+    v_pending_item, v_pending_version, 0, false, null, 'original', null,
+    5, 0, 0, true, 'prepare-pending-only-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  perform public.finalize_qb_matrix_preparation(v_pending_order, v_pending_updated_at, 'finalize-pending-only-contract');
+
+  perform set_config('request.jwt.claim.sub', v_delivery::text, true);
+  -- The old delivery UI cannot provide source_origin_confirmed. Its finalizer
+  -- must leave the order prepared and must not debit stock or create a movement.
+  perform public.save_qb_matrix_delivery_item(
+    v_pending_item, 0, 5, 5, true, 'legacy-client compatibility probe', 'legacy-delivery-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  v_denied := false;
+  begin
+    perform public.confirm_qb_matrix_delivery(
+      v_pending_order, v_pending_updated_at, 'legacy-finalize-delivery-contract'
+    );
+  exception when others then
+    v_denied := sqlerrm like 'Revisa la entrega física y confirma el origen real%';
+  end;
+  if not coalesce(v_denied, false)
+    or (select status from public.qb_orders where id = v_pending_order) <> 'preparado'
+    or (select stock_current from public.products where id = v_product) <> 97
+    or exists (select 1 from public.qb_order_delivery_movements where order_id = v_pending_order)
+  then
+    raise exception 'QB_MATRIX_LEGACY_DELIVERY_DID_NOT_FAIL_CLOSED';
+  end if;
+
+  select row_version into v_pending_version
+  from public.qb_order_delivery_items where order_item_id = v_pending_item;
+  perform public.save_qb_matrix_delivery_origin_with_unit(
+    v_pending_item, v_pending_version, 5, 5, true, null, 'original', null,
+    0, 5, 0, 0, true, 'delivery-pending-only-contract'
+  );
+  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
+  perform public.confirm_qb_matrix_delivery(v_pending_order, v_pending_updated_at, 'confirm-pending-only-contract');
+  perform public.confirm_qb_matrix_delivery(v_pending_order, v_pending_updated_at, 'confirm-pending-only-contract');
+
+  select count(*) into v_pending_movements
+  from public.qb_order_delivery_movements
+  where order_id = v_pending_order and inventory_movement_id is null and warehouse_base_quantity = 0;
+  if v_pending_movements <> 1
+    or (select count(*) from public.qb_same_day_reconciliation_requests
+        where order_id = v_pending_order and classification = 'pending'
+          and status = 'pending' and pending_quantity = 5 and reconciled_quantity = 0) <> 1
+    or (select stock_current from public.products where id = v_product) <> 97
+    or (select count(*) from public.inventory_movements where product_id = v_product and reason = 'Entrega QB') <> 1
+  then
+    raise exception 'QB_MATRIX_PENDING_ORIGIN_DEBITED_OR_NOT_QUEUED';
   end if;
 end;
 $$;

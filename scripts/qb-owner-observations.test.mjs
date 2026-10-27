@@ -12,6 +12,7 @@ const warehousePurchaseActions = read("../src/lib/warehouse-purchases/actions.ts
 const creator = read("../src/components/qb-orders/internal-order-creator.tsx");
 const provisionPage = read("../src/app/(private)/matriz-operativa/mercado/page.tsx");
 const deliveryActions = read("../src/lib/operational-matrix/actions.ts");
+const matrix = read("../src/components/operational-matrix/operational-matrix.tsx");
 const receipts = read("../src/components/qb-receipts/qb-receipts-management.tsx");
 const kardexData = read("../src/lib/inventory/kardex-data.ts");
 const kardexView = read("../src/components/stock/stock-workspace.tsx");
@@ -64,6 +65,16 @@ test("delivery denial reports product and available quantity while server stock 
   assert.match(deliveryActions, /stock_current/);
   assert.match(deliveryActions, /Stock insuficiente para/);
   assert.match(read("../supabase/migrations/20261007140000_qb_nonnegative_warehouse_delivery.sql"), /if v_stock_before < v_line\.prepared_base_quantity_snapshot/);
+});
+
+test("origin choices explain their inventory effect and same-day rule", () => {
+  assert.match(matrix, /warehouse: "Se descontará del stock disponible cuando se confirme la entrega\."/);
+  assert.match(matrix, /Pendiente de ingreso hoy/);
+  assert.match(matrix, /label: "Externo definitivo"/);
+  assert.match(matrix, /Un ingreso compatible confirmado durante la misma jornada conciliará la cantidad correspondiente\./);
+  assert.match(matrix, /Se compra directamente para el cliente y no se descontará del almacén\./);
+  assert.match(matrix, /Todavía no se conoce la procedencia\. Debe resolverse antes de confirmar la entrega\./);
+  assert.match(matrix, /text-\[11px\] font-normal leading-4 text-slate-600/);
 });
 
 test("receipt summary counts sending and payment state without inventing ledger movements", () => {
