@@ -4,7 +4,9 @@ import { allocationForDeliveryOrigin } from "../src/lib/operational-matrix/deliv
 
 const matrix = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
 const migration = readFileSync("supabase/migrations/20261027110000_qb_defer_delivery_origin_until_delivery.sql", "utf8");
+const preparationReviewMigration = readFileSync("supabase/migrations/20261027120000_qb_review_zero_preparation_quantity.sql", "utf8");
 const workflow = readFileSync("supabase/tests/qb_operational_matrix_workflow_rollback.sql", "utf8");
+const matrixData = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
 const selector = matrix.slice(matrix.indexOf("function DeliveryOriginControl("), matrix.indexOf("function OriginSplitEditor("));
 
 assert.deepEqual(allocationForDeliveryOrigin("warehouse", 20), {
@@ -56,5 +58,11 @@ assert.doesNotMatch(migration, /origin_plan_confirmed\s+or|actual_base_quantity\
 assert.match(migration, /from public,anon/);
 assert.match(migration, /to authenticated/);
 assert.match(workflow, /QB_MATRIX_PREPARATION_WITHOUT_ORIGIN_FAILED/);
+assert.match(preparationReviewMigration, /preparation_check records that the line was reviewed/i);
+assert.doesNotMatch(preparationReviewMigration, /El check completo exige preparar exactamente lo solicitado/);
+assert.match(matrixData, /const preparedQuantity = rawPreparedQuantity;/);
+assert.doesNotMatch(matrixData, /preparationCheck && rawPreparedQuantity <= 0\.000001\s*\?\s*requestedQuantity/);
+assert.match(workflow, /QB_MATRIX_ZERO_WAREHOUSE_PREPARATION_WAS_INFLATED_OR_DEBITED/);
+assert.match(workflow, /QB_MATRIX_ZERO_WAREHOUSE_EXTERNAL_DELIVERY_CHANGED_STOCK/);
 
 console.log("Delivery origin UX and preparation contract: PASS");

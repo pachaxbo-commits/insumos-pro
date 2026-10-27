@@ -355,10 +355,7 @@ export async function getOperationalMatrixData(
     );
     const preparationCheck = Boolean(prep?.preparation_check);
     const rawPreparedQuantity = numberOr(prep?.actual_quantity);
-    const preparedQuantity =
-      preparationCheck && rawPreparedQuantity <= 0.000001
-        ? requestedQuantity
-        : rawPreparedQuantity;
+    const preparedQuantity = rawPreparedQuantity;
     const rawPreparationWeight =
       prep?.actual_weight_kg === null ||
       typeof prep?.actual_weight_kg === "undefined"
@@ -366,11 +363,12 @@ export async function getOperationalMatrixData(
         : numberOr(prep.actual_weight_kg);
     const preparationActualWeightKg =
       preparationCheck &&
+      rawPreparedQuantity > 0.000001 &&
       controlsActualWeight &&
       requestedWeightUnit &&
       rawPreparationWeight === null
         ? Number(
-            (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
+            (rawPreparedQuantity * requestedWeightUnit.kilograms).toFixed(6),
           )
         : rawPreparationWeight;
     const deliveryCheck = Boolean(delivery?.delivery_check);

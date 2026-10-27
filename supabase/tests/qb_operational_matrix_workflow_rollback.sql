@@ -29,6 +29,11 @@ declare
   v_pending_updated_at timestamptz;
   v_pending_version integer;
   v_pending_movements integer;
+  v_external_order uuid;
+  v_external_item uuid;
+  v_external_updated_at timestamptz;
+  v_external_version integer;
+  v_external_movements integer;
   v_denied boolean;
   v_conflict boolean;
 begin
@@ -280,6 +285,69 @@ begin
     or (select count(*) from public.inventory_movements where product_id = v_product and reason = 'Entrega QB') <> 1
   then
     raise exception 'QB_MATRIX_PENDING_ORIGIN_DEBITED_OR_NOT_QUEUED';
+  end if;
+
+  -- A reviewed preparation with zero warehouse quantity is valid. Delivery
+  -- later records the real delivered amount as external, without stock/FIFO.
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  select created_order_id into v_external_order
+  from public.create_qb_internal_catalog_order(
+    'registered', v_customer, v_location,
+    null, null, null, null, null, null, null,
+    'Zero warehouse fully external workflow contract',
+    jsonb_build_array(jsonb_build_object(
+      'product_id', v_product,
+      'allowed_unit_id', v_allowed,
+      'quantity', 5,
+      'notes', 'Zero warehouse fully external workflow contract'
+    )),
+    extensions.gen_random_uuid()::text
+  );
+  select id into v_external_item from public.qb_order_items where order_id = v_external_order;
+  perform set_config('request.jwt.claim.sub', v_inventory::text, true);
+  perform public.save_qb_matrix_preparation_origin_with_unit(
+    v_external_item, 0, 0, true, null, 'original', 'Sin existencia en almacén; se resolverá externamente.',
+    0, 0, 0, false, 'zero-warehouse-reviewed-preparation'
+  );
+  if (select actual_quantity from public.qb_order_preparation_items where order_item_id = v_external_item) <> 0
+    or (select actual_base_quantity from public.qb_order_preparation_items where order_item_id = v_external_item) <> 0
+    or not (select preparation_check from public.qb_order_preparation_items where order_item_id = v_external_item)
+    or (select stock_current from public.products where id = v_product) <> 97
+  then
+    raise exception 'QB_MATRIX_ZERO_WAREHOUSE_PREPARATION_WAS_INFLATED_OR_DEBITED';
+  end if;
+  select updated_at into v_external_updated_at from public.qb_orders where id = v_external_order;
+  perform public.finalize_qb_matrix_preparation(
+    v_external_order, v_external_updated_at, 'finalize-zero-warehouse-preparation'
+  );
+  if (select status from public.qb_orders where id = v_external_order) <> 'preparado'
+    or (select actual_quantity from public.qb_order_preparation_items where order_item_id = v_external_item) <> 0
+  then
+    raise exception 'QB_MATRIX_ZERO_WAREHOUSE_PREPARATION_DID_NOT_FINALIZE';
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_delivery::text, true);
+  select row_version into v_external_version
+  from public.qb_order_delivery_items where order_item_id = v_external_item;
+  perform public.save_qb_matrix_delivery_origin_with_unit(
+    v_external_item, coalesce(v_external_version, 0), 5, 5, true, null, 'original',
+    'Entregado desde compra externa del cliente.', 0, 0, 5, 0, true,
+    'save-zero-warehouse-external-delivery'
+  );
+  select updated_at into v_external_updated_at from public.qb_orders where id = v_external_order;
+  perform public.confirm_qb_matrix_delivery(
+    v_external_order, v_external_updated_at, 'confirm-zero-warehouse-external-delivery'
+  );
+  select count(*) into v_external_movements
+  from public.qb_order_delivery_movements
+  where order_id = v_external_order and inventory_movement_id is not null;
+  if (select stock_current from public.products where id = v_product) <> 97
+    or v_external_movements <> 0
+    or (select count(*) from public.qb_order_delivery_movements where order_id = v_external_order) <> 1
+    or (select warehouse_base_quantity from public.qb_order_delivery_movements where order_id = v_external_order) <> 0
+    or (select external_definitive_base_quantity from public.qb_order_delivery_items where order_id = v_external_order) <> 5
+  then
+    raise exception 'QB_MATRIX_ZERO_WAREHOUSE_EXTERNAL_DELIVERY_CHANGED_STOCK';
   end if;
 end;
 $$;
