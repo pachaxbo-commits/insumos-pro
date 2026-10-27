@@ -74,9 +74,11 @@ test("Kardex attributes real delivery movements to order snapshot customer in sc
   assert.match(kardexData, /customer_snapshot/);
   assert.match(kardexData, /customer_name:/);
   assert.match(kardexView, /Cliente \/ pedido/);
-  assert.match(kardexView, /row\.customer_name/);
+  assert.match(kardexView, /row\.attributions\.map/);
+  assert.match(kardexView, /row\.attribution_ambiguous/);
   assert.match(kardexExcel, /Cliente \/ pedido/);
-  assert.match(kardexExcel, /row\.customer_name/);
+  assert.match(kardexExcel, /row\.attributions\.map/);
+  assert.match(kardexExcel, /row\.attribution_ambiguous/);
   assert.doesNotMatch(kardexData, /responsible_name|customer_account_id/);
   assert.doesNotMatch(kardexData, /sale_price|purchase_price|profit|margin/);
 });

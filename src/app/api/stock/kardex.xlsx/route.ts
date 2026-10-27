@@ -79,8 +79,14 @@ export async function GET(request: NextRequest) {
       before: row.stock_before,
       after: row.stock_after,
       responsible: row.responsible ?? "No disponible",
-      customer: row.customer_name ? `${row.customer_name}${row.order_reference ? ` · ${row.order_reference}` : ""}` : "—",
-      delivery: row.delivery_at ? new Intl.DateTimeFormat("es-BO", { dateStyle: "short", timeStyle: "short", timeZone: "America/La_Paz" }).format(new Date(row.delivery_at)) : "—",
+      customer: row.attributions.length
+        ? `${row.attribution_ambiguous ? "VÍNCULOS MÚLTIPLES · VERIFICAR\n" : ""}${row.attributions.map((item) => `${item.customerName} · ${item.orderReference} · ${item.quantity} ${row.unit_symbol} · ${item.source === "reconciliation" ? "Conciliación" : "Entrega de almacén"}`).join("\n")}`
+        : "—",
+      delivery: row.attributions.length
+        ? row.attributions.map((item) => item.occurredAt
+          ? new Intl.DateTimeFormat("es-BO", { dateStyle: "short", timeStyle: "short", timeZone: "America/La_Paz" }).format(new Date(item.occurredAt))
+          : "Fecha no disponible").join("\n")
+        : "—",
       reason: row.reason ?? "Sin motivo",
       reference: row.reference,
       fifo,
@@ -91,6 +97,8 @@ export async function GET(request: NextRequest) {
   sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: Math.max(4, rows.length + 4), column: 14 } };
   for (const column of [4,5,7,8]) sheet.getColumn(column).numFmt = "#,##0.###;[Red]-#,##0.###";
   sheet.getColumn(14).alignment = { wrapText: true, vertical: "top" };
+  sheet.getColumn(10).alignment = { wrapText: true, vertical: "top" };
+  sheet.getColumn(11).alignment = { wrapText: true, vertical: "top" };
 
   const summary = workbook.addWorksheet("Resumen por producto");
   summary.columns = [
