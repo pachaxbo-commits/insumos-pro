@@ -221,35 +221,20 @@ begin
   );
   select id into v_pending_item from public.qb_order_items where order_id = v_pending_order;
   perform set_config('request.jwt.claim.sub', v_inventory::text, true);
-  -- Compatibility guard: the previous UI only calls this RPC and cannot
-  -- confirm the new origin fields. It must fail closed without finalizing.
+  -- Preparation is allowed without classifying origin. The delivery stage
+  -- collects that decision, and zero prepared quantity must not debit stock.
   perform public.save_qb_matrix_preparation_item(
     v_pending_item, 0, 0, false, 'legacy-client compatibility probe', 'legacy-prep-contract'
   );
   select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
-  v_denied := false;
-  begin
-    perform public.finalize_qb_matrix_preparation(
-      v_pending_order, v_pending_updated_at, 'legacy-finalize-prep-contract'
-    );
-  exception when others then
-    v_denied := sqlerrm like 'Revisa y confirma el reparto del origen%';
-  end;
-  if not coalesce(v_denied, false)
-    or (select status from public.qb_orders where id = v_pending_order) <> 'en_preparacion'
+  perform public.finalize_qb_matrix_preparation(
+    v_pending_order, v_pending_updated_at, 'legacy-finalize-prep-contract'
+  );
+  if (select status from public.qb_orders where id = v_pending_order) <> 'preparado'
     or (select stock_current from public.products where id = v_product) <> 97
   then
-    raise exception 'QB_MATRIX_LEGACY_PREPARATION_DID_NOT_FAIL_CLOSED';
+    raise exception 'QB_MATRIX_PREPARATION_WITHOUT_ORIGIN_FAILED';
   end if;
-
-  select row_version into v_pending_version
-  from public.qb_order_preparation_items where order_item_id = v_pending_item;
-  perform public.save_qb_matrix_preparation_origin_with_unit(
-    v_pending_item, v_pending_version, 0, false, null, 'original', null,
-    5, 0, 0, true, 'prepare-pending-only-contract'
-  );
-  select updated_at into v_pending_updated_at from public.qb_orders where id = v_pending_order;
-  perform public.finalize_qb_matrix_preparation(v_pending_order, v_pending_updated_at, 'finalize-pending-only-contract');
 
   perform set_config('request.jwt.claim.sub', v_delivery::text, true);
   -- The old delivery UI cannot provide source_origin_confirmed. Its finalizer

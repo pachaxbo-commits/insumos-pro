@@ -22,12 +22,12 @@ import {
 import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-scope";
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
+import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-origin-choice";
+import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
-  baseQuantityToSource,
   originDistributionIsResolved,
   originDistributionMatches,
   originDistributionTotal,
-  sourceQuantityToBase,
 } from "@/lib/operational-matrix/origin-distribution";
 import {
   classifySameDayDeliverySourceAction,
@@ -145,7 +145,7 @@ function stageGuidance(stage: MatrixStage) {
     return {
       title: "Confirmación de Inventario",
       detail:
-        "Confirma la cantidad y registra por separado el peso real. Ambos datos pueden corregirse sin desmarcar un check ya confirmado. El peso solo se usa para el total cuando el producto tiene un precio por peso configurado.",
+        "Registra las cantidades y el peso real preparado. Esta etapa no descuenta stock ni requiere decidir el origen de la mercadería; se confirma explícitamente durante Entrega.",
     };
   }
   if (stage === "entrega") {
@@ -301,10 +301,6 @@ function distributeValue(lines: MatrixLine[], total: number) {
   });
 }
 
-function hasCompletePreparation(line: MatrixLine) {
-  return Boolean(line.preparedAt && line.originPlanConfirmed);
-}
-
 function hasDeliveryCheck(line: MatrixLine) {
   return line.deliveryCheck;
 }
@@ -389,6 +385,8 @@ export function OperationalMatrix({
   );
   const [viewMode, setViewMode] = useState<"formulario" | "tabla">("tabla");
   const [expandedOrderId, setExpandedOrderId] = useState(initialOrderId ?? data.orders[0]?.id ?? "");
+  const [deliveryOriginByOrder, setDeliveryOriginByOrder] = useState<Record<string, DeliveryOriginChoice | null>>({});
+  const [selectedConfirmationOrderId, setSelectedConfirmationOrderId] = useState("");
   const [formStatus, setFormStatus] = useState<"guardado" | "pendiente" | "guardando" | "error">("guardado");
   const formSaveSequence = useRef(0);
   const [lines, setLines] = useState(() =>
@@ -464,6 +462,7 @@ export function OperationalMatrix({
     setLines(refreshedLines);
     ordersRef.current = data.orders;
     setOrders(data.orders);
+    setDeliveryOriginByOrder({});
     const frame = requestAnimationFrame(() => {
       matrixScrollRef.current?.scrollTo({
         left: scrollLeft,
@@ -638,6 +637,9 @@ export function OperationalMatrix({
       ) {
         next.preparedQuantity = preparationQuantities[index];
       }
+      if (Object.hasOwn(patch, "preparedQuantity")) {
+        next.preparationCheck = false;
+      }
       if (Object.hasOwn(patch, "preparationActualWeightKg")) {
         next.preparationActualWeightKg =
           patch.preparationActualWeightKg === null
@@ -652,6 +654,12 @@ export function OperationalMatrix({
         typeof patch.deliveredQuantity === "number"
       ) {
         next.deliveredQuantity = deliveryQuantities[index];
+        next.deliveredBaseQuantity = Number((deliveryQuantities[index] * line.basePerSourceQuantity).toFixed(6));
+        next.deliverySourceConfirmed = false;
+        next.deliveryWarehouseBaseQuantity = 0;
+        next.deliveryPendingBaseQuantity = 0;
+        next.deliveryExternalBaseQuantity = 0;
+        next.deliveryReviewBaseQuantity = next.deliveredBaseQuantity;
       }
       if (Object.hasOwn(patch, "deliveryActualWeightKg")) {
         next.deliveryActualWeightKg =
@@ -664,6 +672,45 @@ export function OperationalMatrix({
     });
     linesRef.current = updatedLines;
     setLines(updatedLines);
+    if (Object.hasOwn(patch, "deliveredQuantity")) {
+      const affectedOrders = new Set(updatedLines.filter((line) => ids.has(line.orderItemId)).map((line) => line.orderId));
+      setDeliveryOriginByOrder((current) => {
+        const next = { ...current };
+        for (const orderId of affectedOrders) next[orderId] = null;
+        return next;
+      });
+    }
+  };
+
+  const selectDeliveryOrigin = (orderId: string, choice: DeliveryOriginChoice) => {
+    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: choice }));
+    const orderLines = linesRef.current.filter((line) => line.orderId === orderId);
+    for (const line of orderLines) {
+      const quantity = expectedDeliveryBaseQuantity(line);
+      updateGroupedLines([line], allocationForDeliveryOrigin(choice, quantity));
+    }
+  };
+
+  const updateMixedDeliveryOrigin = (orderId: string, line: MatrixLine, patch: Partial<MatrixLine>) => {
+    updateGroupedLines([line], { ...patch, deliverySourceConfirmed: false });
+    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: "mixed" }));
+  };
+
+  const confirmMixedDeliveryOrigin = (orderId: string) => {
+    const orderLines = linesRef.current.filter((line) => line.orderId === orderId);
+    const unresolved = orderLines.find((line) => !originDistributionIsResolved({
+      warehouse: line.deliveryWarehouseBaseQuantity,
+      pendingToday: line.deliveryPendingBaseQuantity,
+      externalDefinitive: line.deliveryExternalBaseQuantity,
+      review: line.deliveryReviewBaseQuantity,
+    }, expectedDeliveryBaseQuantity(line)));
+    if (unresolved) {
+      setMessage(`Completa el origen de ${unresolved.productName}; las cantidades deben coincidir con lo entregado y no puede quedar origen por verificar.`);
+      return;
+    }
+    for (const line of orderLines) updateGroupedLines([line], { deliverySourceConfirmed: true });
+    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: "mixed" }));
+    setMessage("Distribución mixta confirmada para este pedido.");
   };
 
   const updateMissingDeliveryChecks = (
@@ -772,15 +819,14 @@ export function OperationalMatrix({
           orderItemId: line.orderItemId,
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
-          preparationCheck: line.originPlanConfirmed &&
-            Math.abs(line.preparedQuantity - line.requestedQuantity) <= 0.000001,
+          preparationCheck: line.preparationCheck,
           actualWeightKg: line.preparationActualWeightKg,
           displayUnitId: line.preparationDisplayUnitId,
           note: line.preparationNote,
-          pendingBaseQuantity: line.plannedPendingBaseQuantity,
-          externalBaseQuantity: line.plannedExternalBaseQuantity,
-          reviewBaseQuantity: line.plannedReviewBaseQuantity,
-          originPlanConfirmed: line.originPlanConfirmed,
+          pendingBaseQuantity: 0,
+          externalBaseQuantity: 0,
+          reviewBaseQuantity: 0,
+          originPlanConfirmed: false,
           idempotencyKey: idempotencyKey("prep"),
         });
         finishSave(line.orderItemId, result, "preparationVersion");
@@ -971,6 +1017,10 @@ export function OperationalMatrix({
       groupOrderIds.has(line.orderId),
     );
     if (action === "confirm") {
+      if (targetOrders.some((order) => !deliveryOriginByOrder[order.id])) {
+        setMessage("Antes de confirmar la entrega, indica de dónde salió la mercadería.");
+        return;
+      }
       if (groupLines.some((line) => !hasDeliveryCheck(line))) {
         setMessage(
           "Verifica el check de entrega de cada línea antes de confirmar.",
@@ -1074,6 +1124,8 @@ export function OperationalMatrix({
   const headers = stageHeaders(stage);
   const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
+  const pendingDeliveryOrders = actionableOrders(orders, new Set(orders.map((order) => order.id)), "confirm");
+  const selectedConfirmationOrder = pendingDeliveryOrders.find((order) => order.id === selectedConfirmationOrderId) ?? pendingDeliveryOrders[0] ?? null;
   const showForm = viewMode === "formulario";
   const saveFormLine = async (id: string) => {
     if (!dirty.current.has(id)) return true;
@@ -1174,6 +1226,7 @@ export function OperationalMatrix({
 
       {showForm ? (
         <section className="space-y-3" aria-label="Pedidos por cliente">
+          {stage === "preparacion" ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">La preparación registra cantidades verificadas y no descuenta stock. El origen de la mercadería se confirma durante Entrega.</p> : null}
           {!customerGroups.length ? <p className="rounded-lg border bg-white p-6 text-sm">No hay pedidos para esta fecha.</p> : null}
           {customerGroups.map((group) => (
             <div key={group.id} className="rounded-lg border bg-white p-3 sm:p-4">
@@ -1191,7 +1244,7 @@ export function OperationalMatrix({
                     ? ["pendiente_preparacion", "en_preparacion"].includes(order.status)
                     : order.deliveryStatus !== "confirmado";
                   const pending = orderLines.filter((line) => stage === "preparacion"
-                    ? !line.originPlanConfirmed : !hasDeliveryCheck(line) || !line.deliverySourceConfirmed || line.deliveryVersion === 0).length;
+                    ? !line.preparationCheck : !hasDeliveryCheck(line) || !line.deliverySourceConfirmed || line.deliveryVersion === 0).length;
                   return (
                     <article key={order.id} className="rounded-md border">
                       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
@@ -1230,7 +1283,7 @@ export function OperationalMatrix({
                               ) : null}
                               {stage === "preparacion" || stage === "entrega" ? (
                                 <div className="space-y-2">
-                                  {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false, originPlanConfirmed: false })} /> : null}
+                                  {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
                                   {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
                                     {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
@@ -1247,32 +1300,27 @@ export function OperationalMatrix({
                                     sourceUnitHint={line.baseUnitSymbol}
                                     weightUnits={data.weightUnits}
                                     disabled={!editable}
-                                    onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0, originPlanConfirmed: false } : { deliveredQuantity: value ?? 0, deliverySourceConfirmed: false })}
+                                    onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0, preparationCheck: false } : { deliveredQuantity: value ?? 0, deliverySourceConfirmed: false })}
                                     onUnitChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
                                     onWeightChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
                                     onBlur={() => void saveFormLine(line.orderItemId)}
                                   />
-                                  <OriginSplitEditor
-                                    line={line}
-                                    stage={stage}
-                                    disabled={!editable || (stage === "entrega" && order.deliveryStatus === "confirmado")}
-                                    onChange={(patch) => updateGroupedLines([line], patch)}
-                                  />
                                   <WeightPricingHint line={line} />
+                                  {stage === "preparacion" ? <p className="text-xs text-muted-foreground">El origen se confirma durante Entrega.</p> : null}
                                   <label className="flex items-center gap-2 text-xs font-medium">
                                     <CheckEditor
-                                      label={stage === "preparacion" ? "Distribución de origen revisada" : "Entrega física verificada"}
-                                      checked={stage === "preparacion" ? line.originPlanConfirmed : line.deliveryCheck}
+                                      label={stage === "preparacion" ? "Preparación verificada" : "Entrega física verificada"}
+                                      checked={stage === "preparacion" ? line.preparationCheck : line.deliveryCheck}
                                       disabled={stage === "preparacion"
                                         ? !editable
                                         : !editable}
                                       onChange={(checked) => {
-                                        if (stage === "preparacion") updateGroupedLines([line], { originPlanConfirmed: checked });
+                                        if (stage === "preparacion") updateGroupedLines([line], { preparationCheck: checked });
                                         else updateMissingDeliveryChecks([line], checked);
                                       }}
                                       onBlur={() => void saveFormLine(line.orderItemId)}
                                     />
-                                    {stage === "preparacion" ? "Origen revisado" : "Entrega física verificada"}
+                                    {stage === "preparacion" ? "Preparación verificada" : "Entrega física verificada"}
                                   </label>
                                   <label className="block space-y-1 text-xs font-medium">Observación
                                     <NoteEditor
@@ -1282,7 +1330,6 @@ export function OperationalMatrix({
                                       onBlur={() => void saveFormLine(line.orderItemId)}
                                     />
                                   </label>
-                                  {stage === "entrega" ? <p className="text-xs text-muted-foreground">El origen externo no se calcula automáticamente. Verifica cada componente según la mercadería realmente entregada.</p> : null}
                                   {stage === "entrega" && order.deliveryStatus === "confirmado" && line.deliveryMovementId && line.deliveredBaseQuantity > 0 ? (
                                     <SameDayReconciliationControl line={line} />
                                   ) : null}
@@ -1291,6 +1338,18 @@ export function OperationalMatrix({
                             </div>
                           ))}
                         </div>
+                        {stage === "entrega" && order.deliveryStatus !== "confirmado" ? (
+                          <DeliveryOriginControl
+                            orderId={order.id}
+                            lines={linesRef.current.filter((line) => line.orderId === order.id)}
+                            choice={deliveryOriginByOrder[order.id] ?? null}
+                            disabled={!editable || Boolean(actionPending)}
+                            onChoiceChange={(choice) => selectDeliveryOrigin(order.id, choice)}
+                            onMixedChange={(line, patch) => updateMixedDeliveryOrigin(order.id, line, patch)}
+                            onConfirmMixed={() => confirmMixedDeliveryOrigin(order.id)}
+                            message={message}
+                          />
+                        ) : null}
                         {stage === "preparacion" || stage === "entrega" ? (
                           <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
                             <span role="status" className="mr-auto text-xs text-muted-foreground">
@@ -1307,7 +1366,7 @@ export function OperationalMatrix({
                               Guardar {stage === "preparacion" ? "preparación" : "entrega"}
                             </Button>
                             {stage === "entrega" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
-                              <Button disabled={Boolean(actionPending) || formStatus === "guardando"}
+                              <Button type="button" disabled={Boolean(actionPending) || formStatus === "guardando"}
                                 onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
                                 Confirmar entrega de este pedido
                               </Button>
@@ -1416,26 +1475,6 @@ export function OperationalMatrix({
                                 <ChevronRight />
                               </Button>
                             </>
-                          ) : null}
-                          {stage === "entrega" &&
-                          group.orders.some(
-                            (order) =>
-                              [
-                                "pendiente_preparacion",
-                                "en_preparacion",
-                                "preparado",
-                              ].includes(order.status) &&
-                              order.deliveryStatus !== "confirmado",
-                          ) ? (
-                            <Button
-                              size="xs"
-                              disabled={actionPending === `${group.id}:confirm`}
-                              onClick={() =>
-                                void actionForCustomer(group, "confirm")
-                              }
-                            >
-                              Confirmar entrega
-                            </Button>
                           ) : null}
                           {stage === "entrega" &&
                           ["administrador", "entregador"].includes(data.role) &&
@@ -1655,7 +1694,7 @@ export function OperationalMatrix({
                     rowKey,
                     (line) => stage === "entrega"
                       ? hasDeliveryCheck(line) && line.deliverySourceConfirmed
-                      : line.originPlanConfirmed,
+                      : line.preparationCheck,
                   );
                   return (
                     <th
@@ -1682,6 +1721,49 @@ export function OperationalMatrix({
           </table>
         </div>
       )}
+      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
+        <section className="rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de origen por pedido">
+          <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <label className="block space-y-1 text-sm font-medium">
+              Pedido para confirmar
+              <select
+                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                value={selectedConfirmationOrder?.id ?? ""}
+                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
+                aria-label="Seleccionar pedido para confirmar entrega"
+              >
+                {pendingDeliveryOrders.map((order) => (
+                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
+                ))}
+              </select>
+            </label>
+            {selectedConfirmationOrder ? <p className="text-xs text-muted-foreground">{orderFormStatus(selectedConfirmationOrder)}</p> : null}
+          </div>
+          {selectedConfirmationOrder ? (
+            <>
+              <DeliveryOriginControl
+                orderId={selectedConfirmationOrder.id}
+                lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
+                choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
+                disabled={Boolean(actionPending)}
+                onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
+                onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
+                onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
+                message={message}
+              />
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  disabled={Boolean(actionPending)}
+                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
+                >
+                  Confirmar entrega de este pedido
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
       </>}
     </div>
   );
@@ -2164,89 +2246,126 @@ function StockSplitSuggestion({ line, disabled, onAccept }: {
   );
 }
 
-function OriginSplitEditor({ line, stage, disabled, onChange }: {
+function DeliveryOriginControl({
+  orderId,
+  lines,
+  choice,
+  disabled,
+  onChoiceChange,
+  onMixedChange,
+  onConfirmMixed,
+  message,
+}: {
+  orderId: string;
+  lines: MatrixLine[];
+  choice: DeliveryOriginChoice | null;
+  disabled: boolean;
+  onChoiceChange: (choice: DeliveryOriginChoice) => void;
+  onMixedChange: (line: MatrixLine, patch: Partial<MatrixLine>) => void;
+  onConfirmMixed: () => void;
+  message: string | null;
+}) {
+  const descriptions: Record<DeliveryOriginChoice, string> = {
+    warehouse: "Todos los productos entregados en este pedido salen del almacén. Al confirmar, se descuenta únicamente la cantidad realmente entregada, después de verificar existencias.",
+    pending: "La mercadería se entregó físicamente, pero su ingreso al almacén todavía no está registrado. El sistema la concilia con ingresos físicos confirmados durante esa misma jornada, sin permitir saldos negativos.",
+    external: "La mercadería se compró directamente por fuera para ese cliente. Se registra la entrega normalmente, sin descontar inventario.",
+    mixed: "Indica el origen real de cada producto. Las cantidades deben coincidir con lo entregado y no puede quedar una parte por verificar.",
+  };
+  const isMissingSelection = !choice && message === "Antes de confirmar la entrega, indica de dónde salió la mercadería.";
+  const orderLines = lines.filter((line) => line.orderId === orderId);
+  const unresolvedMixed = orderLines.some((line) => !originDistributionIsResolved({
+    warehouse: line.deliveryWarehouseBaseQuantity,
+    pendingToday: line.deliveryPendingBaseQuantity,
+    externalDefinitive: line.deliveryExternalBaseQuantity,
+    review: line.deliveryReviewBaseQuantity,
+  }, expectedDeliveryBaseQuantity(line)));
+  return (
+    <fieldset className={`rounded-lg border p-3 ${isMissingSelection ? "border-rose-400 bg-rose-50" : "border-slate-200 bg-slate-50"}`} aria-invalid={isMissingSelection}>
+      <legend className="px-1 text-sm font-semibold text-slate-900">Origen de la mercadería · este pedido</legend>
+      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="block space-y-1 text-sm font-medium">
+          Origen de entrega
+          <select
+            className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+            value={choice && choice !== "mixed" ? choice : ""}
+            disabled={disabled}
+            aria-label={`Origen de mercadería del pedido ${orderId}`}
+            aria-invalid={isMissingSelection}
+            onChange={(event) => {
+              const value = event.target.value as DeliveryOriginChoice | "";
+              if (value) onChoiceChange(value);
+            }}
+          >
+            <option value="">Selecciona el origen real</option>
+            <option value="warehouse">Desde almacén</option>
+            <option value="pending">Ingreso pendiente de hoy</option>
+            <option value="external">Venta externa</option>
+          </select>
+        </label>
+        <Button type="button" size="sm" variant={choice === "mixed" ? "default" : "outline"} disabled={disabled} onClick={() => onChoiceChange("mixed")}>
+          Origen mixto
+        </Button>
+      </div>
+      {choice ? <p className="mt-2 text-xs leading-5 text-slate-700">{descriptions[choice]}</p> : <p className="mt-2 text-xs text-muted-foreground">Selecciona el origen comprobado antes de confirmar. No se asignará automáticamente.</p>}
+      {choice === "mixed" ? (
+        <div className="mt-3 space-y-3 border-t pt-3">
+          {orderLines.map((line) => (
+            <OriginSplitEditor key={line.orderItemId} line={line} disabled={disabled || Boolean(line.deliveredAt)} onChange={(patch) => onMixedChange(line, patch)} />
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-700">La distribución se guarda por producto, dentro de este pedido.</p>
+            <Button type="button" size="sm" variant="outline" disabled={disabled || unresolvedMixed} onClick={onConfirmMixed}>
+              Confirmar distribución mixta
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {isMissingSelection ? <p role="alert" className="mt-2 text-sm font-medium text-rose-800">Selecciona el origen real para poder confirmar.</p> : null}
+    </fieldset>
+  );
+}
+
+function OriginSplitEditor({ line, disabled, onChange }: {
   line: MatrixLine;
-  stage: "preparacion" | "entrega";
   disabled: boolean;
   onChange: (patch: Partial<MatrixLine>) => void;
 }) {
-  const factor = line.basePerSourceQuantity > 0 ? line.basePerSourceQuantity : 1;
-  const preparation = stage === "preparacion";
-  const components = preparation
-    ? [
-        { key: "warehouse", label: "Desde almacén", base: line.preparedQuantity * factor },
-        { key: "pending", label: "Pendiente de ingreso hoy", base: line.plannedPendingBaseQuantity },
-        { key: "external", label: "Externo definitivo", base: line.plannedExternalBaseQuantity },
-        { key: "review", label: "Origen por verificar", base: line.plannedReviewBaseQuantity },
-      ]
-    : [
-        { key: "warehouse", label: "Entregado desde almacén", base: line.deliveryWarehouseBaseQuantity },
-        { key: "pending", label: "Entregado · pendiente de ingreso hoy", base: line.deliveryPendingBaseQuantity },
-        { key: "external", label: "Entregado · externo definitivo", base: line.deliveryExternalBaseQuantity },
-        { key: "review", label: "Entregado · origen por verificar", base: line.deliveryReviewBaseQuantity },
-      ];
+  const components = [
+    { key: "warehouse", label: "Desde almacén", base: line.deliveryWarehouseBaseQuantity },
+    { key: "pending", label: "Ingreso pendiente de hoy", base: line.deliveryPendingBaseQuantity },
+    { key: "external", label: "Venta externa", base: line.deliveryExternalBaseQuantity },
+    { key: "review", label: "Origen por verificar", base: line.deliveryReviewBaseQuantity },
+  ];
   const origin = {
-    warehouse: components[0]?.base ?? 0,
-    pendingToday: preparation ? line.plannedPendingBaseQuantity : line.deliveryPendingBaseQuantity,
-    externalDefinitive: preparation ? line.plannedExternalBaseQuantity : line.deliveryExternalBaseQuantity,
-    review: preparation ? line.plannedReviewBaseQuantity : line.deliveryReviewBaseQuantity,
-  };
-  const originDescriptions: Record<string, string> = {
-    warehouse: "Se descontará del stock disponible cuando se confirme la entrega.",
-    pending: "La mercadería ya se entregará al cliente, pero todavía debe registrarse su ingreso físico. Un ingreso compatible confirmado durante la misma jornada conciliará la cantidad correspondiente.",
-    external: "Se compra directamente para el cliente y no se descontará del almacén.",
-    review: "Todavía no se conoce la procedencia. Debe resolverse antes de confirmar la entrega.",
+    warehouse: line.deliveryWarehouseBaseQuantity,
+    pendingToday: line.deliveryPendingBaseQuantity,
+    externalDefinitive: line.deliveryExternalBaseQuantity,
+    review: line.deliveryReviewBaseQuantity,
   };
   const total = originDistributionTotal(origin);
-  const expected = preparation
-    ? line.requestedBaseQuantity
-    : expectedDeliveryBaseQuantity(line);
+  const expected = expectedDeliveryBaseQuantity(line);
   const matches = originDistributionMatches(origin, expected);
 
   const update = (key: string, value: number | null) => {
     const normalizedValue = Math.max(value ?? 0, 0);
-    const baseValue = preparation
-      ? sourceQuantityToBase(normalizedValue, factor)
-      : Number(normalizedValue.toFixed(6));
-    if (preparation) {
-      const field = key === "pending" ? "plannedPendingBaseQuantity"
-        : key === "external" ? "plannedExternalBaseQuantity"
-        : "plannedReviewBaseQuantity";
-      onChange({ [field]: baseValue, originPlanConfirmed: false });
-    } else {
-      const field = key === "warehouse" ? "deliveryWarehouseBaseQuantity"
-        : key === "pending" ? "deliveryPendingBaseQuantity"
-        : key === "external" ? "deliveryExternalBaseQuantity"
-        : "deliveryReviewBaseQuantity";
-      onChange({ [field]: baseValue, deliverySourceConfirmed: false });
-    }
+    const baseValue = Number(normalizedValue.toFixed(6));
+    const field = key === "warehouse" ? "deliveryWarehouseBaseQuantity"
+      : key === "pending" ? "deliveryPendingBaseQuantity"
+      : key === "external" ? "deliveryExternalBaseQuantity"
+      : "deliveryReviewBaseQuantity";
+    onChange({ [field]: baseValue, deliverySourceConfirmed: false });
   };
 
   return (
-    <fieldset className="mt-2 rounded-md border border-sky-200 bg-sky-50/70 p-2 text-left">
-      <legend className="px-1 text-[11px] font-semibold text-sky-950">
-        {preparation ? "¿De dónde saldrá este producto?" : "Origen físico de lo entregado"}
-      </legend>
-      <p className="mb-2 text-xs leading-5 text-slate-700">
-        {preparation
-          ? `Pedido: ${formatQuantity(line.requestedQuantity)} ${line.sourceLabel}. La preparación no descuenta stock.`
-          : `Entrega física: ${formatQuantity(expected)} ${line.baseUnitSymbol}. Solo almacén descuenta stock; el pendiente se concilia únicamente con un ingreso de hoy.`}
-      </p>
-      {preparation ? (
-        <p className="mb-2 text-xs leading-5 font-medium text-slate-800">
-          Desde almacén: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
-          {` · existencia informativa: ${formatQuantity(line.stockCurrent)} ${line.baseUnitSymbol}`}
-          <span className="mt-0.5 block font-normal text-slate-600">{originDescriptions.warehouse}</span>
-        </p>
-      ) : null}
+    <fieldset className="rounded-md border border-sky-200 bg-sky-50/70 p-2 text-left">
+      <legend className="px-1 text-xs font-semibold text-sky-950">{line.productName} · {formatQuantity(expected)} {line.baseUnitSymbol}</legend>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {components.filter((item) => !preparation || item.key !== "warehouse").map((item) => (
+        {components.map((item) => (
           <label key={item.key} className="block space-y-1 text-xs font-medium leading-4 text-slate-800">
-          <span className="block">{item.label} ({preparation ? line.sourceLabel : line.baseUnitSymbol})</span>
-            <span className="block min-h-8 text-[11px] font-normal leading-4 text-slate-600">{originDescriptions[item.key]}</span>
+            <span className="block">{item.label} ({line.baseUnitSymbol})</span>
             <DecimalInput
               label={`${item.label} de ${line.productName}`}
-            value={preparation ? baseQuantityToSource(item.base, factor) : item.base}
+              value={item.base}
               disabled={disabled}
               attention={false}
               onChange={(value) => update(item.key, value)}
@@ -2256,26 +2375,13 @@ function OriginSplitEditor({ line, stage, disabled, onChange }: {
         ))}
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[10px]">
-        <span className="font-semibold">Distribuido: {formatQuantity(total / factor)} / {formatQuantity(expected / factor)} {line.sourceLabel}</span>
+        <span className="font-semibold">Distribuido: {formatQuantity(total)} / {formatQuantity(expected)} {line.baseUnitSymbol}</span>
         <span className={matches ? "text-emerald-800" : "font-semibold text-amber-800"}>
           {matches ? "Las cantidades coinciden" : "Completa la distribución; no se asignará un origen automáticamente"}
         </span>
       </div>
-      {!preparation && line.deliveryReviewBaseQuantity > 0.000001 ? (
+      {line.deliveryReviewBaseQuantity > 0.000001 ? (
         <p className="mt-1 text-[10px] font-semibold text-amber-900">Resuelve la cantidad por verificar antes de confirmar la entrega.</p>
-      ) : null}
-      {!preparation ? (
-        <label className="mt-2 flex items-start gap-2 border-t border-sky-200 pt-2 text-[10px] font-semibold text-sky-950">
-          <input
-            type="checkbox"
-            className="mt-0.5 accent-emerald-700"
-            aria-label={`Confirmar origen físico de ${line.productName}`}
-            checked={line.deliverySourceConfirmed}
-            disabled={disabled || !matches || line.deliveryReviewBaseQuantity > 0.000001}
-            onChange={(event) => onChange({ deliverySourceConfirmed: event.target.checked })}
-          />
-          Confirmo que esta distribución corresponde al origen real de la mercadería entregada.
-        </label>
       ) : null}
     </fieldset>
   );
@@ -2350,10 +2456,10 @@ function DesktopOrderCells(props: CellProps) {
         </td>
         <td style={cellStyle} className={cellClass}>
           <CheckEditor
-            label={`Distribución de origen revisada ${line.productName}`}
-            checked={line.originPlanConfirmed}
+            label={`Preparación verificada ${line.productName}`}
+            checked={line.preparationCheck}
             disabled={!editable}
-            onChange={(checked) => onChange({ originPlanConfirmed: checked })}
+            onChange={(checked) => onChange({ preparationCheck: checked })}
             onBlur={onSavePreparation}
           />
         </td>
@@ -2372,7 +2478,7 @@ function DesktopOrderCells(props: CellProps) {
             onQuantityChange={(value) =>
               onChange({
                 preparedQuantity: value ?? 0,
-              originPlanConfirmed: false,
+                preparationCheck: false,
               })
             }
             onUnitChange={(value) =>
@@ -2386,8 +2492,7 @@ function DesktopOrderCells(props: CellProps) {
             onBlur={onSavePreparation}
           />
           <WeightPricingHint line={line} />
-          <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => onChange({ preparedQuantity: quantity, preparationCheck: false, originPlanConfirmed: false })} />
-          <OriginSplitEditor line={line} stage="preparacion" disabled={!editable} onChange={onChange} />
+          <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => onChange({ preparedQuantity: quantity, preparationCheck: false })} />
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (
@@ -2409,7 +2514,7 @@ function DesktopOrderCells(props: CellProps) {
   if (stage === "entrega") {
     const deliveryReady = Boolean(line.preparedAt);
     const needsDeliveryReview =
-      !hasCompletePreparation(line) &&
+      !line.preparationCheck &&
       !line.deliveredAt &&
       line.deliveryVersion === 0;
     const lowerThanPrepared =
@@ -2489,7 +2594,6 @@ function DesktopOrderCells(props: CellProps) {
             <SameDayReconciliationControl line={line} />
           ) : null}
           <WeightPricingHint line={line} />
-          <OriginSplitEditor line={line} stage="entrega" disabled={deliveryDisabled || Boolean(line.deliveredAt)} onChange={onChange} />
           {deliveryReady && !needsDeliveryReview ? (
             <span className="mt-1 block text-[9px] font-medium text-emerald-800">
               Valor inicial de Inventario · editable
