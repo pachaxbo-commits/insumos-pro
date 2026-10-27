@@ -29,7 +29,7 @@ insert into public.qb_conversion_snapshots
   (id, source_table, source_id, product_id, dimension_code, source_kind, source_label, source_quantity,
    base_unit_id, base_unit_symbol, base_quantity, conversion_factor_to_base, snapshot, created_by)
 values
-  ('00000000-0000-4000-8000-00000000f401', 'qb_merchandise_receipt_lines', '00000000-0000-4000-8000-00000000e402', '00000000-0000-4000-8000-00000000c401', 'qa_weight_purchase', 'commercial_unmeasured', 'Saco de proveedor', 2,
+   ('00000000-0000-4000-8000-00000000f401', 'qb_merchandise_receipt_lines', '00000000-0000-4000-8000-00000000e402', '00000000-0000-4000-8000-00000000c401', 'qa_weight_purchase', 'commercial_unmeasured', 'CARGA', 5,
    '00000000-0000-4000-8000-00000000b402', 'kg', 0, 0,
    '{"measurement_required_before_stock":true}', '00000000-0000-4000-8000-00000000a401');
 insert into public.qb_merchandise_receipt_lines
@@ -38,8 +38,8 @@ insert into public.qb_merchandise_receipt_lines
    requires_classification, is_warehouse_purchase, created_by, updated_by)
 values
   ('00000000-0000-4000-8000-00000000e402', '00000000-0000-4000-8000-00000000e401', '00000000-0000-4000-8000-00000000c401',
-   'commercial_unmeasured', 'Saco de proveedor', 2, '00000000-0000-4000-8000-00000000b402', 'kg',
-   0, 0, '00000000-0000-4000-8000-00000000f401', 12, 24, false, true,
+   'commercial_unmeasured', 'CARGA', 5, '00000000-0000-4000-8000-00000000b402', 'kg',
+   0, 0, '00000000-0000-4000-8000-00000000f401', 600, 3000, false, true,
    '00000000-0000-4000-8000-00000000a401', '00000000-0000-4000-8000-00000000a401');
 
 do $$
@@ -55,16 +55,18 @@ begin
   end if;
 end $$;
 
-select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000e402', 17.5);
+select public.set_warehouse_purchase_actual_quantity('00000000-0000-4000-8000-00000000e402', 75);
 select public.confirm_qb_merchandise_receipt('00000000-0000-4000-8000-00000000e401');
 
 do $$
 begin
-  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c401') <> 17.5 then
+  if (select stock_current from public.products where id = '00000000-0000-4000-8000-00000000c401') <> 75 then
     raise exception 'Measured useful quantity was not posted exactly once';
   end if;
-  if (select base_quantity from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 17.5
-    or (select source_quantity from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 2 then
+  if (select base_quantity from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 75
+    or (select source_quantity from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 5
+    or (select unit_cost from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 600
+    or (select total_cost from public.qb_merchandise_receipt_lines where id = '00000000-0000-4000-8000-00000000e402') <> 3000 then
     raise exception 'Commercial quantity or measured physical quantity was altered';
   end if;
   if (select count(*) from public.inventory_movements where reason = 'Ingreso QB de mercaderia' and notes like '%00000000-0000-4000-8000-00000000e401%') <> 1 then
@@ -72,5 +74,5 @@ begin
   end if;
 end $$;
 
-select 'PASS: commercial package remains unconverted until measured; only measured kilograms enter stock';
+select 'PASS: 5 CARGAS × Bs 600 stays Bs 3000; only measured 75 KG enter stock';
 rollback;

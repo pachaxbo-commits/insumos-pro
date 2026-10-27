@@ -21,7 +21,7 @@ test("observation is saved and exported", () => { const route = readFileSync(new
 test("later QB receipt snapshots latest confirmed purchase", () => { assert.match(migration, /receipt\.status = 'confirmado'/); assert.match(migration, /order by receipt\.confirmed_at desc/); assert.match(migration, /before insert on public\.qb_receipt_lines/); });
 test("historical issued receipt is not repriced by a later purchase", () => { assert.doesNotMatch(migration, /update\s+public\.qb_receipt_lines\s+set/i); assert.match(migration, /new\.warehouse_purchase_line_id/); });
 test("missing or unsafe conversion remains editable manually", () => { assert.equal(referenceCostForUnit(48, { dimensionId: "weight", factorToBase: 10 }, { dimensionId: "count", factorToBase: 1 }), null); assert.match(migration, /new\.cost_base_unit_snapshot := null/); });
-test("orders without stock do not generate stock", () => { assert.doesNotMatch(migration, /insert\s+into\s+public\.inventory_movements/i); assert.match(sheet, /Guardar fila/); });
+test("orders without stock do not generate stock", () => { assert.doesNotMatch(migration, /insert\s+into\s+public\.inventory_movements/i); assert.match(sheet, /Guardar borrador/); });
 test("stock is confirmed idempotently through the existing stock/FIFO transaction", () => { assert.match(sheet, /confirmWarehousePurchaseAction/); assert.match(purchaseMigration, /confirm_qb_merchandise_receipt\(p_receipt_id\)/); assert.match(purchaseMigration, /v_movements = v_lines/); assert.match(migration, /require_measured_warehouse_purchase_before_stock/); assert.doesNotMatch(purchaseMigration, /insert\s+into\s+public\.inventory_movements/i); });
 test("purchases use inline rows and a searchable product picker", () => {
   assert.match(sheet, /Agregar fila/);

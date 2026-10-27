@@ -37,6 +37,9 @@ export type InventoryKardexRow = {
   responsible: string | null;
   reference: string;
   reference_href: string | null;
+  customer_name: string | null;
+  order_reference: string | null;
+  delivery_at: string | null;
   fifo_lots: Array<{ lot_id: string | null; received_at: string | null; quantity: number; historical_unknown: boolean }>;
   affects_stock: boolean;
 };
@@ -135,6 +138,7 @@ export async function getInventoryKardexPage(filters: InventoryKardexFilters): P
     reason: row.reason == null ? null : String(row.reason), notes: row.notes == null ? null : String(row.notes),
     created_at: String(row.created_at), responsible: row.responsible == null ? null : String(row.responsible),
     reference: String(row.reference ?? "Referencia no disponible"), reference_href: row.reference_href == null ? null : String(row.reference_href),
+    customer_name: null, order_reference: null, delivery_at: null,
     fifo_lots: Array.isArray(row.fifo_lots) ? row.fifo_lots.map((lot) => {
       const value = lot as Record<string, unknown>;
       return { lot_id: value.lot_id == null ? null : String(value.lot_id), received_at: value.received_at == null ? null : String(value.received_at), quantity: Number(value.quantity ?? 0), historical_unknown: Boolean(value.historical_unknown) };
@@ -157,20 +161,52 @@ export async function getInventoryKardexPage(filters: InventoryKardexFilters): P
     : { data: [], error: null };
   if (requestError) return { data: emptyKardex, error: "No pudimos cargar los pedidos conciliados." };
   const requests = requestData ?? [];
-  const orderIds = [...new Set(requests.map((request) => String(request.order_id)))];
+  const deliveryResult = outboundIds.length
+    ? await supabase.from("qb_order_delivery_movements")
+        .select("inventory_movement_id,order_id,delivered_at")
+        .in("inventory_movement_id", outboundIds)
+    : { data: [], error: null };
+  if (deliveryResult.error) return { data: emptyKardex, error: "No pudimos cargar la relación entre salidas y entregas." };
+  const deliveries = deliveryResult.data ?? [];
+  const orderIds = [...new Set([
+    ...requests.map((request) => String(request.order_id)),
+    ...deliveries.map((delivery) => String(delivery.order_id)),
+  ])];
   const { data: orderData, error: orderError } = orderIds.length
-    ? await supabase.from("qb_orders").select("id,public_reference").in("id", orderIds)
+    ? await supabase.from("qb_orders").select("id,public_reference,delivered_at,customer_snapshot").in("id", orderIds)
     : { data: [], error: null };
   if (orderError) return { data: emptyKardex, error: "No pudimos cargar las referencias de pedidos." };
+  const orderById = new Map((orderData ?? []).map((order) => [String(order.id), order]));
+  const customerByOrder = new Map((orderData ?? []).map((order) => {
+    const snapshot = order.customer_snapshot && typeof order.customer_snapshot === "object"
+      ? order.customer_snapshot as Record<string, unknown>
+      : {};
+    const business = typeof snapshot.business_name === "string" ? snapshot.business_name.trim() : "";
+    return [String(order.id), business || "Cliente"] as const;
+  }));
   const requestById = new Map(requests.map((request) => [String(request.id), String(request.order_id)]));
   const referenceByOrder = new Map((orderData ?? []).map((order) => [String(order.id), String(order.public_reference ?? "Pedido") ]));
   const allocationByMovement = new Map(allocations.map((allocation) => [String(allocation.inventory_movement_id), requestById.get(String(allocation.request_id))]));
-  const reconciledOrderByMovement = new Map([...allocationByMovement].filter((entry): entry is [string, string] => Boolean(entry[1])));
+  const orderByMovement = new Map(deliveries.map((delivery) => [String(delivery.inventory_movement_id), String(delivery.order_id)]));
+  const deliveryAtByMovement = new Map(deliveries.map((delivery) => [String(delivery.inventory_movement_id), delivery.delivered_at]));
+  for (const [movementId, orderId] of allocationByMovement) if (orderId) orderByMovement.set(movementId, orderId);
   const enrichedRows = rows.map((row) => {
-    const orderId = reconciledOrderByMovement.get(row.id);
+    const orderId = orderByMovement.get(row.id);
     if (!orderId) return row;
     const orderReference = referenceByOrder.get(orderId) ?? `Pedido ${orderId.slice(0,8)}`;
-    return { ...row, movement_type: "salida_conciliada", reference: `Conciliación de entrega · ${orderReference}`, reference_href: "/matriz-operativa?mode=entrega" };
+    const order = orderById.get(orderId);
+    const isReconciled = allocationByMovement.has(row.id);
+    return {
+      ...row,
+      movement_type: isReconciled ? "salida_conciliada" : row.movement_type,
+      reference: isReconciled ? `Conciliación de entrega · ${orderReference}` : row.reference,
+      reference_href: "/matriz-operativa?mode=entrega",
+      customer_name: order ? customerByOrder.get(orderId) ?? "Cliente" : null,
+      order_reference: orderReference,
+      delivery_at: deliveryAtByMovement.get(row.id)
+        ? String(deliveryAtByMovement.get(row.id))
+        : order?.delivered_at == null ? null : String(order.delivered_at),
+    };
   });
   const summaryProducts = (result?.summary?.products ?? []).map((row) => ({
     product_id: String(row.product_id), product_name: String(row.product_name), unit_symbol: String(row.unit_symbol ?? "—"),

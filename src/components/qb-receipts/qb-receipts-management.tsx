@@ -46,7 +46,7 @@ import {
   voidQbReceiptAction,
 } from "@/lib/qb-receipts/actions";
 import { formatBoliviaDate } from "@/lib/date-time";
-import { summarizeReceipts } from "@/lib/qb-receipts/line-pricing";
+import { summarizeReceiptTracking, summarizeReceipts } from "@/lib/qb-receipts/line-pricing";
 import type {
   QbReceipt,
   QbReceiptActionState,
@@ -1274,6 +1274,8 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
     customerId: receipt.customerId,
     date: (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 10),
     status: receipt.status,
+    receiptSentAt: receipt.receiptSentAt,
+    paymentStatus: receipt.paymentStatus,
     costTotal: receipt.costTotalPrecise ?? receipt.lines.reduce((sum, line) => sum + (line.purchaseCostTotal ?? 0), 0),
     saleTotal: receipt.saleTotalPrecise ?? receipt.totalAmount,
   }));
@@ -1283,6 +1285,11 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
     year: year === "all" ? undefined : Number(year),
     startDate: startDate || undefined, endDate: endDate || undefined,
   });
+  const trackingByCustomer = new Map(summary.customers.map((item) => [
+    item.customerId,
+    summarizeReceiptTracking(summary.selected.filter((receipt) => receipt.customerId === item.customerId)),
+  ]));
+  const totalTracking = summarizeReceiptTracking(summary.selected);
   const years = [...new Set(receipts.map((receipt) =>
     (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 4)))].sort().reverse();
   return <div className="space-y-3 rounded-lg border bg-white p-3">
@@ -1307,12 +1314,15 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
     <div className="overflow-x-auto"><table className="w-full text-sm">
       <thead className="bg-slate-100 text-left text-xs"><tr>
         <th className="px-2 py-2">Cliente</th><th className="px-2 py-2 text-right">Recibos</th>
+        <th className="px-2 py-2 text-right">Envío · enviados / pendientes</th><th className="px-2 py-2 text-right">Pago · pagados / pendientes</th>
         <th className="px-2 py-2 text-right">Costo Bs</th><th className="px-2 py-2 text-right">Venta Bs</th>
         <th className="px-2 py-2 text-right">Utilidad Bs</th><th className="px-2 py-2 text-right">% Utilidad</th>
       </tr></thead><tbody>
       {summary.customers.map((item) => <tr key={item.customerId} className="border-t">
         <td className="px-2 py-2">{customers.find(([id]) => id === item.customerId)?.[1] ?? "Cliente"}</td>
         <td className="px-2 py-2 text-right">{item.count}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.sent ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingSend ?? 0}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.paid ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingPayment ?? 0}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.profitTotal))}</td>
@@ -1320,6 +1330,8 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
       </tr>)}
       </tbody><tfoot className="border-t bg-emerald-50 font-semibold"><tr>
         <td className="px-2 py-2">TOTAL GENERAL</td><td className="px-2 py-2 text-right">{summary.selected.length}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.sent} / {totalTracking.pendingSend}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.paid} / {totalTracking.pendingPayment}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.profitTotal))}</td>

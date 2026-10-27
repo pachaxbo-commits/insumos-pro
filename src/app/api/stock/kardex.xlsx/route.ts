@@ -57,12 +57,13 @@ export async function GET(request: NextRequest) {
     { key: "date", width: 23 }, { key: "product", width: 34 }, { key: "type", width: 35 },
     { key: "in", width: 15 }, { key: "out", width: 22 }, { key: "unit", width: 14 },
     { key: "before", width: 16 }, { key: "after", width: 16 }, { key: "responsible", width: 26 },
+    { key: "customer", width: 30 }, { key: "delivery", width: 23 },
     { key: "reason", width: 38 }, { key: "reference", width: 38 }, { key: "fifo", width: 55 },
   ];
   sheet.addRow(["QB INSUMOS · KARDEX DE ALMACÉN"]);
   sheet.addRow(["Periodo", filters.dateFrom ?? "Sin límite inicial", "a", filters.dateTo ?? "Sin límite final"]);
   sheet.addRow([]);
-  sheet.addRow(["Fecha y hora", "Producto", "Tipo", "Entrada", "Salida / ajuste", "Unidad", "Stock anterior", "Stock posterior", "Responsable", "Motivo", "Origen / referencia", "Detalle FIFO"]);
+  sheet.addRow(["Fecha y hora", "Producto", "Tipo", "Entrada", "Salida / ajuste", "Unidad", "Stock anterior", "Stock posterior", "Responsable", "Cliente / pedido", "Fecha de entrega", "Motivo", "Origen / referencia", "Detalle FIFO"]);
   for (const row of rows) {
     const delta = row.stock_before === null || row.stock_after === null ? null : row.stock_after - row.stock_before;
     const fifo = row.fifo_lots.map((lot) => lot.historical_unknown
@@ -78,6 +79,8 @@ export async function GET(request: NextRequest) {
       before: row.stock_before,
       after: row.stock_after,
       responsible: row.responsible ?? "No disponible",
+      customer: row.customer_name ? `${row.customer_name}${row.order_reference ? ` · ${row.order_reference}` : ""}` : "—",
+      delivery: row.delivery_at ? new Intl.DateTimeFormat("es-BO", { dateStyle: "short", timeStyle: "short", timeZone: "America/La_Paz" }).format(new Date(row.delivery_at)) : "—",
       reason: row.reason ?? "Sin motivo",
       reference: row.reference,
       fifo,
@@ -85,9 +88,9 @@ export async function GET(request: NextRequest) {
   }
   sheet.getRow(4).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 4 }];
-  sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: Math.max(4, rows.length + 4), column: 12 } };
+  sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: Math.max(4, rows.length + 4), column: 14 } };
   for (const column of [4,5,7,8]) sheet.getColumn(column).numFmt = "#,##0.###;[Red]-#,##0.###";
-  sheet.getColumn(12).alignment = { wrapText: true, vertical: "top" };
+  sheet.getColumn(14).alignment = { wrapText: true, vertical: "top" };
 
   const summary = workbook.addWorksheet("Resumen por producto");
   summary.columns = [

@@ -85,3 +85,17 @@ export function summarizeReceipts<T extends { customerId: string; date: string; 
     total: sumReceiptAmounts(selected),
   };
 }
+
+export type ReceiptTrackingCounts = { sent: number; pendingSend: number; paid: number; pendingPayment: number };
+
+export function summarizeReceiptTracking(
+  receipts: readonly { receiptSentAt: string | null; paymentStatus: string }[],
+): ReceiptTrackingCounts {
+  return receipts.reduce<ReceiptTrackingCounts>((counts, receipt) => {
+    if (receipt.receiptSentAt) counts.sent += 1;
+    else counts.pendingSend += 1;
+    if (receipt.paymentStatus === "pagado" || receipt.paymentStatus === "cobrado") counts.paid += 1;
+    else counts.pendingPayment += 1;
+    return counts;
+  }, { sent: 0, pendingSend: 0, paid: 0, pendingPayment: 0 });
+}

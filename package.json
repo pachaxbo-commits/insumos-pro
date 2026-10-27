@@ -17,7 +17,8 @@
     "test:physical-unit-corrections": "node --experimental-strip-types scripts/qb-physical-unit-correction-units.test.mjs",
     "test:physical-unit-classification": "node --experimental-strip-types scripts/qb-physical-unit-classification.test.mjs",
     "test:main-flow": "node scripts/qb-main-flow-acceptance.test.mjs",
-    "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs"
+    "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs",
+    "test:owner-observations": "node --experimental-strip-types scripts/qb-owner-observations.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

@@ -42,6 +42,41 @@ async function rpc(
   if (!supabase) return { success: false, message: "Falta la conexion publica de Supabase." };
   const { data, error } = await supabase.rpc(name, payload);
   if (error) {
+    if (name === "confirm_qb_matrix_delivery" && error.message.includes("QB_STOCK_INSUFFICIENT")) {
+      const orderId = String(payload.p_order_id ?? "");
+      const { data: deliveryItems } = await supabase.from("qb_order_delivery_items")
+        .select("product_id,prepared_base_quantity_snapshot")
+        .eq("order_id", orderId);
+      const productIds = [...new Set((deliveryItems ?? []).map((item) => String(item.product_id)))];
+      const productsResult = productIds.length
+        ? await supabase.from("qb_operational_products")
+            .select("id,name,stock_current,unit_abbreviation")
+            .in("id", productIds)
+        : null;
+      const products = productsResult?.data ?? [];
+      const productsById = new Map((products ?? []).map((product) => [String(product.id), product]));
+      const insufficient = (deliveryItems ?? []).find((item) => {
+        const product = productsById.get(String(item.product_id));
+        return product && Number(product.stock_current ?? 0) + 0.000001 < Number(item.prepared_base_quantity_snapshot ?? 0);
+      });
+      if (insufficient) {
+        const product = productsById.get(String(insufficient.product_id));
+        const unit = product?.unit_abbreviation ? ` ${product.unit_abbreviation}` : "";
+        const quantity = (value: unknown) => new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(Number(value ?? 0));
+        const needed = Number(insufficient.prepared_base_quantity_snapshot ?? 0);
+        const available = Number(product?.stock_current ?? 0);
+        return {
+          success: false,
+          message: `Stock insuficiente para ${product?.name ?? "el producto"}: se necesitan ${quantity(needed)}${unit} y hay ${quantity(available)}${unit} disponibles. Corrige la cantidad preparada en bodega o registra el abastecimiento externo real por separado.`,
+          conflict: false,
+        };
+      }
+      return {
+        success: false,
+        message: "Stock insuficiente al confirmar la entrega. El saldo cambió durante la operación; actualiza la matriz y revisa las cantidades preparadas y externas.",
+        conflict: true,
+      };
+    }
     return {
       success: false,
       message: error.message,
