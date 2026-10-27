@@ -44,15 +44,21 @@ async function rpc(
   if (error) {
     if (name === "confirm_qb_matrix_delivery" && error.message.includes("QB_STOCK_INSUFFICIENT")) {
       const orderId = String(payload.p_order_id ?? "");
-      const { data: deliveryItems } = await supabase.from("qb_order_delivery_items")
+      const { data: deliveryItems, error: deliveryItemsError } = await supabase.from("qb_order_delivery_items")
         .select("product_id,prepared_base_quantity_snapshot")
         .eq("order_id", orderId);
+      if (deliveryItemsError) {
+        return { success: false, message: "No se pudo leer la cantidad preparada para explicar el bloqueo. Recarga la matriz y vuelve a revisar la entrega." };
+      }
       const productIds = [...new Set((deliveryItems ?? []).map((item) => String(item.product_id)))];
       const productsResult = productIds.length
         ? await supabase.from("qb_operational_products")
             .select("id,name,stock_current,unit_abbreviation")
             .in("id", productIds)
         : null;
+      if (productsResult?.error) {
+        return { success: false, message: "No se pudo consultar el stock disponible para explicar el bloqueo. Recarga la matriz y revisa la existencia antes de confirmar." };
+      }
       const products = productsResult?.data ?? [];
       const productsById = new Map((products ?? []).map((product) => [String(product.id), product]));
       const insufficient = (deliveryItems ?? []).find((item) => {
