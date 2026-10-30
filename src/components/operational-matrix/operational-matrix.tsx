@@ -25,6 +25,11 @@ import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion
 import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-origin-choice";
 import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
+  applyAutomaticDeliveryValues,
+  preparedQuantityAfterCheck,
+  updateDeliveryChecks,
+} from "@/lib/operational-matrix/line-state";
+import {
   originDistributionIsResolved,
   originDistributionMatches,
   originDistributionTotal,
@@ -305,12 +310,6 @@ function hasDeliveryCheck(line: MatrixLine) {
   return line.deliveryCheck;
 }
 
-function applyAutomaticDeliveryValues(lines: MatrixLine[]) {
-  // Delivery is a physical event. Never infer that requested/prepared quantity
-  // was delivered or that an unclassified remainder came from an external source.
-  return lines;
-}
-
 function mergeServerLines(
   serverLines: MatrixLine[],
   currentLines: MatrixLine[],
@@ -401,6 +400,7 @@ export function OperationalMatrix({
   const [conflictPending, setConflictPending] = useState(false);
   const matrixScrollRef = useRef<HTMLDivElement>(null);
   const dirty = useRef(new Set<string>());
+  const preparationQuantityEdited = useRef(new Set<string>());
   const preparationSaveQueues = useRef(new Map<string, Promise<void>>());
   const deliverySaveQueues = useRef(new Map<string, Promise<void>>());
   const customerGroups = useMemo(() => {
@@ -590,10 +590,9 @@ export function OperationalMatrix({
   const updateGroupedLines = (
     groupedLines: MatrixLine[],
     patch: Partial<MatrixLine>,
+    options: { preserveZeroPreparation?: boolean } = {},
   ) => {
-    setFormStatus("pendiente");
     const ids = new Set(groupedLines.map((line) => line.orderItemId));
-    groupedLines.forEach((line) => dirty.current.add(line.orderItemId));
     const preparationWeights =
       Object.hasOwn(patch, "preparationActualWeightKg") &&
       patch.preparationActualWeightKg !== null
@@ -603,6 +602,23 @@ export function OperationalMatrix({
       Object.hasOwn(patch, "preparedQuantity") &&
       typeof patch.preparedQuantity === "number"
         ? distributeValue(groupedLines, patch.preparedQuantity)
+        : [];
+    if (Object.hasOwn(patch, "preparedQuantity")) {
+      groupedLines.forEach((line) =>
+        preparationQuantityEdited.current.add(line.orderItemId),
+      );
+    }
+    const checkedPreparationQuantities =
+      patch.preparationCheck === true &&
+      !Object.hasOwn(patch, "preparedQuantity")
+        ? groupedLines.map((line) =>
+            preparedQuantityAfterCheck(
+              line,
+              true,
+              options.preserveZeroPreparation ||
+                preparationQuantityEdited.current.has(line.orderItemId),
+            ),
+          )
         : [];
     const deliveryWeights =
       Object.hasOwn(patch, "deliveryActualWeightKg") &&
@@ -627,27 +643,46 @@ export function OperationalMatrix({
       groupedLines.map((line, index) => [line.orderItemId, index]),
     );
 
+    let anyChanged = false;
     const updatedLines = linesRef.current.map((line) => {
       if (!ids.has(line.orderItemId)) return line;
       const index = indexById.get(line.orderItemId) ?? 0;
       const next = { ...line, ...patch };
+      let changed = false;
       if (
         Object.hasOwn(patch, "preparedQuantity") &&
         typeof patch.preparedQuantity === "number"
       ) {
         next.preparedQuantity = preparationQuantities[index];
+        changed ||= next.preparedQuantity !== line.preparedQuantity;
+      } else if (patch.preparationCheck === true) {
+        next.preparedQuantity = checkedPreparationQuantities[index];
+        changed ||= next.preparedQuantity !== line.preparedQuantity;
       }
-      if (Object.hasOwn(patch, "preparedQuantity")) {
+      if (
+        Object.hasOwn(patch, "preparedQuantity") &&
+        typeof patch.preparationCheck !== "boolean"
+      ) {
         next.preparationCheck = false;
       }
+      if (
+        patch.preparationCheck === false &&
+        line.preparationCheck &&
+        line.preparedQuantity <= 0.000001
+      ) {
+        preparationQuantityEdited.current.add(line.orderItemId);
+      }
+      changed ||= next.preparationCheck !== line.preparationCheck;
       if (Object.hasOwn(patch, "preparationActualWeightKg")) {
         next.preparationActualWeightKg =
           patch.preparationActualWeightKg === null
             ? null
             : preparationWeights[index];
+        changed ||= next.preparationActualWeightKg !== line.preparationActualWeightKg;
       }
       if (typeof patch.deliveryCheck === "boolean") {
         next.deliveryCheck = patch.deliveryCheck;
+        changed ||= next.deliveryCheck !== line.deliveryCheck;
       }
       if (
         Object.hasOwn(patch, "deliveredQuantity") &&
@@ -655,21 +690,41 @@ export function OperationalMatrix({
       ) {
         next.deliveredQuantity = deliveryQuantities[index];
         next.deliveredBaseQuantity = Number((deliveryQuantities[index] * line.basePerSourceQuantity).toFixed(6));
+        if (typeof patch.deliveryCheck !== "boolean") {
+          next.deliveryCheck = false;
+        }
         next.deliverySourceConfirmed = false;
         next.deliveryWarehouseBaseQuantity = 0;
         next.deliveryPendingBaseQuantity = 0;
         next.deliveryExternalBaseQuantity = 0;
         next.deliveryReviewBaseQuantity = next.deliveredBaseQuantity;
+        changed ||= next.deliveredQuantity !== line.deliveredQuantity ||
+          next.deliveryCheck !== line.deliveryCheck ||
+          line.deliverySourceConfirmed ||
+          line.deliveryWarehouseBaseQuantity !== 0 ||
+          line.deliveryPendingBaseQuantity !== 0 ||
+          line.deliveryExternalBaseQuantity !== 0 ||
+          line.deliveryReviewBaseQuantity !== next.deliveryReviewBaseQuantity;
       }
       if (Object.hasOwn(patch, "deliveryActualWeightKg")) {
         next.deliveryActualWeightKg =
           patch.deliveryActualWeightKg === null ? null : deliveryWeights[index];
+        changed ||= next.deliveryActualWeightKg !== line.deliveryActualWeightKg;
       }
       for (const [field, values] of distributedBaseFields) {
         (next[field as keyof MatrixLine] as number) = values[index] ?? 0;
+        changed ||= next[field as keyof MatrixLine] !== line[field as keyof MatrixLine];
+      }
+      for (const field of Object.keys(patch) as (keyof MatrixLine)[]) {
+        changed ||= next[field] !== line[field];
+      }
+      if (changed) {
+        anyChanged = true;
+        dirty.current.add(line.orderItemId);
       }
       return next;
     });
+    if (anyChanged) setFormStatus("pendiente");
     linesRef.current = updatedLines;
     setLines(updatedLines);
     if (Object.hasOwn(patch, "deliveredQuantity")) {
@@ -680,6 +735,14 @@ export function OperationalMatrix({
         return next;
       });
     }
+  };
+
+  const verifyZeroPreparation = (groupedLines: MatrixLine[]) => {
+    updateGroupedLines(
+      groupedLines,
+      { preparedQuantity: 0, preparationCheck: true },
+      { preserveZeroPreparation: true },
+    );
   };
 
   const selectDeliveryOrigin = (orderId: string, choice: DeliveryOriginChoice) => {
@@ -717,21 +780,19 @@ export function OperationalMatrix({
     groupedLines: MatrixLine[],
     checked: boolean,
   ) => {
-    setFormStatus("pendiente");
-    const missingIds = new Set(
+    const changedIds = new Set(
       groupedLines
-        .filter((line) => !line.deliveryCheck)
+        .filter((line) => line.deliveryCheck !== checked)
         .map((line) => line.orderItemId),
     );
-    if (!missingIds.size) return;
-    missingIds.forEach((id) => dirty.current.add(id));
-    const updatedLines = linesRef.current.map((line) => {
-      if (!missingIds.has(line.orderItemId)) return line;
-      return {
-        ...line,
-        deliveryCheck: checked,
-      };
-    });
+    if (!changedIds.size) return;
+    changedIds.forEach((id) => dirty.current.add(id));
+    const updatedLines = updateDeliveryChecks(
+      linesRef.current,
+      changedIds,
+      checked,
+    );
+    setFormStatus("pendiente");
     linesRef.current = updatedLines;
     setLines(updatedLines);
   };
@@ -1307,6 +1368,26 @@ export function OperationalMatrix({
                                   />
                                   <WeightPricingHint line={line} />
                                   {stage === "preparacion" ? <p className="text-xs text-muted-foreground">El origen se confirma durante Entrega.</p> : null}
+                                  {stage === "preparacion" && !line.preparationCheck && line.preparedQuantity <= 0.000001 ? (
+                                    <Button
+                                      size="xs"
+                                      type="button"
+                                      variant="outline"
+                                      disabled={!editable}
+                                      onClick={() => {
+                                        verifyZeroPreparation([line]);
+                                        requestAnimationFrame(() => void saveFormLine(line.orderItemId));
+                                      }}
+                                    >
+                                      Verificar 0 en almacén
+                                    </Button>
+                                  ) : null}
+                                  {stage === "entrega" && line.deliveryVersion === 0 &&
+                                  line.deliveredQuantity > 0 &&
+                                  Math.abs(line.deliveredQuantity - line.preparedQuantity) <= 0.000001 &&
+                                  !line.deliveryCheck && !line.deliveredAt ? (
+                                    <p className="text-xs text-sky-800">Cantidad sugerida desde Preparación; confirma lo realmente entregado.</p>
+                                  ) : null}
                                   <label className="flex items-center gap-2 text-xs font-medium">
                                     <CheckEditor
                                       label={stage === "preparacion" ? "Preparación verificada" : "Entrega física verificada"}
@@ -1621,14 +1702,26 @@ export function OperationalMatrix({
                             onChange={(patch) =>
                               updateGroupedLines(groupedLines, patch)
                             }
+                            onVerifyZeroPreparation={() => {
+                              verifyZeroPreparation(groupedLines);
+                              requestAnimationFrame(() =>
+                                void saveGroupedPreparation(
+                                  groupedLines.map((item) => item.orderItemId),
+                                ),
+                              );
+                            }}
                             onSavePreparation={() =>
                               void saveGroupedPreparation(
-                                groupedLines.map((item) => item.orderItemId),
+                                groupedLines
+                                  .filter((item) => dirty.current.has(item.orderItemId))
+                                  .map((item) => item.orderItemId),
                               )
                             }
                             onSaveDelivery={() =>
                               void saveGroupedDelivery(
-                                groupedLines.map((item) => item.orderItemId),
+                                groupedLines
+                                  .filter((item) => dirty.current.has(item.orderItemId))
+                                  .map((item) => item.orderItemId),
                               )
                             }
                             onToggleMissingDeliveryCheck={(checked) =>
@@ -1637,7 +1730,7 @@ export function OperationalMatrix({
                             onSaveMissingDeliveryCheck={() =>
                               void saveGroupedDelivery(
                                 groupedLines
-                                  .filter((item) => !item.deliveryCheck)
+                                  .filter((item) => dirty.current.has(item.orderItemId))
                                   .map((item) => item.orderItemId),
                               )
                             }
@@ -1777,6 +1870,7 @@ type CellProps = {
   focused: boolean;
   editable: boolean;
   onChange: (patch: Partial<MatrixLine>) => void;
+  onVerifyZeroPreparation: () => void;
   onSavePreparation: () => void;
   onSaveDelivery: () => void;
   onToggleMissingDeliveryCheck: (checked: boolean) => void;
@@ -2402,6 +2496,7 @@ function DesktopOrderCells(props: CellProps) {
     focused,
     editable,
     onChange,
+    onVerifyZeroPreparation,
     onSavePreparation,
     onSaveDelivery,
     onToggleMissingDeliveryCheck,
@@ -2455,13 +2550,27 @@ function DesktopOrderCells(props: CellProps) {
           </span>
         </td>
         <td style={cellStyle} className={cellClass}>
-          <CheckEditor
-            label={`Preparación verificada ${line.productName}`}
-            checked={line.preparationCheck}
-            disabled={!editable}
-            onChange={(checked) => onChange({ preparationCheck: checked })}
-            onBlur={onSavePreparation}
-          />
+          <div className="flex flex-col items-center gap-1">
+            <CheckEditor
+              label={`Preparación verificada ${line.productName}`}
+              checked={line.preparationCheck}
+              disabled={!editable}
+              onChange={(checked) => onChange({ preparationCheck: checked })}
+              onBlur={onSavePreparation}
+            />
+            {!line.preparationCheck && line.preparedQuantity <= 0.000001 ? (
+              <Button
+                size="xs"
+                type="button"
+                variant="outline"
+                disabled={!editable}
+                aria-label={`Verificar cero preparado desde almacén para ${line.productName}`}
+                onClick={onVerifyZeroPreparation}
+              >
+                Verificar 0
+              </Button>
+            ) : null}
+          </div>
         </td>
         <td style={cellStyle} className={cellClass}>
           <MeasuredQuantityEditor
@@ -2594,9 +2703,11 @@ function DesktopOrderCells(props: CellProps) {
             <SameDayReconciliationControl line={line} />
           ) : null}
           <WeightPricingHint line={line} />
-          {deliveryReady && !needsDeliveryReview ? (
-            <span className="mt-1 block text-[9px] font-medium text-emerald-800">
-              Valor inicial de Inventario · editable
+          {deliveryReady && line.deliveryVersion === 0 && line.deliveredQuantity > 0 &&
+          Math.abs(line.deliveredQuantity - line.preparedQuantity) <= 0.000001 &&
+          !line.deliveryCheck && !line.deliveredAt ? (
+            <span className="mt-1 block text-[9px] font-medium text-sky-800">
+              Sugerido por Preparación · confirma lo realmente entregado
             </span>
           ) : null}
         </td>
