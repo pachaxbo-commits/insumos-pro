@@ -7,6 +7,7 @@ const matrix = readFileSync(
   "utf8",
 );
 const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
+const actions = readFileSync("src/lib/operational-matrix/actions.ts", "utf8");
 
 test("todos los productos muestran una cantidad real con su unidad", () => {
   assert.match(matrix, /function QuantityEditor/);
@@ -113,6 +114,10 @@ test("marcar preparación completa lo solicitado y permite verificar cero explí
   assert.match(matrix, /preparedQuantityAfterCheck\(/);
   assert.match(matrix, /const verifyZeroPreparation =/);
   assert.match(matrix, /preserveZeroPreparation: true/);
+  assert.match(actions, /rpc\("save_qb_matrix_preparation_origin_with_unit",\s*\{/);
+  assert.match(actions, /p_prepared_quantity:\s*parsed\.data\.preparedQuantity/);
+  assert.match(actions, /p_preparation_check:\s*parsed\.data\.preparationCheck/);
+  assert.match(actions, /p_display_unit_id:\s*parsed\.data\.displayUnitId/);
   assert.doesNotMatch(matrix, /checked && line\.preparedQuantity <= 0\.000001\s*\?\s*\{\s*preparedQuantity: line\.requestedQuantity/);
   assert.doesNotMatch(matrix, /checked && line\.deliveredQuantity <= 0\.000001[\s\S]*line\.requestedQuantity/);
 });
