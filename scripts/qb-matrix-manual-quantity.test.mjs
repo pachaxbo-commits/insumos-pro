@@ -109,26 +109,20 @@ test("la cantidad preparada agrupada se distribuye entre pedidos", () => {
   );
 });
 
-test("un check manual sin cantidad toma lo solicitado sin inventar peso", () => {
-  assert.match(
-    matrix,
-    /checked && line\.preparedQuantity <= 0\.000001[\s\S]*preparedQuantity: line\.requestedQuantity/,
-  );
-  assert.match(
-    matrix,
-    /checked && line\.deliveredQuantity <= 0\.000001[\s\S]*line\.requestedQuantity/,
-  );
-  assert.doesNotMatch(matrix, /requestedWeightInKilograms\(line, weightUnits\)/);
+test("marcar preparación completa lo solicitado y permite verificar cero explícitamente", () => {
+  assert.match(matrix, /preparedQuantityAfterCheck\(/);
+  assert.match(matrix, /const verifyZeroPreparation =/);
+  assert.match(matrix, /preserveZeroPreparation: true/);
+  assert.doesNotMatch(matrix, /checked && line\.preparedQuantity <= 0\.000001\s*\?\s*\{\s*preparedQuantity: line\.requestedQuantity/);
+  assert.doesNotMatch(matrix, /checked && line\.deliveredQuantity <= 0\.000001[\s\S]*line\.requestedQuantity/);
 });
 
-test("los checks ya guardados con cero se normalizan para el resumen", () => {
+test("las cantidades guardadas en cero se conservan en la lectura", () => {
   assert.match(data, /requested_quantity, base_quantity/);
   assert.match(
     data,
-    /preparationCheck && rawPreparedQuantity <= 0\.000001[\s\S]*requestedQuantity/,
+    /const preparedQuantity = rawPreparedQuantity;/,
   );
-  assert.match(
-    data,
-    /deliveryCheck && rawDeliveredQuantity <= 0\.000001[\s\S]*requestedQuantity/,
-  );
+  assert.match(data, /const deliveredQuantity = rawDeliveredQuantity;/);
+  assert.doesNotMatch(data, /deliveryCheck && rawDeliveredQuantity <= 0\.000001[\s\S]*requestedQuantity/);
 });

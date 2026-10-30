@@ -373,26 +373,13 @@ export async function getOperationalMatrixData(
         : rawPreparationWeight;
     const deliveryCheck = Boolean(delivery?.delivery_check);
     const rawDeliveredQuantity = numberOr(delivery?.delivered_quantity);
-    const deliveredQuantity =
-      deliveryCheck && rawDeliveredQuantity <= 0.000001
-        ? requestedQuantity
-        : rawDeliveredQuantity;
+    const deliveredQuantity = rawDeliveredQuantity;
     const rawDeliveryWeight =
       delivery?.actual_weight_kg === null ||
       typeof delivery?.actual_weight_kg === "undefined"
         ? null
         : numberOr(delivery.actual_weight_kg);
-    const deliveryActualWeightKg =
-      (controlsActualWeight || preparationActualWeightKg !== null) &&
-      rawDeliveryWeight === null
-        ? preparationActualWeightKg !== null
-          ? preparationActualWeightKg
-          : deliveryCheck && requestedWeightUnit
-            ? Number(
-                (requestedQuantity * requestedWeightUnit.kilograms).toFixed(6),
-              )
-            : rawDeliveryWeight
-        : rawDeliveryWeight;
+    const deliveryActualWeightKg = rawDeliveryWeight;
     const storedDeliveryOrigin = Boolean(delivery && (
       delivery.source_origin_confirmed ||
       numberOr(delivery.warehouse_used_base_quantity) > 0 ||

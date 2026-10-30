@@ -6,6 +6,7 @@ import ts from "typescript";
 
 const read = (path) => readFileSync(path, "utf8");
 const matrix = read("src/components/operational-matrix/operational-matrix.tsx");
+const lineState = read("src/lib/operational-matrix/line-state.ts");
 const migration = read("supabase/migrations/20260918010000_qb_optional_actual_weight.sql");
 const optionalDelivery = read("supabase/migrations/20261007130000_qb_optional_delivery_weight.sql");
 const externalReceipts = read("supabase/migrations/20261007150000_qb_external_delivery_receipts.sql");
@@ -18,20 +19,26 @@ test("todos los productos muestran cantidad y peso sin depender de la bandera de
   assert.match(matrix, /line\.deliveryActualWeightKg !== null\s*\?/);
 });
 
-test("entrega conserva el peso opcional sin inferirlo de preparación", () => {
-  const start = matrix.indexOf("function applyAutomaticDeliveryValues(");
-  const end = matrix.indexOf("function mergeServerLines(", start);
-  const js = ts.transpileModule(`export ${matrix.slice(start, end)}`, {
+test("entrega sugiere peso de preparación solo para una entrega nueva sin confirmar", () => {
+  const js = ts.transpileModule(lineState, {
     compilerOptions: { module: ts.ModuleKind.CommonJS },
   }).outputText;
   const exported = {};
-  runInNewContext(js, { exports: exported, hasCompletePreparation: () => true });
-  const base = { controlsActualWeight: false, preparedAt: "saved", preparationCheck: true, deliveredAt: null, deliveryVersion: 0, preparedQuantity: 5,
-    deliveredQuantity: 0, preparationActualWeightKg: 0.416, deliveryActualWeightKg: null };
-  assert.equal(exported.applyAutomaticDeliveryValues([base])[0].deliveryActualWeightKg, null);
-  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveryActualWeightKg: 0 }])[0].deliveryActualWeightKg, 0);
-  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, preparationActualWeightKg: 0 }])[0].deliveryActualWeightKg, null);
-  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveredAt: "saved", deliveryActualWeightKg: 0.25 }])[0].deliveryActualWeightKg, 0.25);
+  runInNewContext(js, { exports: exported });
+  const base = {
+    preparedAt: "saved", preparationCheck: true, preparedQuantity: 5,
+    preparedBaseQuantity: 5, preparationDisplayUnitId: "kg",
+    preparationActualWeightKg: 0.416, deliveredAt: null, deliveryVersion: 0,
+    deliveredQuantity: 0, deliveredBaseQuantity: 0, deliveryDisplayUnitId: null,
+    deliveryActualWeightKg: null, deliveryCheck: false,
+  };
+  const suggested = exported.applyAutomaticDeliveryValues([base])[0];
+  assert.equal(suggested.deliveredQuantity, 5);
+  assert.equal(suggested.deliveryDisplayUnitId, "kg");
+  assert.equal(suggested.deliveryActualWeightKg, 0.416);
+  assert.equal(suggested.deliveryCheck, false);
+  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, preparedQuantity: 0 }])[0].deliveredQuantity, 0);
+  assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveredAt: "saved", deliveredQuantity: 3 }])[0].deliveredQuantity, 3);
 });
 
 test("SQL acepta peso manual, conserva auditoría y no modifica el catálogo ni recibos anteriores", () => {

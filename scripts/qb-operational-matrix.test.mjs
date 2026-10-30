@@ -78,6 +78,7 @@ const newSources = [foundation, workflows, factors, matrix, actions, docs, expli
   "\n",
 );
 const matrixData = await read("src/lib/operational-matrix/data.ts");
+const lineState = await read("src/lib/operational-matrix/line-state.ts");
 assert.doesNotMatch(newSources, /epxmrfwtssbcqsytuwhf|wfhvuzigmkgojdoofjib/);
 assert.doesNotMatch(newSources, /SUPABASE_SCHEMA\.sql/i);
 assert.match(foundation, /'entregador'/);
@@ -156,14 +157,12 @@ assert.match(matrix, /scrollIntoView/);
 assert.match(matrixData, /customer_account_id/);
 assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
-assert.match(matrix, /function applyAutomaticDeliveryValues\(lines: MatrixLine\[\]\)/);
-assert.match(matrix, /Delivery is a physical event/);
-assert.doesNotMatch(matrix, /deliveredQuantity:\s*line\.preparedQuantity/);
+assert.match(matrix, /applyAutomaticDeliveryValues,/);
+assert.match(lineState, /export function applyAutomaticDeliveryValues/);
+assert.match(lineState, /deliveredQuantity: line\.preparedQuantity/);
+assert.match(lineState, /deliveryCheck: false/);
 assert.doesNotMatch(matrixData, /rawDeliveryWeight <= 0\.000001/);
-assert.match(
-  matrixData,
-  /rawDeliveryWeight === null[\s\S]*?preparationActualWeightKg/,
-);
+assert.match(matrixData, /const deliveryActualWeightKg = rawDeliveryWeight;/);
 assert.match(matrix, /groupLineMap/);
 assert.match(matrix, /saveGroupedPreparation/);
 assert.match(matrix, /saveGroupedDelivery/);
@@ -196,7 +195,7 @@ assert.match(
 );
 assert.match(matrix, /function QuantityEditor/);
 assert.match(matrix, /quantityValue=\{line\.deliveredQuantity\}/);
-assert.match(matrix, /deliveryCheck: checked/);
+assert.match(matrix, /updateDeliveryChecks\(/);
 assert.match(matrix, /function hasDeliveryCheck/);
 assert.match(
   matrix,
@@ -296,7 +295,7 @@ assert.match(
   matrix,
   /TOTALES POR CLIENTE[\s\S]*customerDividerClass\(group\.id === focusedCustomerId\)/,
 );
-assert.match(matrix, /Valor inicial de Inventario · editable/);
+assert.match(matrix, /Sugerido por Preparación · confirma lo realmente entregado/);
 assert.match(matrix, /mergeServerLines/);
 assert.match(matrix, /const deliveryDisabled = !editable/);
 assert.doesNotMatch(
