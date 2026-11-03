@@ -1314,15 +1314,18 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
     <div className="overflow-x-auto"><table className="w-full text-sm">
       <thead className="bg-slate-100 text-left text-xs"><tr>
         <th className="px-2 py-2">Cliente</th><th className="px-2 py-2 text-right">Recibos</th>
-        <th className="px-2 py-2 text-right">Envío · enviados / pendientes</th><th className="px-2 py-2 text-right">Pago · pagados / pendientes</th>
+        <th className="px-2 py-2 text-right">Enviados</th><th className="px-2 py-2 text-right">No enviados</th>
+        <th className="px-2 py-2 text-right">Pagados</th><th className="px-2 py-2 text-right">Pendientes de pago</th>
         <th className="px-2 py-2 text-right">Costo Bs</th><th className="px-2 py-2 text-right">Venta Bs</th>
         <th className="px-2 py-2 text-right">Utilidad Bs</th><th className="px-2 py-2 text-right">% Utilidad</th>
       </tr></thead><tbody>
       {summary.customers.map((item) => <tr key={item.customerId} className="border-t">
         <td className="px-2 py-2">{customers.find(([id]) => id === item.customerId)?.[1] ?? "Cliente"}</td>
         <td className="px-2 py-2 text-right">{item.count}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.sent ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingSend ?? 0}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.paid ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingPayment ?? 0}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.sent ?? 0}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.pendingSend ?? 0}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.paid ?? 0}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.pendingPayment ?? 0}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.profitTotal))}</td>
@@ -1330,8 +1333,10 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
       </tr>)}
       </tbody><tfoot className="border-t bg-emerald-50 font-semibold"><tr>
         <td className="px-2 py-2">TOTAL GENERAL</td><td className="px-2 py-2 text-right">{summary.selected.length}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.sent} / {totalTracking.pendingSend}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.paid} / {totalTracking.pendingPayment}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.sent}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.pendingSend}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.paid}</td>
+        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.pendingPayment}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.profitTotal))}</td>

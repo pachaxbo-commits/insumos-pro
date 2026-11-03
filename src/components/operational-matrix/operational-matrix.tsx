@@ -1315,11 +1315,22 @@ export function OperationalMatrix({
                             {stage === "preparacion" || stage === "entrega" ? " · " + pending + " pendientes" : ""}
                           </p>
                         </div>
-                        {stage === "preparacion" || stage === "entrega" ? (
-                          <Button size="sm" variant="outline" onClick={() => void navigateForm(() => setExpandedOrderId(expanded ? "" : order.id))}>
-                            {expanded ? "Ocultar productos" : "Ver productos"}
-                          </Button>
-                        ) : null}
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {stage === "entrega" && order.deliveryStatus === "confirmado" ? (
+                            <span role="status" className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">✓ Pedido entregado</span>
+                          ) : null}
+                          {stage === "entrega" && order.deliveryStatus !== "confirmado" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
+                            <Button type="button" size="sm" disabled={Boolean(actionPending)}
+                              onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
+                              Confirmar entrega · {order.reference}
+                            </Button>
+                          ) : null}
+                          {stage === "preparacion" || stage === "entrega" ? (
+                            <Button type="button" size="sm" variant="outline" onClick={() => void navigateForm(() => setExpandedOrderId(expanded ? "" : order.id))}>
+                              {expanded ? "Ocultar productos" : "Ver productos"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                       {expanded ? <div className="space-y-3 p-3">
                         {order.customerNotes ? <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">Nota: {order.customerNotes}</p> : null}
@@ -1330,6 +1341,11 @@ export function OperationalMatrix({
                                 <div>
                                   <h4 className="text-sm font-semibold">{line.productName}</h4>
                                   <p className="text-xs text-muted-foreground">Solicitado: {formatQuantity(line.requestedQuantity)} {line.sourceLabel}</p>
+                                  {line.requestedConversionValid ? (
+                                    <p className="text-[11px] text-muted-foreground">Equivale según el pedido guardado: {formatQuantity(line.requestedBaseQuantity)} {line.baseUnitSymbol}</p>
+                                  ) : (
+                                    <p role="alert" className="text-[11px] font-medium text-amber-800">Conversión física no verificable; revisar la parametrización antes de usar equivalencias.</p>
+                                  )}
                                 </div>
                                 {stage === "pedido" && canAdmin ? <Button size="xs" variant="outline" onClick={() => void correctGroupedRequest([line])}>Corregir</Button> : null}
                               </div>
@@ -1345,10 +1361,13 @@ export function OperationalMatrix({
                               {stage === "preparacion" || stage === "entrega" ? (
                                 <div className="space-y-2">
                                   {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
-                                  {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
+                                  {stage === "entrega" ? <div className="space-y-1 rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
                                     {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
-                                  </p> : null}
+                                    <span className={`block font-medium ${line.preparationCheck ? "text-emerald-800" : "text-amber-800"}`}>
+                                      {line.preparationCheck ? "✓ Revisado en Preparación" : "Pendiente de revisión en Preparación"}
+                                    </span>
+                                  </div> : null}
                                   <MeasuredQuantityEditor
                                     key={stage + ":" + line.orderItemId}
                                     label={(stage === "preparacion" ? "Preparación" : "Entrega") + " de " + line.productName}
@@ -1446,12 +1465,6 @@ export function OperationalMatrix({
                               })()}>
                               Guardar {stage === "preparacion" ? "preparación" : "entrega"}
                             </Button>
-                            {stage === "entrega" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
-                              <Button type="button" disabled={Boolean(actionPending) || formStatus === "guardando"}
-                                onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
-                                Confirmar entrega de este pedido
-                              </Button>
-                            ) : null}
                           </div>
                         ) : null}
                       </div> : null}
@@ -1473,7 +1486,7 @@ export function OperationalMatrix({
       ) : (
         <div
           ref={matrixScrollRef}
-          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg border"
+          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-auto rounded-lg border"
           data-matrix-layout="continuous-sheet"
           aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
         >

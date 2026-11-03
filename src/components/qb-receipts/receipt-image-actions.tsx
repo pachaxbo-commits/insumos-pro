@@ -253,7 +253,10 @@ export function ReceiptImageActions({
     void withLock(async () => {
       const shareProbe = createPngFile(new Blob(["qb"], { type: "image/png" }), filename);
       const nativeFileShare = shouldUseNativeFileShare(preparedFile ?? shareProbe);
-      const fallbackWindow = nativeFileShare ? null : window.open("about:blank", "_blank");
+      const whatsappUrl = nativeFileShare ? null : buildWhatsAppShareUrl(shareMessage);
+      // Navigate directly from the click gesture so the fallback never leaves
+      // an about:blank tab open while the receipt image is generated.
+      const fallbackWindow = whatsappUrl ? window.open(whatsappUrl, "_blank") : null;
       if (fallbackWindow) {
         try {
           fallbackWindow.opener = null;
@@ -288,13 +291,11 @@ export function ReceiptImageActions({
           downloadReceiptImage(file, filename);
           whatsAppDownloadedFileRef.current = file;
         }
-        const whatsappUrl = buildWhatsAppShareUrl(shareMessage);
-        if (fallbackWindow) {
-          fallbackWindow.location.replace(whatsappUrl);
+        if (whatsappUrl && fallbackWindow) {
           setStatus({
             kind: "success",
             message:
-              "La imagen del recibo fue descargada. Selecciona la conversación en WhatsApp y adjunta el archivo desde Descargas.",
+              "WhatsApp está abierto y la imagen fue descargada. Selecciona la conversación y adjunta el archivo desde Descargas.",
           });
         } else {
           setStatus({

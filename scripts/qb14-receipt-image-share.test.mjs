@@ -146,7 +146,8 @@ test("desktop fallback reuses the prepared file and downloads it at most once", 
     actionsSource,
     /if \(whatsAppDownloadedFileRef\.current !== file\) \{\s*downloadReceiptImage\(file, filename\);\s*whatsAppDownloadedFileRef\.current = file;/,
   );
-  assert.match(actionsSource, /const fallbackWindow = nativeFileShare \? null : window\.open/);
+  assert.match(actionsSource, /const whatsappUrl = nativeFileShare \? null : buildWhatsAppShareUrl/);
+  assert.match(actionsSource, /const fallbackWindow = whatsappUrl \? window\.open\(whatsappUrl, "_blank"\) : null/);
   assert.match(actionsSource, /if \(busyRef\.current\) return;/);
 });
 

@@ -437,6 +437,7 @@ console.log("\n--- PREVIOUS SUITE REGRESSION CHECKS ---");
         requestedQuantity: 30,
         requestedBaseQuantity: 30,
         basePerSourceQuantity: 1,
+        requestedConversionValid: true,
         requestedNote: "",
         requestedVersion: 1,
         preparedQuantity: 0,

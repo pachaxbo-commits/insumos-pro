@@ -63,7 +63,8 @@ test("hoja de compras tiene destino directo y costos permanece en el recibo", ()
   assert.doesNotMatch(receipts, /Las 2 tablas solicitadas|Tabla 1 ·|Tabla 2 ·/);
   assert.match(receipts, /TabsTrigger value="costos"/);
   assert.match(market, /name="date"/);
-  assert.match(market, /COSTO DE PROVISIÓN \(Bs\/UD\)/);
+  assert.match(market, /COSTO DE PROVISIÓN POR UNIDAD FÍSICA/);
+  assert.match(market, /se guarda por \{row\.unit\}/);
   assert.match(market, /model\.customerLineCounts/);
   assert.match(market, /model\.totalLineCount/);
   assert.doesNotMatch(market, /rows\.reduce\(\(sum, row\) => sum \+ row\.total/);

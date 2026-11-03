@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
-import { quantityUnitOptions, quantityInOriginalUnit, quantityInSelectedUnit } from "../src/lib/operational-matrix/quantity-units.ts";
+import { quantityUnitOptions, quantityInOriginalUnit, quantityInSelectedUnit, resolveRequestedBasePerSourceQuantity } from "../src/lib/operational-matrix/quantity-units.ts";
 
 const unit = (id, symbol, factor, dimension_id = "peso", is_active = true) => ({
   id, symbol, name: symbol, conversion_factor_to_base: factor, dimension_id, is_active,
@@ -63,6 +63,21 @@ test("factores inválidos no producen conversiones ni divisiones por cero", () =
   for (const conversion_factor_to_base of [0, -1, NaN, Infinity]) {
     assert.equal(quantityUnitOptions({ ...item, conversion_factor_to_base }, units, []).length, 1);
   }
+});
+
+test("la conversión del pedido usa el snapshot de cantidad física y nunca inventa factor 1", () => {
+  assert.deepEqual(resolveRequestedBasePerSourceQuantity(1, 2.7, 2.7), {
+    basePerSourceQuantity: 2.7, valid: true,
+  });
+  assert.deepEqual(resolveRequestedBasePerSourceQuantity(1, 11.25, 11.25), {
+    basePerSourceQuantity: 11.25, valid: true,
+  });
+  assert.deepEqual(resolveRequestedBasePerSourceQuantity(1, 1, 2.7), {
+    basePerSourceQuantity: 1, valid: false,
+  });
+  assert.deepEqual(resolveRequestedBasePerSourceQuantity(0, 0, 0), {
+    basePerSourceQuantity: 0, valid: false,
+  });
 });
 
 test("unidades importadas antiguas no se tratan como equivalencias 1:1", () => {

@@ -53,6 +53,8 @@ export type MatrixLine = {
   requestedBaseQuantity: number;
   /** Canonical base quantity for one unit in the order's source unit. */
   basePerSourceQuantity: number;
+  /** False when stored order quantity/factor snapshots disagree or are incomplete. */
+  requestedConversionValid: boolean;
   requestedNote: string;
   requestedVersion: number;
   preparedQuantity: number;
