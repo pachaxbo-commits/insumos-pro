@@ -4,10 +4,27 @@ select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001'
 
 do $$
 declare v_count integer; v_amount numeric; v_denied boolean := false;
+  v_receipt_id uuid; v_line_count integer;
 begin
   if public.current_user_role() <> 'supervisor' then raise exception 'Supervisor profile was not resolved'; end if;
+  v_receipt_id := public.create_qb_receipt_line_draft(
+    '10000000-0000-0000-0000-000000000001',
+    array['20000000-0000-0000-0000-000000000001']::uuid[]);
+  select count(*) into v_line_count from public.qb_supervisor_receipt_lines
+    where receipt_id = v_receipt_id;
+  if v_line_count <> 1 then raise exception 'Supervisor receipt RPC did not create its delivered line'; end if;
+  if not exists (select 1 from public.qb_supervisor_receipt_lines
+    where receipt_id = v_receipt_id and order_id='20000000-0000-0000-0000-000000000001'
+      and delivered_base_quantity=2 and product_name_snapshot='Fixture Producto') then
+    raise exception 'Supervisor receipt did not preserve delivery snapshot fields';
+  end if;
+  if not exists (select 1 from public.qb_supervisor_receipt_orders
+    where receipt_id=v_receipt_id and order_id='20000000-0000-0000-0000-000000000001'
+      and inclusion_status='borrador') then
+    raise exception 'Supervisor receipt did not preserve receipt inclusion state';
+  end if;
   select count(*), max(total_amount) into v_count, v_amount from public.qb_supervisor_receipts;
-  if v_count <> 2 or v_amount <> 15 then raise exception 'Supervisor receipt customer projection mismatch'; end if;
+  if v_count <> 3 or v_amount <> 15 then raise exception 'Supervisor receipt customer projection mismatch'; end if;
   if exists (select 1 from information_schema.columns where table_schema='public'
     and table_name in ('qb_supervisor_receipts','qb_supervisor_receipt_lines')
     and column_name in ('cost_total_precise','profit_total_precise','profit_unit_precise',
@@ -36,7 +53,12 @@ begin
   perform public.annul_qb_warehouse_purchase_draft(null,null);
   perform public.set_warehouse_purchase_actual_quantity(null,null);
   perform public.confirm_qb_merchandise_receipt('40000000-0000-0000-0000-000000000001');
-  perform public.create_qb_receipt_draft(null,null);
+  v_denied := false;
+  begin
+    perform public.create_qb_receipt_draft(null,null);
+  exception when others then v_denied := true;
+  end;
+  if not v_denied then raise exception 'Supervisor received unused legacy receipt-draft RPC access'; end if;
   perform public.update_qb_receipt_draft_supervisor(
     '30000000-0000-0000-0000-000000000002','Updated fixture note','[]'::jsonb);
   perform public.set_qb_receipt_line_pricing(
@@ -73,6 +95,27 @@ do $$ begin
   if exists(select 1 from public.qb_supervisor_receipts) then
     raise exception 'Inventory unexpectedly received Supervisor receipt records';
   end if;
+  begin
+    perform public.create_qb_receipt_line_draft(
+      '10000000-0000-0000-0000-000000000001',
+      array['20000000-0000-0000-0000-000000000002']::uuid[]);
+    raise exception 'Inventory was able to create a receipt';
+  exception when raise_exception then
+    if sqlerrm <> 'No tienes permisos para crear recibos QB.' then raise; end if;
+  end;
+end $$;
+
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000004',false);
+do $$ begin
+  if public.current_user_role() <> 'entregador' then raise exception 'Deliverer profile mismatch'; end if;
+  begin
+    perform public.create_qb_receipt_line_draft(
+      '10000000-0000-0000-0000-000000000001',
+      array['20000000-0000-0000-0000-000000000002']::uuid[]);
+    raise exception 'Deliverer was able to create a receipt';
+  exception when raise_exception then
+    if sqlerrm <> 'No tienes permisos para crear recibos QB.' then raise; end if;
+  end;
 end $$;
 
 reset role;
@@ -86,14 +129,30 @@ do $$ begin
       and extraordinary_factor_percent=0) then
     raise exception 'Supervisor unit-cost update failed or changed private factors';
   end if;
+  if not exists (select 1 from public.qb_orders
+    where id='20000000-0000-0000-0000-000000000001'
+      and status='incluido_en_recibo_borrador') then
+    raise exception 'Receipt creation did not transition the delivered order into its draft receipt state';
+  end if;
+  if not exists (select 1 from public.qb_order_delivery_movements
+    where order_id='20000000-0000-0000-0000-000000000001'
+      and preparation_item_id='22000000-0000-0000-0000-000000000001'
+      and delivered_base_quantity=2) then
+    raise exception 'Receipt creation changed or removed its source delivery movement';
+  end if;
 end $$;
 
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',false);
-do $$ begin
+do $$ declare v_receipt_id uuid; v_count integer; begin
   if public.current_user_role() <> 'administrador' then raise exception 'Admin profile mismatch'; end if;
   if not has_function_privilege('authenticated','public.update_qb_receipt_draft(uuid,numeric,numeric,numeric,numeric,text,text,jsonb)','EXECUTE') then
     raise exception 'Authenticated receipt RPC grant was lost';
   end if;
   perform public.update_qb_receipt_draft(
     '30000000-0000-0000-0000-000000000002',0,0,0,0,'Admin note','Admin private note','[]'::jsonb);
+  v_receipt_id := public.create_qb_receipt_line_draft(
+    '10000000-0000-0000-0000-000000000001',
+    array['20000000-0000-0000-0000-000000000002']::uuid[]);
+  select count(*) into v_count from public.qb_receipt_lines where receipt_id=v_receipt_id;
+  if v_count <> 1 then raise exception 'Admin receipt-line RPC behavior regressed'; end if;
 end $$;

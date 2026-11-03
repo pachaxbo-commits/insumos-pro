@@ -110,6 +110,24 @@ test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad
   assert.doesNotMatch(migration, /select\s+line\.\*/i);
 });
 
+test("la migración habilita el RPC real de creación de recibos sin relajar validaciones", () => {
+  const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
+  const creationRpc = read("../supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql");
+  const actions = read("../src/lib/qb-receipts/actions.ts");
+  assert.match(actions, /rpc\("create_qb_receipt_line_draft"/);
+  assert.match(migration, /'create_qb_receipt_line_draft'/);
+  assert.match(creationRpc, /v_user_role not in \('admin', 'administrador'\)/);
+  assert.match(creationRpc, /Solo puedes incluir pedidos entregados pendientes de recibo del mismo cliente/);
+  assert.match(creationRpc, /Uno o mas pedidos ya estan incluidos en un recibo activo/);
+  assert.match(creationRpc, /Todos los pedidos deben tener entrega QB-6 confirmada/);
+  assert.match(creationRpc, /insert into public\.qb_receipt_lines/);
+  const receiptPermissionLoop = migration.slice(
+    migration.indexOf("-- Enable only receipt operations explicitly approved for Supervisor"),
+    migration.indexOf("-- This calculator has no direct EXECUTE grant"),
+  );
+  assert.doesNotMatch(receiptPermissionLoop, /'create_qb_receipt_draft'/);
+});
+
 test("la contraseña inicial solo se envía a Supabase Auth y nunca a perfil ni auditoría", () => {
   const actions = read("../src/lib/admin-users/actions.ts");
   const form = read("../src/components/admin/user-management.tsx");

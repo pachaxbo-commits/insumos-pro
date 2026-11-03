@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql"
+      - "supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql"
+      - "scripts/extract-qb-receipt-line-draft-contract.mjs"
       - "scripts/qb-supervisor-operational-permissions-*.sql"
       - ".github/workflows/supervisor-operational-permissions.yml"
 
@@ -27,6 +29,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Create isolated predecessor schema and RPC contracts
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-operational-permissions-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Install the canonical receipt creation RPC
+        run: |
+          node scripts/extract-qb-receipt-line-draft-contract.mjs "$RUNNER_TEMP/create_qb_receipt_line_draft.sql"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/create_qb_receipt_line_draft.sql"
         env:
           DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
       - name: Apply the actual incremental migration

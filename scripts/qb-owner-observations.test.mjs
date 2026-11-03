@@ -105,11 +105,17 @@ test("delivery exposes preparation review separately from physical delivery and 
   assert.match(matrix, /✓ Revisado en Preparación/);
   assert.match(matrix, /Entrega física verificada/);
   assert.match(matrix, /Confirmar entrega · \{order\.reference\}/);
-  assert.match(matrix, /aria-label="Confirmación de entrega en vista Tabla"[\s\S]*Confirmar entrega · \{selectedConfirmationOrder\.reference\}/);
-  assert.match(matrix, /orderFormStatus\(selectedConfirmationOrder\)/);
+  assert.match(matrix, /id="delivery-order-select"[\s\S]*Confirmar · \{selectedConfirmationOrder\.reference\}/);
+  assert.match(matrix, /Origen · \{selectedConfirmationOrder\.customerName\} · \{selectedConfirmationOrder\.reference\}/);
+  assert.match(matrix, /orderFormStatus\(order\)/);
   assert.match(matrix, /aria-label="Origen de la mercadería · este pedido"|Origen de la mercadería · este pedido/);
+  assert.match(matrix, /checked=\{stage === "preparacion" \? line\.preparationCheck : line\.deliveryCheck\}/);
+  assert.match(matrix, /else updateMissingDeliveryChecks\(\[line\], checked\)/);
+  assert.match(matrix, /!line\.deliverySourceConfirmed \|\| line\.deliveryVersion === 0/);
   assert.match(matrix, /✓ Pedido entregado/);
-  assert.match(matrix, /overscroll-auto/);
+  assert.match(matrix, /touch-pan-x overflow-x-auto overflow-y-clip overscroll-x-contain/);
+  assert.match(matrix, /sticky top-0 z-40/);
+  assert.match(matrix, /sticky left-0 z-30/);
 });
 
 test("provision cost input makes its physical base unit explicit", () => {

@@ -154,12 +154,12 @@ begin
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.proname = any(array[
-        'create_qb_receipt_draft',
         'update_qb_receipt_draft_legacy',
         'set_qb_receipt_line_pricing',
         'emit_qb_receipt',
         'void_qb_receipt',
-        'set_qb_receipt_manual_tracking'
+        'set_qb_receipt_manual_tracking',
+        'create_qb_receipt_line_draft'
       ])
   loop
     v_definition := r.definition;
@@ -179,9 +179,9 @@ begin
   end loop;
   if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where n.nspname='public' and p.proname = any(array[
-        'create_qb_receipt_draft', 'update_qb_receipt_draft_legacy',
+        'update_qb_receipt_draft_legacy',
         'set_qb_receipt_line_pricing', 'emit_qb_receipt', 'void_qb_receipt',
-        'set_qb_receipt_manual_tracking'
+        'set_qb_receipt_manual_tracking', 'create_qb_receipt_line_draft'
       ])) <> 6 then
     raise exception 'A required receipt RPC was not found';
   end if;
