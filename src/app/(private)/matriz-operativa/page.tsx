@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/layout/page-header";
 import { MarketSheetActions } from "@/components/operational-matrix/market-sheet-actions";
 import { OperationalMatrix } from "@/components/operational-matrix/operational-matrix";
-import { OperationalDateFilter } from "@/components/operational-matrix/operational-date-filter";
 import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
 import { AllPendingSummaryView } from "@/components/operational-matrix/all-pending-summary-view";
 import { requireRoleAccess } from "@/lib/auth/session";
@@ -71,7 +70,7 @@ export default async function MatrizOperativaPage({
     : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <PageHeader
         eyebrow={undefined}
         title={
@@ -84,39 +83,32 @@ export default async function MatrizOperativaPage({
                 : "Registrar entregas"
         }
         description=""
+        action={isAdmin ? <MarketSheetActions date={date} /> : undefined}
       />
 
-      {hasPendingSupport && pendingSummary ? (
-        <PendingWorkBar
-          summary={pendingSummary}
-          currentDate={date}
-          isAllPending={isAllPending}
-          basePath="/matriz-operativa"
-          mode={activeStage}
-        />
-      ) : null}
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <OperationalDateFilter
-          currentDate={date}
-          mode={activeStage}
-          basePath="/matriz-operativa"
-        />
-        {isAdmin ? <MarketSheetActions date={date} /> : null}
-      </div>
-
       {hasPendingSupport && isAllPending && pendingSummary ? (
-        <AllPendingSummaryView
-          summary={pendingSummary}
-          basePath="/matriz-operativa"
-          mode={activeStage}
-        />
+        <>
+          <PendingWorkBar
+            summary={pendingSummary}
+            currentDate={date}
+            isAllPending={isAllPending}
+            basePath="/matriz-operativa"
+            mode={activeStage}
+          />
+          <AllPendingSummaryView
+            summary={pendingSummary}
+            basePath="/matriz-operativa"
+            mode={activeStage}
+          />
+        </>
       ) : data ? (
         <OperationalMatrix
           key={`${date}:${activeStage}`}
           data={data}
           initialStage={activeStage}
           initialOrderId={params.order}
+          operationalDate={date}
+          pendingSummary={hasPendingSupport ? pendingSummary : null}
         />
       ) : null}
     </div>
