@@ -1520,7 +1520,7 @@ export function OperationalMatrix({
       ) : (
         <div
           ref={matrixScrollRef}
-          className="touch-pan-x overflow-x-auto overflow-y-visible overscroll-x-contain rounded-lg border"
+          className="touch-pan-x overflow-x-auto overflow-y-clip overscroll-x-contain rounded-lg border"
           data-matrix-layout="continuous-sheet"
           aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
         >
@@ -1930,11 +1930,11 @@ function NoteEditor({
   return (
     <Textarea
       aria-label={label}
-      className={`min-h-12 min-w-44 resize-y whitespace-pre-wrap px-2 py-1.5 text-xs ${
+      className={`min-h-9 min-w-44 resize-y whitespace-pre-wrap px-2 py-1 text-xs ${
         attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
       }`}
       value={value}
-      rows={2}
+      rows={1}
       maxLength={500}
       placeholder="Escribe una observación"
       disabled={disabled}
@@ -2118,8 +2118,8 @@ function MeasuredQuantityEditor({
     : null;
 
   return (
-    <div className="flex min-w-40 flex-col gap-1.5">
-      <div>
+    <div className="grid min-w-40 grid-cols-2 items-start gap-2">
+      <div className="min-w-0">
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
           {quantityLabel}
         </span>
@@ -2136,12 +2136,9 @@ function MeasuredQuantityEditor({
           onBlur={onBlur}
         />
       </div>
-      <div>
+      <div className="min-w-0">
         <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
           Peso real (opcional)
-        </span>
-        <span className="mb-1 block text-left text-[9px] text-muted-foreground">
-          Registra el peso medido, sin convertir cajas o unidades automáticamente.
         </span>
         <div className="flex items-center gap-1">
           <DecimalInput
@@ -2306,7 +2303,7 @@ function QuantityEditor({
     unitLabel,
   );
   return (
-    <div className="min-w-36">
+    <div className="min-w-0">
       <div className="flex items-center gap-1">
         <DecimalInput
           label={label}
@@ -2318,7 +2315,9 @@ function QuantityEditor({
         />
         <select
           aria-label={`Unidad de ${label.toLowerCase()}`}
-          title="La unidad elegida queda guardada para preparación o entrega."
+          title={quantityUnits.length < 2
+            ? "La unidad queda guardada; no hay conversiones adicionales configuradas."
+            : "La unidad elegida queda guardada para preparación o entrega."}
           className="h-7 max-w-28 rounded-md border border-input bg-background px-1 text-[11px] font-semibold uppercase"
           value={selectedUnit.id}
           disabled={disabled}
@@ -2333,11 +2332,6 @@ function QuantityEditor({
       {selectedUnit.id !== "original" ? (
         <span className="mt-1 block text-[9px] text-muted-foreground">
           Equivale a {formatQuantity(value ?? 0)} {unitLabel} del pedido
-        </span>
-      ) : null}
-      {quantityUnits.length < 2 ? (
-        <span className="mt-1 block text-[9px] text-muted-foreground">
-          Sin otras equivalencias configuradas para este producto.
         </span>
       ) : null}
     </div>
@@ -2533,7 +2527,7 @@ function DesktopOrderCells(props: CellProps) {
   const cellStyle = {
     backgroundColor: line.productColor ?? "#FFFFFF",
   };
-  const cellClass = `border-b border-r px-2 py-1.5 text-center ${
+  const cellClass = `border-b border-r px-2 py-1 text-center ${
     focused ? "ring-1 ring-inset ring-sky-400" : ""
   }`;
 

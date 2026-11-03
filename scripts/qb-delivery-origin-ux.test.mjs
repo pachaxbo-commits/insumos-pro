@@ -58,7 +58,10 @@ assert.match(matrix, /role="group" aria-label="Vista operativa"/);
 assert.match(matrix, /<details className="rounded-md border border-slate-200 bg-white px-2\.5 py-1\.5">[\s\S]*Origen requerido · seleccionar/);
 assert.doesNotMatch(matrix, /function stageGuidance\(|Confirmación de Inventario|Confirmación del Entregador/);
 assert.doesNotMatch(matrix, /max-h-\[calc\(100vh-12rem\)\]/);
-assert.match(matrix, /overflow-x-auto overflow-y-visible overscroll-x-contain/);
+assert.match(matrix, /overflow-x-auto overflow-y-clip overscroll-x-contain/);
+assert.match(matrix, /data-matrix-layout="continuous-sheet"/);
+assert.match(matrix, /grid min-w-40 grid-cols-2 items-start gap-2/);
+assert.match(matrix, /rows=\{1\}/);
 
 assert.match(migration, /pi\.prepared_at_line is null/);
 assert.doesNotMatch(migration, /origin_plan_confirmed\s+or|actual_base_quantity\s*\+/i);
