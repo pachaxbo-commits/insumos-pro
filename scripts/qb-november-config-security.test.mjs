@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { canAccessPath } from "../src/lib/auth/roles.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+function filesUnder(directory) {
+  return readdirSync(new URL(directory, import.meta.url), { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? filesUnder(path) : [path];
+  });
+}
 
 test("General de Configuración reutiliza gestión de usuarios protegida por Admin", () => {
   const page = read("../src/app/(private)/configuracion/page.tsx");
@@ -56,17 +64,95 @@ test("la proyección de Compras oculta totales a empleados y el Excel es adminis
   assert.match(excel, /auth\.user\.role !== "administrador"[\s\S]*status: 403/);
 });
 
-test("Supervisor solo consulta compras y no puede ejecutar mutaciones financieras", () => {
+test("Supervisor puede operar Compras sin acceder a gastos ni totales globales", () => {
   const page = read("../src/app/(private)/ingresos/compras-almacen/page.tsx");
   const table = read("../src/app/(private)/ingresos/compras-almacen/warehouse-purchase-table.tsx");
   const actions = read("../src/lib/warehouse-purchases/actions.ts");
   const receipts = read("../src/lib/qb-ingresos/actions.ts");
-  assert.match(page, /canManage=\{auth\.user\.role === "administrador" \|\| auth\.user\.role === "inventario"\}/);
+  const expenseActions = read("../src/lib/warehouse-purchases/actions.ts");
+  const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
+  assert.match(page, /canManage=\{auth\.user\.role === "administrador" \|\| auth\.user\.role === "inventario" \|\| auth\.user\.role === "supervisor"\}/);
+  assert.match(page, /showExpenses=\{auth\.user\.role === "administrador"\}/);
+  assert.match(page, /canConfigureUnits=\{auth\.user\.role === "administrador"\}/);
   assert.match(table, /canManage: boolean/);
-  for (const action of ["editar compras", "registrar cantidad física", "confirmar ingresos de almacén", "anular compras"]) {
-    assert.ok(actions.includes(`No tienes permiso para ${action}.`), `debe proteger ${action}`);
+  for (const action of ["updateWarehousePurchaseAction", "measureWarehousePurchaseAction", "confirmWarehousePurchaseAction", "annulWarehousePurchaseDraftAction"]) {
+    const body = actions.slice(actions.indexOf(`export async function ${action}`));
+    assert.match(body.slice(0, 700), /auth\.user\.role !== "administrador"[\s\S]{0,180}auth\.user\.role !== "supervisor"/);
   }
-  assert.match(receipts, /if \(access\.role === "supervisor"\)\s*\{\s*return \{ success: false, message: "Supervisor puede consultar costos unitarios autorizados, pero no crear ni editar compras\." \};/);
+  const expenseAction = expenseActions.slice(expenseActions.indexOf("export async function saveWarehouseOperatingExpensesAction"));
+  assert.doesNotMatch(expenseAction.slice(0, 600), /auth\.user\.role !== "supervisor"/);
+  assert.match(expenseAction.slice(0, 600), /auth\.user\.role !== "administrador" && auth\.user\.role !== "inventario"/);
+  assert.match(receipts, /const mutationRoles = new Set\(\["administrador", "inventario", "supervisor"\]\)/);
+  assert.match(receipts, /access\.role === "supervisor" && !input\.warehouse_purchase/);
+  assert.match(migration, /create_qb_warehouse_purchase_draft/);
+  assert.ok(migration.includes("v_role not in (''admin'',''administrador'',''inventario'',''supervisor'')"));
+  assert.match(migration, /current_user_role\(\) in \('admin', 'administrador', 'supervisor'\)/);
+  assert.match(migration, /create or replace function public\.set_qb_receipt_supervisor_line_costs/);
+  assert.match(migration, /recalculate_qb_receipt_totals\(uuid\)[\s\S]{0,800}from public, anon, authenticated/);
+});
+
+test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad", () => {
+  const page = read("../src/app/(private)/recibos/page.tsx");
+  const detail = read("../src/app/(private)/recibos/[id]/page.tsx");
+  const data = read("../src/lib/qb-receipts/data.ts");
+  const actions = read("../src/lib/qb-receipts/actions.ts");
+  const ui = read("../src/components/qb-receipts/qb-receipts-management.tsx");
+  const lineWorkspace = read("../src/components/qb-receipts/receipt-line-workspace.tsx");
+  const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
+
+  assert.match(page, /getQbReceiptsData\(auth\.user\.role!\)/);
+  assert.match(page, /userRole=\{auth\.user\.role!\}/);
+  assert.match(detail, /getQbReceiptDetailData\(id, auth\.user\.role!\)/);
+  assert.match(data, /getSupervisorQbReceiptsData/);
+  assert.match(data, /if \(role === "supervisor"\) return getSupervisorQbReceiptsData\(supabase\);[\s\S]{0,1500}from\("qb_receipts"\)[\s\S]{0,150}select\(/);
+  assert.match(data, /qb_supervisor_receipts/);
+  assert.match(data, /qb_supervisor_receipt_lines/);
+  assert.match(data, /select\("id,receipt_number/);
+  assert.match(actions, /update_qb_receipt_draft_supervisor/);
+  assert.match(actions, /set_qb_receipt_supervisor_line_costs/);
+  assert.match(actions, /if \(auth\.user\.role !== "administrador"\)\s*\{\s*return initialFailure\("Solo Administración puede consultar y modificar costos totales de compra\."\);[\s\S]{0,1000}set_qb_receipt_purchase_costs/);
+  assert.match(page, /auth\.user\.role === "supervisor" && section === "general" \? "emitidos"/);
+  assert.match(ui, /!isSupervisor \? <TabsTrigger value="costos"/);
+  assert.match(ui, /!isSupervisor \? <TabsContent value="general">/);
+  assert.match(ui, /!isSupervisor \? <Card>/);
+  const supervisorWorkspace = lineWorkspace.slice(lineWorkspace.indexOf("function SupervisorReceiptLineWorkspace"));
+  for (const allowedField of ["costBaseUnitSnapshot", "finalUnitPrice", "lineTotal", "receipt.totalAmount"]) {
+    assert.ok(supervisorWorkspace.includes(allowedField), `Supervisor receipt workspace is missing ${allowedField}`);
+  }
+  assert.doesNotMatch(supervisorWorkspace, /profitTotal|profitUnit|marginPercent|costTotalPrecise|purchaseCostTotal/);
+  assert.match(detail, /auth\.user\.role === "supervisor"[\s\S]{0,500}variant="customer-export"/);
+  assert.doesNotMatch(data.slice(data.indexOf("async function getSupervisorQbReceiptsData"), data.indexOf("export async function getQbReceiptsData")),
+    /cost_total_precise|cost_total_input_precise|purchase_cost_total|profit_total|profit_unit|margin_percent|internal_notes/);
+  const receiptApiRoutes = filesUnder("../src/app/api").filter((path) => /receipt|recibo/i.test(path));
+  assert.deepEqual(receiptApiRoutes, [], "Receipt exports must not bypass the role-specific document and data paths");
+  assert.match(migration, /subtotal_amount/);
+  assert.match(migration, /line_total/);
+  assert.match(migration, /line\.cost_base_unit_snapshot/);
+  assert.doesNotMatch(migration, /select\s+receipt\.\*/i);
+  assert.doesNotMatch(migration, /select\s+line\.\*/i);
+  const headerProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipts"), migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"));
+  const lineProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"), migration.indexOf("create or replace view public.qb_supervisor_receipt_orders"));
+  assert.match(headerProjection, /receipt\.subtotal_amount[\s\S]*receipt\.total_amount[\s\S]*receipt\.payment_status/);
+  assert.match(lineProjection, /line\.final_unit_price[\s\S]*line\.line_total[\s\S]*line\.cost_base_unit_snapshot/);
+  assert.doesNotMatch(`${headerProjection}\n${lineProjection}`, /cost_total_precise|profit_total_precise|profit_unit_precise|margin_percent|internal_notes|distance_factor_percent/);
+});
+
+test("la migración habilita el RPC real de creación de recibos sin relajar validaciones", () => {
+  const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
+  const creationRpc = read("../supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql");
+  const actions = read("../src/lib/qb-receipts/actions.ts");
+  assert.match(actions, /rpc\("create_qb_receipt_line_draft"/);
+  assert.match(migration, /'create_qb_receipt_line_draft'/);
+  assert.match(creationRpc, /v_user_role not in \('admin', 'administrador'\)/);
+  assert.match(creationRpc, /Solo puedes incluir pedidos entregados pendientes de recibo del mismo cliente/);
+  assert.match(creationRpc, /Uno o mas pedidos ya estan incluidos en un recibo activo/);
+  assert.match(creationRpc, /Todos los pedidos deben tener entrega QB-6 confirmada/);
+  assert.match(creationRpc, /insert into public\.qb_receipt_lines/);
+  const receiptPermissionLoop = migration.slice(
+    migration.indexOf("-- Enable only receipt operations explicitly approved for Supervisor"),
+    migration.indexOf("-- This calculator has no direct EXECUTE grant"),
+  );
+  assert.doesNotMatch(receiptPermissionLoop, /'create_qb_receipt_draft'/);
 });
 
 test("la contraseña inicial solo se envía a Supabase Auth y nunca a perfil ni auditoría", () => {

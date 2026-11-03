@@ -68,7 +68,7 @@ const schema = z.object({
 
 export async function updateWarehousePurchaseAction(formData: FormData) {
   const auth = await requireAuthenticatedUser();
-  if (auth.user.role !== "administrador" && auth.user.role !== "inventario") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "inventario" && auth.user.role !== "supervisor") {
     return { success: false, message: "No tienes permiso para editar compras." };
   }
   const parsed = schema.safeParse(Object.fromEntries(formData));
@@ -110,7 +110,7 @@ export async function updateWarehousePurchaseAction(formData: FormData) {
 
 export async function measureWarehousePurchaseAction(formData: FormData) {
   const auth = await requireAuthenticatedUser();
-  if (auth.user.role !== "administrador" && auth.user.role !== "inventario") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "inventario" && auth.user.role !== "supervisor") {
     return { success: false, message: "No tienes permiso para registrar cantidad física." };
   }
   const parsed = z.object({
@@ -132,7 +132,7 @@ export async function measureWarehousePurchaseAction(formData: FormData) {
 
 export async function confirmWarehousePurchaseAction(formData: FormData) {
   const auth = await requireAuthenticatedUser();
-  if (auth.user.role !== "administrador" && auth.user.role !== "inventario") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "inventario" && auth.user.role !== "supervisor") {
     return { success: false, message: "No tienes permiso para confirmar ingresos de almacén." };
   }
   const parsed = z.object({ id: z.uuid(), confirmation: z.literal("CONFIRMAR") })
@@ -152,7 +152,7 @@ export async function confirmWarehousePurchaseAction(formData: FormData) {
 
 export async function annulWarehousePurchaseDraftAction(formData: FormData) {
   const auth = await requireAuthenticatedUser();
-  if (auth.user.role !== "administrador" && auth.user.role !== "inventario") {
+  if (auth.user.role !== "administrador" && auth.user.role !== "inventario" && auth.user.role !== "supervisor") {
     return { success: false, message: "No tienes permiso para anular compras." };
   }
   const parsed = z.object({ id: z.uuid(), reason: z.string().trim().min(4).max(500) })

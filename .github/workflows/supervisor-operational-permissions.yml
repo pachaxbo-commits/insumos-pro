@@ -1,0 +1,47 @@
+name: Supervisor operational permissions SQL contract
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql"
+      - "supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql"
+      - "scripts/extract-qb-receipt-line-draft-contract.mjs"
+      - "scripts/qb-supervisor-operational-permissions-*.sql"
+      - ".github/workflows/supervisor-operational-permissions.yml"
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated
+          POSTGRES_DB: qb_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qb_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create isolated predecessor schema and RPC contracts
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-operational-permissions-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Install the canonical receipt creation RPC
+        run: |
+          node scripts/extract-qb-receipt-line-draft-contract.mjs "$RUNNER_TEMP/create_qb_receipt_line_draft.sql"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$RUNNER_TEMP/create_qb_receipt_line_draft.sql"
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Apply the actual incremental migration
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Assert operational Supervisor access and finance restrictions
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-operational-permissions-assert.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract

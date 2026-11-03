@@ -12,9 +12,9 @@ export default async function DeliveryNotePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRoleAccess("/recibos");
+  const auth = await requireRoleAccess("/recibos");
   const { id } = await params;
-  const { receipt, error } = await getQbReceiptDetailData(id);
+  const { receipt, error } = await getQbReceiptDetailData(id, auth.user.role!);
 
   if (!receipt) {
     return (

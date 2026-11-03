@@ -32,7 +32,7 @@ const roleRouteAccess: Record<UserRole, string[]> = {
   ventas: ["/"],
   inventario: ["/", "/matriz-operativa", "/stock"],
   entregador: ["/", "/matriz-operativa"],
-  supervisor: ["/", "/pedidos", "/matriz-operativa", "/stock", "/ingresos/compras-almacen", "/recibos/operativo"],
+  supervisor: ["/", "/pedidos", "/matriz-operativa", "/stock", "/ingresos/compras-almacen", "/recibos"],
   finanzas: ["/"],
 };
 
