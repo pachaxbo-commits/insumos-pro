@@ -1,5 +1,46 @@
 const QUANTITY_EPSILON = 0.000001;
 
+export type PreparationCoverage =
+  | { status: "complete" }
+  | { status: "short"; missingBaseQuantity: number }
+  | { status: "over"; excessBaseQuantity: number }
+  | { status: "unverified" };
+
+/** Compare the immutable base-unit snapshots; source labels can differ (e.g. CUARTILLA vs KG). */
+export function comparePreparationCoverage(input: {
+  requestedBaseQuantity: number;
+  preparedBaseQuantity: number;
+  requestedConversionValid: boolean;
+}): PreparationCoverage {
+  const { requestedBaseQuantity, preparedBaseQuantity } = input;
+  if (
+    !input.requestedConversionValid ||
+    !Number.isFinite(requestedBaseQuantity) ||
+    !Number.isFinite(preparedBaseQuantity) ||
+    requestedBaseQuantity <= QUANTITY_EPSILON ||
+    preparedBaseQuantity < 0
+  ) {
+    return { status: "unverified" };
+  }
+
+  const difference = requestedBaseQuantity - preparedBaseQuantity;
+  const tolerance = Math.max(
+    QUANTITY_EPSILON,
+    Math.abs(requestedBaseQuantity) * QUANTITY_EPSILON,
+  );
+  if (Math.abs(difference) <= tolerance) return { status: "complete" };
+  if (difference > 0) {
+    return {
+      status: "short",
+      missingBaseQuantity: Number(difference.toFixed(6)),
+    };
+  }
+  return {
+    status: "over",
+    excessBaseQuantity: Number(Math.abs(difference).toFixed(6)),
+  };
+}
+
 type PreparationQuantityLine = {
   requestedQuantity: number;
   preparedQuantity: number;

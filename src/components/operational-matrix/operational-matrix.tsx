@@ -26,6 +26,7 @@ import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-o
 import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
   applyAutomaticDeliveryValues,
+  comparePreparationCoverage,
   preparedQuantityAfterCheck,
   updateDeliveryChecks,
 } from "@/lib/operational-matrix/line-state";
@@ -2221,6 +2222,11 @@ function PreparedMeasurementDisplay({
     line.preparedQuantity,
     preparedUnit,
   );
+  const coverage = comparePreparationCoverage({
+    requestedBaseQuantity: line.requestedBaseQuantity,
+    preparedBaseQuantity: line.preparedBaseQuantity,
+    requestedConversionValid: line.requestedConversionValid,
+  });
 
   return (
     <div
@@ -2245,6 +2251,24 @@ function PreparedMeasurementDisplay({
           </span>
         </>
       ) : null}
+      <div
+        role={coverage.status === "unverified" || coverage.status === "over" ? "status" : undefined}
+        className={`mt-1 border-t pt-1 text-[9px] font-semibold leading-4 ${
+          coverage.status === "complete"
+            ? "border-emerald-200 text-emerald-800"
+            : coverage.status === "short"
+              ? "border-rose-200 text-rose-800"
+              : "border-amber-200 text-amber-900"
+        }`}
+      >
+        {coverage.status === "complete"
+          ? `Preparación completa · ${formatQuantity(line.requestedBaseQuantity)} ${line.baseUnitSymbol}`
+          : coverage.status === "short"
+            ? `Preparación incompleta · Faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.baseUnitSymbol}`
+            : coverage.status === "over"
+              ? `Advertencia · Excede lo solicitado por ${formatQuantity(coverage.excessBaseQuantity)} ${line.baseUnitSymbol}`
+              : "Advertencia · No se puede comparar; conversión física no verificable."}
+      </div>
     </div>
   );
 }
