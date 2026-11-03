@@ -235,9 +235,9 @@ assert.match(matrix, /sticky top-\[86px\]/);
 assert.match(matrix, /data-category-row=/);
 assert.match(matrix, /TOTALES/);
 assert.match(matrix, /TOTALES POR CLIENTE/);
-assert.match(matrix, /Check bodega/);
-assert.match(matrix, /Check de Inventario/);
-assert.match(matrix, /Check de Entrega faltante/);
+assert.match(matrix, /Preparación verificada/);
+assert.match(matrix, /✓ Revisado en Preparación/);
+assert.match(matrix, /Entrega física verificada/);
 assert.match(matrix, /summarizeVisibleProductChecks\([\s\S]*hasDeliveryCheck\(line\)/);
 assert.doesNotMatch(matrix, /Finalizar preparación/);
 assert.match(matrix, /Confirmar entrega/);
@@ -284,7 +284,8 @@ assert.doesNotMatch(matrix, /Peso real bodega/);
 assert.match(matrix, /Peso real entrega/);
 assert.match(matrix, /applyAutomaticDeliveryValues/);
 assert.match(matrix, /mergeServerLines/);
-assert.match(matrix, /Valor inicial de Inventario · editable/);
+assert.match(matrix, /aria-label=\{`Preparado por Inventario para \$\{line\.productName\}`\}/);
+assert.match(matrix, /quantityLabel=\{stage === "preparacion" \? "Cantidad preparada" : "Cantidad entregada"\}/);
 assert.match(matrix, /const deliveryDisabled = !editable/);
 assert.doesNotMatch(
   matrix,

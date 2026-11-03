@@ -18,6 +18,27 @@ type Presentation = {
   is_active: boolean;
 };
 
+export function resolveRequestedBasePerSourceQuantity(
+  requestedQuantity: number,
+  requestedBaseQuantity: number,
+  conversionFactorSnapshot: number,
+) {
+  if (!(requestedQuantity > 0) || !(requestedBaseQuantity > 0) ||
+    !(conversionFactorSnapshot > 0) ||
+    ![requestedQuantity, requestedBaseQuantity, conversionFactorSnapshot].every(Number.isFinite)) {
+    return { basePerSourceQuantity: 0, valid: false };
+  }
+
+  // The saved base quantity is the immutable result of the original order.
+  // Keep that snapshot authoritative; never replace missing data with factor 1.
+  const basePerSourceQuantity = requestedBaseQuantity / requestedQuantity;
+  const tolerance = Math.max(0.000001, Math.abs(conversionFactorSnapshot) * 0.000001);
+  return {
+    basePerSourceQuantity,
+    valid: Math.abs(basePerSourceQuantity - conversionFactorSnapshot) <= tolerance,
+  };
+}
+
 export function quantityUnitOptions(
   item: {
     product_id: string;

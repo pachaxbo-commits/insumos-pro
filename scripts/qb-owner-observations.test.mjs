@@ -4,6 +4,7 @@ import { test } from "node:test";
 
 import { purchaseTotal, autoReferencePriceFromPurchaseUnit } from "../src/lib/warehouse-purchases/model.ts";
 import { summarizeReceiptTracking } from "../src/lib/qb-receipts/line-pricing.ts";
+import { costPerBaseUnitFromReference, costPerReferenceUnitFromBase } from "../src/lib/market-sheet/model.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const purchaseSheet = read("../src/app/(private)/ingresos/compras-almacen/warehouse-purchase-table.tsx");
@@ -86,9 +87,46 @@ test("receipt summary counts sending and payment state without inventing ledger 
     { receiptSentAt: "2026-10-03T12:00:00Z", paymentStatus: "cobrado" },
   ]);
   assert.deepEqual(counts, { sent: 2, pendingSend: 1, paid: 2, pendingPayment: 1 });
-  assert.match(receipts, /Envío · enviados \/ pendientes/);
-  assert.match(receipts, /Pago · pagados \/ pendientes/);
+  assert.match(receipts, /Enviados/);
+  assert.match(receipts, /No enviados/);
+  assert.match(receipts, /Pagados/);
+  assert.match(receipts, /Pendientes de pago/);
   assert.match(receipts, /Control informativo y manual; no registra caja/);
+  assert.match(receipts, /positive: "border-emerald-200 bg-emerald-50 text-emerald-800"/);
+  assert.match(receipts, /negative: "border-rose-200 bg-rose-50 text-rose-800"/);
+  assert.match(receipts, /pending: "border-amber-200 bg-amber-50 text-amber-900"/);
+  assert.match(receipts, /"enviado", "enviados", "positive"/);
+  assert.match(receipts, /"no enviado", "no enviados", "negative"/);
+  assert.match(receipts, /"pagado", "pagados", "positive"/);
+  assert.match(receipts, /"pendiente de pago", "pendientes de pago", "pending"/);
+});
+
+test("delivery exposes preparation review separately from physical delivery and confirms beside its order", () => {
+  assert.match(matrix, /✓ Revisado en Preparación/);
+  assert.match(matrix, /Entrega física verificada/);
+  assert.match(matrix, /Confirmar entrega · \{order\.reference\}/);
+  assert.match(matrix, /aria-label="Confirmación de entrega en vista Tabla"[\s\S]*Confirmar entrega · \{selectedConfirmationOrder\.reference\}/);
+  assert.match(matrix, /orderFormStatus\(selectedConfirmationOrder\)/);
+  assert.match(matrix, /aria-label="Origen de la mercadería · este pedido"|Origen de la mercadería · este pedido/);
+  assert.match(matrix, /✓ Pedido entregado/);
+  assert.match(matrix, /overscroll-auto/);
+});
+
+test("provision cost input makes its physical base unit explicit", () => {
+  const market = read("../src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx");
+  assert.match(market, /COSTO DE PROVISIÓN POR UNIDAD FÍSICA/);
+  assert.match(market, /se guarda por \{row\.unit\}/);
+  assert.match(market, /Unidad de referencia del costo/);
+  assert.match(market, /Costo de provisión en bolivianos por/);
+  const perKg = costPerBaseUnitFromReference(760, 11.25, 1);
+  assert.equal(perKg, 67.55555556);
+  assert.ok(Math.abs(costPerReferenceUnitFromBase(perKg, 11.25, 1) - 760) < 0.000001);
+});
+
+test("WhatsApp fallback opens its final URL directly, without an about:blank placeholder", () => {
+  const imageActions = read("../src/components/qb-receipts/receipt-image-actions.tsx");
+  assert.doesNotMatch(imageActions, /window\.open\(["']about:blank/);
+  assert.match(imageActions, /window\.open\(whatsappUrl, "_blank"\)/);
 });
 
 test("Kardex attributes real delivery movements to order snapshot customer in screen and Excel", () => {

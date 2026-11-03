@@ -3,7 +3,7 @@ import "server-only";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { quantityUnitOptions } from "@/lib/operational-matrix/quantity-units";
+import { quantityUnitOptions, resolveRequestedBasePerSourceQuantity } from "@/lib/operational-matrix/quantity-units";
 import { resolveDeliveryOrigin } from "@/lib/operational-matrix/origin-distribution";
 import type {
   MatrixLine,
@@ -346,9 +346,12 @@ export async function getOperationalMatrixData(
     );
     const requestedQuantity = numberOr(item.requested_quantity);
     const requestedBaseQuantity = numberOr(item.base_quantity);
-    const basePerSourceQuantity = requestedQuantity > 0
-      ? requestedBaseQuantity / requestedQuantity
-      : numberOr(item.conversion_factor_to_base, 1);
+    const requestedConversion = resolveRequestedBasePerSourceQuantity(
+      requestedQuantity,
+      requestedBaseQuantity,
+      numberOr(item.conversion_factor_to_base),
+    );
+    const basePerSourceQuantity = requestedConversion.basePerSourceQuantity;
     const requestedWeightUnit = findWeightUnit(
       weightUnits,
       item.source_label,
@@ -450,6 +453,7 @@ export async function getOperationalMatrixData(
       requestedQuantity,
       requestedBaseQuantity,
       basePerSourceQuantity,
+      requestedConversionValid: requestedConversion.valid,
       requestedNote: String(item.customer_notes ?? ""),
       requestedVersion: numberOr(item.row_version),
       preparedQuantity,

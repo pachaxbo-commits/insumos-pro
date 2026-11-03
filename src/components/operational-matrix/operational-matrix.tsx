@@ -26,6 +26,7 @@ import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-o
 import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
   applyAutomaticDeliveryValues,
+  comparePreparationCoverage,
   preparedQuantityAfterCheck,
   updateDeliveryChecks,
 } from "@/lib/operational-matrix/line-state";
@@ -1315,11 +1316,22 @@ export function OperationalMatrix({
                             {stage === "preparacion" || stage === "entrega" ? " · " + pending + " pendientes" : ""}
                           </p>
                         </div>
-                        {stage === "preparacion" || stage === "entrega" ? (
-                          <Button size="sm" variant="outline" onClick={() => void navigateForm(() => setExpandedOrderId(expanded ? "" : order.id))}>
-                            {expanded ? "Ocultar productos" : "Ver productos"}
-                          </Button>
-                        ) : null}
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {stage === "entrega" && order.deliveryStatus === "confirmado" ? (
+                            <span role="status" className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">✓ Pedido entregado</span>
+                          ) : null}
+                          {stage === "entrega" && order.deliveryStatus !== "confirmado" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
+                            <Button type="button" size="sm" disabled={Boolean(actionPending)}
+                              onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
+                              Confirmar entrega · {order.reference}
+                            </Button>
+                          ) : null}
+                          {stage === "preparacion" || stage === "entrega" ? (
+                            <Button type="button" size="sm" variant="outline" onClick={() => void navigateForm(() => setExpandedOrderId(expanded ? "" : order.id))}>
+                              {expanded ? "Ocultar productos" : "Ver productos"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
                       {expanded ? <div className="space-y-3 p-3">
                         {order.customerNotes ? <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">Nota: {order.customerNotes}</p> : null}
@@ -1330,6 +1342,11 @@ export function OperationalMatrix({
                                 <div>
                                   <h4 className="text-sm font-semibold">{line.productName}</h4>
                                   <p className="text-xs text-muted-foreground">Solicitado: {formatQuantity(line.requestedQuantity)} {line.sourceLabel}</p>
+                                  {line.requestedConversionValid ? (
+                                    <p className="text-[11px] text-muted-foreground">Equivale según el pedido guardado: {formatQuantity(line.requestedBaseQuantity)} {line.baseUnitSymbol}</p>
+                                  ) : (
+                                    <p role="alert" className="text-[11px] font-medium text-amber-800">Conversión física no verificable; revisar la parametrización antes de usar equivalencias.</p>
+                                  )}
                                 </div>
                                 {stage === "pedido" && canAdmin ? <Button size="xs" variant="outline" onClick={() => void correctGroupedRequest([line])}>Corregir</Button> : null}
                               </div>
@@ -1345,10 +1362,13 @@ export function OperationalMatrix({
                               {stage === "preparacion" || stage === "entrega" ? (
                                 <div className="space-y-2">
                                   {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
-                                  {stage === "entrega" ? <p className="rounded bg-slate-50 p-2 text-xs">
+                                  {stage === "entrega" ? <div className="space-y-1 rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
                                     {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
-                                  </p> : null}
+                                    <span className={`block font-medium ${line.preparationCheck ? "text-emerald-800" : "text-amber-800"}`}>
+                                      {line.preparationCheck ? "✓ Revisado en Preparación" : "Pendiente de revisión en Preparación"}
+                                    </span>
+                                  </div> : null}
                                   <MeasuredQuantityEditor
                                     key={stage + ":" + line.orderItemId}
                                     label={(stage === "preparacion" ? "Preparación" : "Entrega") + " de " + line.productName}
@@ -1446,12 +1466,6 @@ export function OperationalMatrix({
                               })()}>
                               Guardar {stage === "preparacion" ? "preparación" : "entrega"}
                             </Button>
-                            {stage === "entrega" && actionableOrders([order], new Set([order.id]), "confirm").length ? (
-                              <Button type="button" disabled={Boolean(actionPending) || formStatus === "guardando"}
-                                onClick={() => void actionForOrders([order], order.customerName + " · " + order.reference, order.id, "confirm")}>
-                                Confirmar entrega de este pedido
-                              </Button>
-                            ) : null}
                           </div>
                         ) : null}
                       </div> : null}
@@ -1465,6 +1479,53 @@ export function OperationalMatrix({
         </section>
       ) : <>
 
+      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
+        <section className="space-y-3 rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de entrega en vista Tabla">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-56 flex-1 space-y-1 text-sm font-medium">
+              Pedido para confirmar
+              <select
+                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                value={selectedConfirmationOrder?.id ?? ""}
+                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
+                aria-label="Seleccionar pedido para confirmar entrega"
+              >
+                {pendingDeliveryOrders.map((order) => (
+                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
+                ))}
+              </select>
+            </label>
+            {selectedConfirmationOrder ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {selectedConfirmationOrder.customerName} · {selectedConfirmationOrder.reference} · {orderFormStatus(selectedConfirmationOrder)}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(actionPending)}
+                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
+                >
+                  Confirmar entrega · {selectedConfirmationOrder.reference}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {selectedConfirmationOrder ? (
+            <DeliveryOriginControl
+              orderId={selectedConfirmationOrder.id}
+              lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
+              choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
+              disabled={Boolean(actionPending)}
+              onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
+              onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
+              onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
+              message={message}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
       {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
@@ -1473,7 +1534,7 @@ export function OperationalMatrix({
       ) : (
         <div
           ref={matrixScrollRef}
-          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-contain rounded-lg border"
+          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-auto rounded-lg border"
           data-matrix-layout="continuous-sheet"
           aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
         >
@@ -1814,49 +1875,6 @@ export function OperationalMatrix({
           </table>
         </div>
       )}
-      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
-        <section className="rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de origen por pedido">
-          <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <label className="block space-y-1 text-sm font-medium">
-              Pedido para confirmar
-              <select
-                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                value={selectedConfirmationOrder?.id ?? ""}
-                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
-                aria-label="Seleccionar pedido para confirmar entrega"
-              >
-                {pendingDeliveryOrders.map((order) => (
-                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
-                ))}
-              </select>
-            </label>
-            {selectedConfirmationOrder ? <p className="text-xs text-muted-foreground">{orderFormStatus(selectedConfirmationOrder)}</p> : null}
-          </div>
-          {selectedConfirmationOrder ? (
-            <>
-              <DeliveryOriginControl
-                orderId={selectedConfirmationOrder.id}
-                lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
-                choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
-                disabled={Boolean(actionPending)}
-                onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
-                onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
-                onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
-                message={message}
-              />
-              <div className="mt-3 flex justify-end">
-                <Button
-                  type="button"
-                  disabled={Boolean(actionPending)}
-                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
-                >
-                  Confirmar entrega de este pedido
-                </Button>
-              </div>
-            </>
-          ) : null}
-        </section>
-      ) : null}
       </>}
     </div>
   );
@@ -2208,6 +2226,11 @@ function PreparedMeasurementDisplay({
     line.preparedQuantity,
     preparedUnit,
   );
+  const coverage = comparePreparationCoverage({
+    requestedBaseQuantity: line.requestedBaseQuantity,
+    preparedBaseQuantity: line.preparedBaseQuantity,
+    requestedConversionValid: line.requestedConversionValid,
+  });
 
   return (
     <div
@@ -2232,6 +2255,24 @@ function PreparedMeasurementDisplay({
           </span>
         </>
       ) : null}
+      <div
+        role={coverage.status === "unverified" || coverage.status === "over" ? "status" : undefined}
+        className={`mt-1 border-t pt-1 text-[9px] font-semibold leading-4 ${
+          coverage.status === "complete"
+            ? "border-emerald-200 text-emerald-800"
+            : coverage.status === "short"
+              ? "border-rose-200 text-rose-800"
+              : "border-amber-200 text-amber-900"
+        }`}
+      >
+        {coverage.status === "complete"
+          ? `Preparación completa · ${formatQuantity(line.requestedBaseQuantity)} ${line.baseUnitSymbol}`
+          : coverage.status === "short"
+            ? `Preparación incompleta · Faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.baseUnitSymbol}`
+            : coverage.status === "over"
+              ? `Advertencia · Excede lo solicitado por ${formatQuantity(coverage.excessBaseQuantity)} ${line.baseUnitSymbol}`
+              : "Advertencia · No se puede comparar; conversión física no verificable."}
+      </div>
     </div>
   );
 }
