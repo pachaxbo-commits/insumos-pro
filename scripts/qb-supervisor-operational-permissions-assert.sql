@@ -54,13 +54,6 @@ begin
   perform public.set_qb_receipt_supervisor_line_costs(
     '30000000-0000-0000-0000-000000000001',
     '[{"line_id":"50000000-0000-0000-0000-000000000001","cost_base_unit":4,"notes":"Fixture"}]'::jsonb);
-  if not exists (select 1 from public.qb_receipt_lines
-    where id='50000000-0000-0000-0000-000000000001'
-      and cost_base_unit_snapshot=4 and distance_factor_percent=0
-      and exigency_factor_percent=0 and weather_factor_percent=0
-      and extraordinary_factor_percent=0) then
-    raise exception 'Supervisor unit-cost update failed or changed private factors';
-  end if;
   perform public.emit_qb_receipt('30000000-0000-0000-0000-000000000001');
   perform public.void_qb_receipt('30000000-0000-0000-0000-000000000001','fixture');
   perform public.set_qb_receipt_manual_tracking('30000000-0000-0000-0000-000000000001',false,'pendiente');
@@ -83,6 +76,18 @@ do $$ begin
 end $$;
 
 reset role;
+-- Verify private base-table state as the database owner. The Supervisor must
+-- not be granted direct SELECT on qb_receipt_lines just for this assertion.
+do $$ begin
+  if not exists (select 1 from public.qb_receipt_lines
+    where id='50000000-0000-0000-0000-000000000001'
+      and cost_base_unit_snapshot=4 and distance_factor_percent=0
+      and exigency_factor_percent=0 and weather_factor_percent=0
+      and extraordinary_factor_percent=0) then
+    raise exception 'Supervisor unit-cost update failed or changed private factors';
+  end if;
+end $$;
+
 select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000002',false);
 do $$ begin
   if public.current_user_role() <> 'administrador' then raise exception 'Admin profile mismatch'; end if;
