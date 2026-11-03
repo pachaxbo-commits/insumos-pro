@@ -92,12 +92,22 @@ test("receipt summary counts sending and payment state without inventing ledger 
   assert.match(receipts, /Pagados/);
   assert.match(receipts, /Pendientes de pago/);
   assert.match(receipts, /Control informativo y manual; no registra caja/);
+  assert.match(receipts, /positive: "border-emerald-200 bg-emerald-50 text-emerald-800"/);
+  assert.match(receipts, /negative: "border-rose-200 bg-rose-50 text-rose-800"/);
+  assert.match(receipts, /pending: "border-amber-200 bg-amber-50 text-amber-900"/);
+  assert.match(receipts, /"enviado", "enviados", "positive"/);
+  assert.match(receipts, /"no enviado", "no enviados", "negative"/);
+  assert.match(receipts, /"pagado", "pagados", "positive"/);
+  assert.match(receipts, /"pendiente de pago", "pendientes de pago", "pending"/);
 });
 
 test("delivery exposes preparation review separately from physical delivery and confirms beside its order", () => {
   assert.match(matrix, /✓ Revisado en Preparación/);
   assert.match(matrix, /Entrega física verificada/);
   assert.match(matrix, /Confirmar entrega · \{order\.reference\}/);
+  assert.match(matrix, /aria-label="Confirmación de entrega en vista Tabla"[\s\S]*Confirmar entrega · \{selectedConfirmationOrder\.reference\}/);
+  assert.match(matrix, /orderFormStatus\(selectedConfirmationOrder\)/);
+  assert.match(matrix, /aria-label="Origen de la mercadería · este pedido"|Origen de la mercadería · este pedido/);
   assert.match(matrix, /✓ Pedido entregado/);
   assert.match(matrix, /overscroll-auto/);
 });

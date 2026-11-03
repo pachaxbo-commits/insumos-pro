@@ -1479,6 +1479,53 @@ export function OperationalMatrix({
         </section>
       ) : <>
 
+      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
+        <section className="space-y-3 rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de entrega en vista Tabla">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-56 flex-1 space-y-1 text-sm font-medium">
+              Pedido para confirmar
+              <select
+                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                value={selectedConfirmationOrder?.id ?? ""}
+                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
+                aria-label="Seleccionar pedido para confirmar entrega"
+              >
+                {pendingDeliveryOrders.map((order) => (
+                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
+                ))}
+              </select>
+            </label>
+            {selectedConfirmationOrder ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {selectedConfirmationOrder.customerName} · {selectedConfirmationOrder.reference} · {orderFormStatus(selectedConfirmationOrder)}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={Boolean(actionPending)}
+                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
+                >
+                  Confirmar entrega · {selectedConfirmationOrder.reference}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+          {selectedConfirmationOrder ? (
+            <DeliveryOriginControl
+              orderId={selectedConfirmationOrder.id}
+              lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
+              choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
+              disabled={Boolean(actionPending)}
+              onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
+              onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
+              onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
+              message={message}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
       {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
@@ -1828,49 +1875,6 @@ export function OperationalMatrix({
           </table>
         </div>
       )}
-      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
-        <section className="rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de origen por pedido">
-          <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <label className="block space-y-1 text-sm font-medium">
-              Pedido para confirmar
-              <select
-                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                value={selectedConfirmationOrder?.id ?? ""}
-                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
-                aria-label="Seleccionar pedido para confirmar entrega"
-              >
-                {pendingDeliveryOrders.map((order) => (
-                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
-                ))}
-              </select>
-            </label>
-            {selectedConfirmationOrder ? <p className="text-xs text-muted-foreground">{orderFormStatus(selectedConfirmationOrder)}</p> : null}
-          </div>
-          {selectedConfirmationOrder ? (
-            <>
-              <DeliveryOriginControl
-                orderId={selectedConfirmationOrder.id}
-                lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
-                choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
-                disabled={Boolean(actionPending)}
-                onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
-                onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
-                onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
-                message={message}
-              />
-              <div className="mt-3 flex justify-end">
-                <Button
-                  type="button"
-                  disabled={Boolean(actionPending)}
-                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
-                >
-                  Confirmar entrega de este pedido
-                </Button>
-              </div>
-            </>
-          ) : null}
-        </section>
-      ) : null}
       </>}
     </div>
   );
