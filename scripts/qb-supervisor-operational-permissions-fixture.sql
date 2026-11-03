@@ -80,7 +80,7 @@ language plpgsql security definer as $$ declare v_user_role text := public.curre
 create or replace function public.update_qb_receipt_draft_legacy(uuid,numeric,numeric,numeric,numeric,text,text,jsonb) returns uuid
 language plpgsql security definer as $$ declare v_user_role text := public.current_user_role(); begin
   if v_user_role is null or v_user_role not in ('admin', 'administrador') then raise exception 'denied'; end if; return $1; end $$;
-create or replace function public.set_qb_receipt_line_pricing(uuid,jsonb) returns uuid
+create or replace function public.set_qb_receipt_line_pricing(p_receipt_id uuid,p_lines jsonb) returns uuid
 language plpgsql security definer as $$
 declare v_user_role text := public.current_user_role(); v_line jsonb; v_id uuid; v_total numeric;
   v_dist numeric; v_exig numeric; v_weather numeric; v_extra numeric; v_note text;
