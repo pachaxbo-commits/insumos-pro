@@ -26,6 +26,20 @@ const createUserSchema = z.object({
   email: z.string().email("Ingresa un email valido."),
   full_name: z.string().trim().min(2, "Ingresa el nombre del usuario."),
   role: roleSchema,
+  delivery_method: z.enum(["password", "email"]),
+  initial_password: z.string().max(128).optional(),
+  confirm_password: z.string().max(128).optional(),
+}).superRefine((value, context) => {
+  if (value.delivery_method !== "password") return;
+  const password = value.initial_password ?? "";
+  if (password.length < 14 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
+      !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    context.addIssue({ code: "custom", path: ["initial_password"],
+      message: "La contraseña inicial debe tener 14 caracteres e incluir mayúscula, minúscula, número y símbolo." });
+  }
+  if (password !== (value.confirm_password ?? "")) {
+    context.addIssue({ code: "custom", path: ["confirm_password"], message: "Las contraseñas no coinciden." });
+  }
 });
 
 const updateUserSchema = z.object({
@@ -151,6 +165,9 @@ export async function createUserAction(
     const { data, error } = await adminClient.auth.admin.createUser({
       email: parsed.email,
       email_confirm: true,
+      ...(parsed.delivery_method === "password"
+        ? { password: parsed.initial_password }
+        : {}),
       user_metadata: { full_name: parsed.full_name },
     });
 
@@ -169,14 +186,16 @@ export async function createUserAction(
       throw new Error(`No se pudo crear el perfil interno: ${profileError.message}`);
     }
 
-    const { error: resetError } = await adminClient.auth.resetPasswordForEmail(
-      parsed.email,
-      { redirectTo: await getPasswordResetRedirectUrl() },
-    );
+    if (parsed.delivery_method === "email") {
+      const { error: resetError } = await adminClient.auth.resetPasswordForEmail(
+        parsed.email,
+        { redirectTo: await getPasswordResetRedirectUrl() },
+      );
 
-    if (resetError) {
-      await adminClient.auth.admin.deleteUser(data.user.id);
-      throw new Error("No se pudo enviar el enlace de acceso. No se creo el usuario.");
+      if (resetError) {
+        await adminClient.auth.admin.deleteUser(data.user.id);
+        throw new Error("No se pudo enviar el enlace de acceso. No se creo el usuario.");
+      }
     }
 
     const supabase = await createSupabaseServerClient();
@@ -198,7 +217,9 @@ export async function createUserAction(
     revalidatePath("/configuracion");
     return {
       success: true,
-      message: "Usuario creado. Se envio un enlace para que defina su contrasena.",
+      message: parsed.delivery_method === "password"
+        ? "Usuario creado con contraseña inicial. Compártela directamente por un canal seguro."
+        : "Usuario creado. Se envio un enlace para que defina su contrasena.",
     };
   } catch (error) {
     return {

@@ -1,0 +1,49 @@
+name: Supervisor purchase projection SQL
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261103180000_qb_supervisor_purchase_cost_projection.sql"
+      - "scripts/qb-supervisor-purchase-projection-*.sql"
+      - ".github/workflows/supervisor-purchase-projection.yml"
+  push:
+    branches: [feat/owner-nov-config-security]
+    paths:
+      - "supabase/migrations/20261103180000_qb_supervisor_purchase_cost_projection.sql"
+      - "scripts/qb-supervisor-purchase-projection-*.sql"
+      - ".github/workflows/supervisor-purchase-projection.yml"
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated
+          POSTGRES_DB: qb_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qb_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create isolated source schema and previous view contract
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-purchase-projection-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Apply the actual pending migration
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261103180000_qb_supervisor_purchase_cost_projection.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Assert role-filtered values and stable view types
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-purchase-projection-assert.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Restore the prior view definition and verify rollback path
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-supervisor-purchase-projection-rollback.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract

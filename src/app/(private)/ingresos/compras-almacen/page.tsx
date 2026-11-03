@@ -60,7 +60,7 @@ export default async function WarehousePurchasesPage({
           conversionFactorToBase: Number(presentation.conversion_factor_to_base),
           isActive: presentation.is_active, allowPurchase: presentation.allow_purchase,
         }))}
-        canManage={auth.user.role === "administrador" || auth.user.role === "inventario" || auth.user.role === "supervisor"}
+        canManage={auth.user.role === "administrador" || auth.user.role === "inventario"}
         showExpenses={auth.user.role === "administrador"}
         canConfigureUnits={auth.user.role === "administrador"}
       />

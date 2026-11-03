@@ -270,8 +270,8 @@ export async function createQbMerchandiseReceiptAction(
   }
 
   const input = parsed.data;
-  if (access.role === "supervisor" && (!input.warehouse_purchase || input.requires_classification)) {
-    return { success: false, message: "Supervisor solo puede registrar compras directas de almacén, sin clasificación administrativa." };
+  if (access.role === "supervisor") {
+    return { success: false, message: "Supervisor puede consultar costos unitarios autorizados, pero no crear ni editar compras." };
   }
   if (input.reference_price !== null && input.reference_unit_id === null) {
     return { success: false, message: "Selecciona la unidad del precio referencial." };

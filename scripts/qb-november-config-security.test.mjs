@@ -56,6 +56,32 @@ test("la proyección de Compras oculta totales a empleados y el Excel es adminis
   assert.match(excel, /auth\.user\.role !== "administrador"[\s\S]*status: 403/);
 });
 
+test("Supervisor solo consulta compras y no puede ejecutar mutaciones financieras", () => {
+  const page = read("../src/app/(private)/ingresos/compras-almacen/page.tsx");
+  const table = read("../src/app/(private)/ingresos/compras-almacen/warehouse-purchase-table.tsx");
+  const actions = read("../src/lib/warehouse-purchases/actions.ts");
+  const receipts = read("../src/lib/qb-ingresos/actions.ts");
+  assert.match(page, /canManage=\{auth\.user\.role === "administrador" \|\| auth\.user\.role === "inventario"\}/);
+  assert.match(table, /canManage: boolean/);
+  for (const action of ["editar compras", "registrar cantidad física", "confirmar ingresos de almacén", "anular compras"]) {
+    assert.ok(actions.includes(`No tienes permiso para ${action}.`), `debe proteger ${action}`);
+  }
+  assert.match(receipts, /if \(access\.role === "supervisor"\)\s*\{\s*return \{ success: false, message: "Supervisor puede consultar costos unitarios autorizados, pero no crear ni editar compras\." \};/);
+});
+
+test("la contraseña inicial solo se envía a Supabase Auth y nunca a perfil ni auditoría", () => {
+  const actions = read("../src/lib/admin-users/actions.ts");
+  const form = read("../src/components/admin/user-management.tsx");
+  assert.match(actions, /initial_password: z\.string\(\)\.max\(128\)\.optional\(\)/);
+  assert.match(actions, /parsed\.delivery_method === "password"\s*\? \{ password: parsed\.initial_password \}/);
+  assert.match(actions, /password\.length < 14/);
+  assert.match(actions, /password !== \(value\.confirm_password \?\? ""\)/);
+  assert.match(actions, /email,\s*role: parsed\.role,\s*is_active: true,/);
+  assert.doesNotMatch(actions, /metadata:\s*\{[\s\S]{0,200}initial_password/);
+  assert.match(form, /type="password" autoComplete="new-password"/);
+  assert.match(form, /delivery_method/);
+});
+
 test("los resets heredados permanecen bloqueados y su acción no puede borrar datos", () => {
   const config = read("../src/lib/test-data-reset/config.ts");
   const actions = read("../src/lib/test-data-reset/actions.ts");
