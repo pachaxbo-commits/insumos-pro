@@ -41,7 +41,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
   const referenceUnits = units.filter((unit) => unit.isActive && /arroba|cuartilla|libra/i.test(`${unit.name} ${unit.symbol}`));
   const normalizedSearch = search.trim().toLocaleLowerCase("es");
   const filteredProducts = normalizedSearch ? products.filter((product) => product.name.toLocaleLowerCase("es").includes(normalizedSearch)) : [];
-  const sheetTotal = rows.reduce((sum, row) => sum + row.total, 0);
+  const sheetTotal = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
 
   function updateDraft(id: number, patch: Partial<Draft>) {
     setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft));
@@ -173,7 +173,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
         <table className="w-full min-w-[1120px] border-collapse text-sm">
           <thead className="bg-slate-100 text-left text-xs uppercase"><tr>
             <th className="w-10 border-r p-2">N°</th><th className="min-w-56 border-r p-2">Descripción</th><th className="min-w-40 border-r p-2">Ud compra</th>
-            <th className="w-24 border-r p-2 text-right">Cant.</th><th className="w-24 border-r p-2 text-right">PU</th><th className="w-24 border-r p-2 text-right">Total Bs</th>
+            <th className="w-24 border-r p-2 text-right">Cant.</th><th className="w-24 border-r p-2 text-right">Costo base</th>{showExpenses ? <th className="w-24 border-r p-2 text-right">Total Bs</th> : null}
             <th className="min-w-52 border-r p-2">PU referencial</th><th className="min-w-52 border-r p-2">Observaciones</th><th className="min-w-48 border-r p-2">Cargar stock</th><th className="w-48 p-2 print:hidden">Estado / acción</th>
           </tr></thead>
           <tbody>
@@ -181,7 +181,7 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
               const options = purchaseOptionsFor(row.productId).filter((option) => option.allowedUnitId !== null)
                 .map((option) => ({ id: option.allowedUnitId as string, label: purchaseOptionLabel(option.id, row.productId) }));
               if (row.allowedUnitId && !options.some((option) => option.id === row.allowedUnitId)) options.push({ id: row.allowedUnitId, label: row.unitLabel });
-              return <FragmentRow key={`${row.id}:${row.updatedAt}`} row={row} index={index} productColor={products.find((product) => product.id === row.productId)?.matrixColor ?? null} units={units} purchaseOptions={options} referenceUnits={referenceUnits} pending={pending} canManage={canManage} onUpdate={updatePurchase} onConfirm={setConfirmId} onAnnul={annulPurchase} />;
+              return <FragmentRow key={`${row.id}:${row.updatedAt}`} row={row} index={index} productColor={products.find((product) => product.id === row.productId)?.matrixColor ?? null} units={units} purchaseOptions={options} referenceUnits={referenceUnits} pending={pending} canManage={canManage} showFinancialTotals={showExpenses} onUpdate={updatePurchase} onConfirm={setConfirmId} onAnnul={annulPurchase} />;
             })}
             {drafts.map((draft, index) => {
               const product = products.find((item) => item.id === draft.productId);
@@ -197,14 +197,14 @@ export function WarehousePurchaseTable({ date, rows, expenses, products, units, 
                 <td className="border-r p-2"><select aria-label={`Unidad de compra fila ${index + 1}`} value={draft.purchaseOptionId} onChange={(event) => updateDraft(draft.id, { purchaseOptionId: event.target.value, commercialLabel: "" })} disabled={!product || (purchaseUnits.length === 0 && !hasPhysicalBase)} className="w-full rounded-md border bg-white px-2 py-2 disabled:bg-slate-100"><option value="">{purchaseUnits.length ? "Seleccionar" : "Sin unidades físicas compatibles"}</option>{purchaseUnits.map((unit) => <option key={unit.id} value={unit.id}>{purchaseOptionLabel(unit.id, draft.productId)}</option>)}{hasPhysicalBase ? <option value={UNMEASURED_COMMERCIAL}>Presentación comercial sin equivalencia</option> : null}</select>{draft.purchaseOptionId === UNMEASURED_COMMERCIAL ? <><label className="mt-1 block text-xs font-medium text-slate-700" htmlFor={`commercial-label-${draft.id}`}>Nombre comercial, sin conversión</label><input id={`commercial-label-${draft.id}`} list="common-commercial-presentations" aria-label={`Nombre de presentación comercial fila ${index + 1}`} value={draft.commercialLabel} onChange={(event) => updateDraft(draft.id, { commercialLabel: event.target.value })} maxLength={120} placeholder="Ej.: CARGA, SACO o CAJA" className="mt-1 w-full rounded-md border px-2 py-1.5" /><p className="mt-1 max-w-48 text-xs text-amber-800">La compra se guarda sin exigir KG. Después registra la cantidad física realmente recibida para cargar stock.</p></> : null}{product && purchaseUnits.length === 0 && !hasPhysicalBase ? <p role="status" className="mt-1 max-w-48 text-xs text-amber-800">Este producto no tiene una unidad física base válida. Configura la unidad de inventario antes de registrar la compra. {canConfigureUnits ? <Link className="font-semibold underline" href="/parametrizacion">Revisar configuración</Link> : "Solicita al administrador que revise la unidad de inventario."}</p> : null}</td>
                 <td className="border-r p-2"><input aria-label={`Cantidad fila ${index + 1}`} type="number" min="0.000001" step="any" value={draft.quantity} onChange={(event) => updateDraft(draft.id, { quantity: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
                 <td className="border-r p-2"><input aria-label={`Precio unitario fila ${index + 1}`} type="number" min="0" step="any" value={draft.unitPrice} onChange={(event) => updateDraft(draft.id, { unitPrice: event.target.value })} className="w-full rounded-md border px-2 py-2 text-right" /></td>
-                <td className="border-r p-2 text-right font-medium">{money(Number.isFinite(total) ? total : 0)}</td>
+                {showExpenses ? <td className="border-r p-2 text-right font-medium">{money(Number.isFinite(total) ? total : 0)}</td> : null}
                 <td className="border-r p-2"><div className="flex gap-1"><select aria-label={`Unidad de referencia fila ${index + 1}`} value={draft.referenceUnitId} onChange={(event) => updateDraft(draft.id, { referenceUnitId: event.target.value })} className="min-w-0 flex-1 rounded-md border px-1 py-2"><option value="">Sin definir</option>{referenceUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}</select><input aria-label={`Precio referencial fila ${index + 1}`} type="number" min="0" step="any" value={referencePrice} onChange={(event) => updateDraft(draft.id, { referencePrice: event.target.value, referenceMode: "manual" })} className="w-20 rounded-md border px-1 py-2 text-right" /></div><span className="text-[11px] text-slate-500">{draft.referenceMode === "auto" && auto !== null ? "Calculado; editable" : "Manual o sin equivalencia segura"}</span>{auto !== null && draft.referenceMode === "manual" ? <button type="button" onClick={() => updateDraft(draft.id, { referenceMode: "auto" })} className="ml-1 text-[11px] text-emerald-800 underline">Usar cálculo</button> : null}</td>
                 <td className="border-r p-2"><input aria-label={`Observaciones fila ${index + 1}`} maxLength={2000} value={draft.notes} onChange={(event) => updateDraft(draft.id, { notes: event.target.value })} className="w-full rounded-md border px-2 py-2" /></td>
                 <td className="border-r p-2 text-xs text-slate-500">La compra se guarda primero como borrador. Luego registra aquí la cantidad física efectiva.</td>
                 <td className="p-2"><button type="button" disabled={!valid || pending} onClick={() => saveDraft(draft)} className="rounded-md bg-emerald-800 px-2 py-1.5 text-xs text-white disabled:opacity-50">Guardar borrador</button><button type="button" onClick={() => setDrafts((current) => current.filter((item) => item.id !== draft.id))} className="ml-1 text-xs text-slate-600 underline">Quitar</button></td>
               </tr>;
             })}
-            {rows.length === 0 && drafts.length === 0 ? <tr><td colSpan={10} className="p-5 text-center text-slate-500">No hay compras en esta fecha. Agrega una fila para comenzar.</td></tr> : null}
+            {rows.length === 0 && drafts.length === 0 ? <tr><td colSpan={showExpenses ? 10 : 9} className="p-5 text-center text-slate-500">No hay compras en esta fecha. Agrega una fila para comenzar.</td></tr> : null}
           </tbody>
           {showExpenses ? <tfoot><tr className="border-t-2 bg-slate-50 font-semibold"><td colSpan={5} className="p-2 text-right">TOTAL GUARDADO</td><td className="p-2 text-right">{money(sheetTotal)}</td><td colSpan={4} /></tr></tfoot> : null}
         </table>
@@ -287,7 +287,7 @@ type PurchaseEdit = {
   effectiveUnitId: string;
 };
 
-function FragmentRow({ row, index, productColor, units, purchaseOptions, referenceUnits, pending, canManage, onUpdate, onConfirm, onAnnul }: {
+function FragmentRow({ row, index, productColor, units, purchaseOptions, referenceUnits, pending, canManage, showFinancialTotals, onUpdate, onConfirm, onAnnul }: {
   row: WarehousePurchase;
   index: number;
   productColor: string | null;
@@ -296,6 +296,7 @@ function FragmentRow({ row, index, productColor, units, purchaseOptions, referen
   referenceUnits: Unit[];
   pending: boolean;
   canManage: boolean;
+  showFinancialTotals: boolean;
   onUpdate: (event: React.FormEvent<HTMLFormElement>) => void;
   onConfirm: (id: string) => void;
   onAnnul: (id: string) => void;
@@ -307,7 +308,7 @@ function FragmentRow({ row, index, productColor, units, purchaseOptions, referen
     allowedUnitId: row.allowedUnitId ?? (row.sourceKind === "commercial_unmeasured" ? UNMEASURED_COMMERCIAL : ""),
     commercialLabel: row.commercialLabel ?? "",
     quantity: String(row.quantity),
-    unitCost: String(row.unitPrice),
+    unitCost: row.unitPrice === null ? "" : String(row.unitPrice),
     referenceUnitId: row.referenceUnitId ?? "",
     referencePrice: row.referencePrice === null ? "" : String(row.referencePrice),
     referenceOrigin: row.referencePriceOrigin ?? "",
@@ -345,7 +346,7 @@ function FragmentRow({ row, index, productColor, units, purchaseOptions, referen
     </td>
     <td className="border-r p-2 text-right">{isDraft && canManage ? <input form={formId} name="source_quantity" type="number" min="0.000001" step="any" value={edit.quantity} onChange={(event) => setEdit({ ...edit, quantity: event.target.value })} className="w-24 rounded-md border px-2 py-1.5 text-right" aria-label={`Cantidad comercial de ${row.productName}`} /> : row.quantity}</td>
     <td className="border-r p-2 text-right">{isDraft && canManage ? <input form={formId} name="unit_cost" type="number" min="0" step="any" value={edit.unitCost} onChange={(event) => setEdit({ ...edit, unitCost: event.target.value })} className="w-24 rounded-md border px-2 py-1.5 text-right" aria-label={`Precio unitario de ${row.productName}`} /> : money(row.unitPrice)}</td>
-    <td className="border-r p-2 text-right font-medium tabular-nums">{money(Number.isFinite(total) ? total : row.total)}</td>
+    {showFinancialTotals ? <td className="border-r p-2 text-right font-medium tabular-nums">{money(Number.isFinite(total) ? total : row.total)}</td> : null}
     <td className="border-r p-2">{isDraft && canManage ? <div className="space-y-1">
       <select form={formId} name="reference_unit_id" value={edit.referenceUnitId} onChange={(event) => setEdit({ ...edit, referenceUnitId: event.target.value, referenceOrigin: edit.referencePrice ? "manual" : "" })} className="w-full rounded-md border px-2 py-1.5" aria-label={`Unidad referencial de ${row.productName}`}><option value="">Sin unidad</option>{referenceUnits.filter((unit) => unit.dimensionId === baseUnit?.dimensionId).map((unit) => <option key={unit.id} value={unit.id}>{unit.name} ({unit.symbol})</option>)}</select>
       <input form={formId} name="reference_price" type="number" min="0" step="any" value={edit.referencePrice} onChange={(event) => setEdit({ ...edit, referencePrice: event.target.value, referenceOrigin: event.target.value ? "manual" : "" })} className="w-full rounded-md border px-2 py-1.5 text-right" aria-label={`Precio referencial de ${row.productName}`} />

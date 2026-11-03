@@ -22,6 +22,7 @@
     "test:main-flow": "node scripts/qb-main-flow-acceptance.test.mjs",
     "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs",
     "test:owner-observations": "node --experimental-strip-types scripts/qb-owner-observations.test.mjs",
+    "test:november-config-security": "node --experimental-strip-types scripts/qb-november-config-security.test.mjs",
     "test:kardex-attribution": "node --experimental-strip-types scripts/qb-kardex-attribution.test.mjs"
   },
   "dependencies": {

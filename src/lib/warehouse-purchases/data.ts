@@ -13,8 +13,8 @@ export type WarehousePurchase = {
   productName: string;
   unitLabel: string;
   quantity: number;
-  unitPrice: number;
-  total: number;
+  unitPrice: number | null;
+  total: number | null;
   referenceUnitId: string | null;
   referencePrice: number | null;
   referencePriceOrigin: "manual" | "calculated" | null;
@@ -50,8 +50,8 @@ type PurchaseRow = {
   product_id: string;
   source_label: string;
   source_quantity: number | string;
-  unit_cost: number | string;
-  total_cost: number | string;
+  unit_cost: number | string | null;
+  total_cost: number | string | null;
   reference_unit_id: string | null;
   reference_price: number | string | null;
   reference_price_origin: "manual" | "calculated" | null;
@@ -82,7 +82,7 @@ export async function getWarehousePurchases(date: string, role: UserRole) {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { catalog, rows: [] as WarehousePurchase[], expenses: [] as WarehouseOperatingExpense[], error: "Supabase no disponible." };
 
-  if (role === "supervisor") {
+  if (role !== "administrador") {
     const { data, error } = await supabase.from("qb_operational_warehouse_purchases")
       .select("id,receipt_id,receipt_date,status,product_id,product_name,source_label,source_quantity,unit_cost,total_cost,reference_unit_id,reference_price,reference_price_origin,notes,requires_classification,actual_base_quantity_recorded,base_quantity,base_unit_id,base_unit_symbol,source_kind,allowed_unit_id,created_at,updated_at,created_by_profile_name")
       .eq("receipt_date", date).order("created_at", { ascending: false }).limit(1000);
@@ -90,7 +90,9 @@ export async function getWarehousePurchases(date: string, role: UserRole) {
     const rows: WarehousePurchase[] = (data ?? []).map((row) => ({
       id: row.id, receiptId: row.receipt_id, date: row.receipt_date, status: row.status,
       productId: row.product_id, productName: row.product_name ?? "Producto", unitLabel: row.source_label,
-      quantity: Number(row.source_quantity), unitPrice: Number(row.unit_cost), total: Number(row.total_cost),
+      quantity: Number(row.source_quantity),
+      unitPrice: row.unit_cost === null ? null : Number(row.unit_cost),
+      total: null,
       referenceUnitId: row.reference_unit_id, referencePrice: row.reference_price === null ? null : Number(row.reference_price),
       referencePriceOrigin: row.reference_price_origin, notes: row.notes ?? "", actor: row.created_by_profile_name ?? "Usuario",
       createdAt: row.created_at, updatedAt: row.updated_at, requiresClassification: row.requires_classification,
@@ -133,7 +135,7 @@ export async function getWarehousePurchases(date: string, role: UserRole) {
       productName: product?.name ?? catalog.products.find((item) => item.id === row.product_id)?.name ?? "Producto",
       unitLabel: row.source_label,
       quantity: Number(row.source_quantity),
-      unitPrice: Number(row.unit_cost),
+      unitPrice: row.unit_cost === null ? null : Number(row.unit_cost),
       total: Number(row.total_cost),
       referenceUnitId: row.reference_unit_id,
       referencePrice: row.reference_price === null ? null : Number(row.reference_price),

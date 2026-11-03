@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import type { ReactNode } from "react";
 import { KeyRound, Save, ShieldCheck, UserPlus, Users } from "lucide-react";
 
@@ -132,6 +132,7 @@ function formatDate(value: string | null) {
 
 function CreateUserForm({ disabled }: { disabled: boolean }) {
   const [state, formAction, pending] = useActionState(createUserAction, initialState);
+  const [deliveryMethod, setDeliveryMethod] = useState<"password" | "email">("email");
   useActionToast(state);
 
   return (
@@ -157,11 +158,43 @@ function CreateUserForm({ disabled }: { disabled: boolean }) {
           </NativeSelect>
           <RoleScopeHint />
         </div>
+        <fieldset className="space-y-3 md:col-span-2">
+          <legend className="text-sm font-medium">Acceso inicial</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+              <input type="radio" name="delivery_method" value="email" checked={deliveryMethod === "email"}
+                onChange={() => setDeliveryMethod("email")} />
+              <span><span className="block font-medium">Enviar enlace por email</span>
+                <span className="text-xs text-muted-foreground">La persona define su contraseña al ingresar.</span></span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+              <input type="radio" name="delivery_method" value="password" checked={deliveryMethod === "password"}
+                onChange={() => setDeliveryMethod("password")} />
+              <span><span className="block font-medium">Definir contraseña inicial</span>
+                <span className="text-xs text-muted-foreground">Se entrega directamente por un canal seguro.</span></span>
+            </label>
+          </div>
+          {deliveryMethod === "password" ? <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="initial-password">Contraseña inicial</Label>
+              <Input id="initial-password" name="initial_password" type="password" autoComplete="new-password"
+                minLength={14} maxLength={128} required={deliveryMethod === "password"} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirmar contraseña</Label>
+              <Input id="confirm-password" name="confirm_password" type="password" autoComplete="new-password"
+                minLength={14} maxLength={128} required={deliveryMethod === "password"} />
+            </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Mínimo 14 caracteres, con mayúscula, minúscula, número y símbolo. No se guarda en el perfil ni en la auditoría.
+            </p>
+          </div> : null}
+        </fieldset>
       </div>
       <DialogFooter>
         <Button type="submit" disabled={disabled || pending} className="rounded-xl">
           <UserPlus className="size-4" />
-          {pending ? "Enviando..." : "Invitar usuario"}
+          {pending ? "Creando..." : deliveryMethod === "password" ? "Crear usuario" : "Invitar usuario"}
         </Button>
       </DialogFooter>
     </form>
@@ -280,14 +313,14 @@ export function UserManagement({
             <DialogTrigger asChild>
               <Button disabled={!serviceRoleConfigured} className="rounded-xl">
                 <UserPlus className="size-4" />
-                Invitar usuario
+                Crear usuario
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Invitar usuario</DialogTitle>
+                <DialogTitle>Crear usuario</DialogTitle>
                 <DialogDescription>
-                  Se creará el perfil y la persona recibirá un enlace para definir su propia contraseña.
+                  Completa el perfil y elige si la persona recibirá un enlace o una contraseña inicial.
                 </DialogDescription>
               </DialogHeader>
               <CreateUserForm disabled={!serviceRoleConfigured} />
