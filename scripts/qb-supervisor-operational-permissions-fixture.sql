@@ -125,13 +125,19 @@ begin
 end $$;
 create or replace function public.emit_qb_receipt(uuid) returns uuid
 language plpgsql security definer as $$ declare v_user_role text := public.current_user_role(); begin
-  if v_user_role is null or v_user_role not in ('admin', 'administrador') then raise exception 'denied'; end if; return $1; end $$;
+  if v_user_role is null or v_user_role not in ('admin', 'administrador') then raise exception 'denied'; end if;
+  update public.qb_receipts set status='emitido', issued_at=now() where id=$1 and status='borrador';
+  if not found then raise exception 'draft receipt required'; end if; return $1; end $$;
 create or replace function public.void_qb_receipt(uuid,text) returns uuid
 language plpgsql security definer as $$ declare v_user_role text := public.current_user_role(); begin
-  if v_user_role is null or v_user_role not in ('admin', 'administrador') then raise exception 'denied'; end if; return $1; end $$;
+  if v_user_role is null or v_user_role not in ('admin', 'administrador') then raise exception 'denied'; end if;
+  update public.qb_receipts set status='anulado', voided_at=now(), void_reason=$2 where id=$1; return $1; end $$;
 create or replace function public.set_qb_receipt_manual_tracking(uuid,boolean,text) returns uuid
 language plpgsql security definer as $$ begin
-  if public.current_user_role() not in ('admin','administrador') then raise exception 'denied'; end if; return $1; end $$;
+  if public.current_user_role() not in ('admin','administrador') then raise exception 'denied'; end if;
+  update public.qb_receipts set receipt_sent_at=case when $2 then now() else null end,
+    payment_status=$3, paid_at=case when $3 in ('pagado','cobrado') then now() else null end where id=$1;
+  return $1; end $$;
 create or replace function public.recalculate_qb_receipt_totals(uuid) returns void
 language plpgsql security definer as $$ begin
   if auth.uid() is null or public.current_user_role() not in ('admin', 'administrador') then raise exception 'denied'; end if;
@@ -180,8 +186,9 @@ values ('30000000-0000-0000-0000-000000000002','FIXTURE-LEG','borrador','legacy'
   '10000000-0000-0000-0000-000000000001',current_date,current_date,10,15,'Nota visible','Nota privada',now());
 insert into public.qb_receipt_lines(id, receipt_id, order_id, product_id,
   product_name_snapshot, delivered_base_quantity, base_unit_symbol, order_input_mode,
-  cost_base_unit_snapshot, distance_factor_percent, exigency_factor_percent,
+  base_price_used, final_unit_price, line_total, cost_base_unit_snapshot,
+  distance_factor_percent, exigency_factor_percent,
   weather_factor_percent, extraordinary_factor_percent)
 values ('50000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001',
   '20000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000001',
-  'Fixture Producto',1,'KG','quantity',3,0,0,0,0);
+  'Fixture Producto',1,'KG','quantity',5,5,15,3,0,0,0,0);

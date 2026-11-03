@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { canAccessPath } from "../src/lib/auth/roles.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+function filesUnder(directory) {
+  return readdirSync(new URL(directory, import.meta.url), { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? filesUnder(path) : [path];
+  });
+}
 
 test("General de Configuración reutiliza gestión de usuarios protegida por Admin", () => {
   const page = read("../src/app/(private)/configuracion/page.tsx");
@@ -89,6 +97,7 @@ test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad
   const data = read("../src/lib/qb-receipts/data.ts");
   const actions = read("../src/lib/qb-receipts/actions.ts");
   const ui = read("../src/components/qb-receipts/qb-receipts-management.tsx");
+  const lineWorkspace = read("../src/components/qb-receipts/receipt-line-workspace.tsx");
   const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
 
   assert.match(page, /getQbReceiptsData\(auth\.user\.role!\)/);
@@ -104,10 +113,28 @@ test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad
   assert.match(actions, /if \(auth\.user\.role !== "administrador"\)\s*\{\s*return initialFailure\("Solo Administración puede consultar y modificar costos totales de compra\."\);[\s\S]{0,1000}set_qb_receipt_purchase_costs/);
   assert.match(page, /auth\.user\.role === "supervisor" && section === "general" \? "emitidos"/);
   assert.match(ui, /!isSupervisor \? <TabsTrigger value="costos"/);
+  assert.match(ui, /!isSupervisor \? <TabsContent value="general">/);
+  assert.match(ui, /!isSupervisor \? <Card>/);
+  const supervisorWorkspace = lineWorkspace.slice(lineWorkspace.indexOf("function SupervisorReceiptLineWorkspace"));
+  for (const allowedField of ["costBaseUnitSnapshot", "finalUnitPrice", "lineTotal", "receipt.totalAmount"]) {
+    assert.ok(supervisorWorkspace.includes(allowedField), `Supervisor receipt workspace is missing ${allowedField}`);
+  }
+  assert.doesNotMatch(supervisorWorkspace, /profitTotal|profitUnit|marginPercent|costTotalPrecise|purchaseCostTotal/);
+  assert.match(detail, /auth\.user\.role === "supervisor"[\s\S]{0,500}variant="customer-export"/);
+  assert.doesNotMatch(data.slice(data.indexOf("async function getSupervisorQbReceiptsData"), data.indexOf("export async function getQbReceiptsData")),
+    /cost_total_precise|cost_total_input_precise|purchase_cost_total|profit_total|profit_unit|margin_percent|internal_notes/);
+  const receiptApiRoutes = filesUnder("../src/app/api").filter((path) => /receipt|recibo/i.test(path));
+  assert.deepEqual(receiptApiRoutes, [], "Receipt exports must not bypass the role-specific document and data paths");
   assert.match(migration, /subtotal_amount/);
   assert.match(migration, /line_total/);
+  assert.match(migration, /line\.cost_base_unit_snapshot/);
   assert.doesNotMatch(migration, /select\s+receipt\.\*/i);
   assert.doesNotMatch(migration, /select\s+line\.\*/i);
+  const headerProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipts"), migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"));
+  const lineProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"), migration.indexOf("create or replace view public.qb_supervisor_receipt_orders"));
+  assert.match(headerProjection, /receipt\.subtotal_amount[\s\S]*receipt\.total_amount[\s\S]*receipt\.payment_status/);
+  assert.match(lineProjection, /line\.final_unit_price[\s\S]*line\.line_total[\s\S]*line\.cost_base_unit_snapshot/);
+  assert.doesNotMatch(`${headerProjection}\n${lineProjection}`, /cost_total_precise|profit_total_precise|profit_unit_precise|margin_percent|internal_notes|distance_factor_percent/);
 });
 
 test("la migración habilita el RPC real de creación de recibos sin relajar validaciones", () => {

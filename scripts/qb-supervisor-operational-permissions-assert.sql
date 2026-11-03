@@ -4,7 +4,8 @@ select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-000000000001'
 
 do $$
 declare v_count integer; v_amount numeric; v_denied boolean := false;
-  v_receipt_id uuid; v_line_count integer;
+  v_receipt_id uuid; v_line_count integer; v_status text; v_payment_status text;
+  v_sent_at timestamptz; v_unit_cost numeric; v_unit_price numeric; v_line_total numeric;
 begin
   if public.current_user_role() <> 'supervisor' then raise exception 'Supervisor profile was not resolved'; end if;
   v_receipt_id := public.create_qb_receipt_line_draft(
@@ -28,8 +29,19 @@ begin
   if exists (select 1 from information_schema.columns where table_schema='public'
     and table_name in ('qb_supervisor_receipts','qb_supervisor_receipt_lines')
     and column_name in ('cost_total_precise','profit_total_precise','profit_unit_precise',
-      'factor_total_percent','distance_factor_percent','internal_notes')) then
+      'cost_total_input_precise','purchase_cost_total','total_cost','profit_total',
+      'profit_unit','margin_percent','margin','factor_total_percent',
+      'distance_factor_percent','exigency_factor_percent','weather_factor_percent',
+      'extraordinary_factor_percent','internal_notes')) then
     raise exception 'A restricted financial column leaked into the Supervisor projection';
+  end if;
+  if (select count(distinct column_name) from information_schema.columns where table_schema='public'
+    and table_name='qb_supervisor_receipts' and column_name in
+      ('subtotal_amount','total_amount','receipt_sent_at','payment_status')) <> 4
+    or (select count(distinct column_name) from information_schema.columns where table_schema='public'
+      and table_name='qb_supervisor_receipt_lines' and column_name in
+        ('cost_base_unit_snapshot','final_unit_price','line_total')) <> 3 then
+    raise exception 'The operational receipt projection omitted approved customer-document fields';
   end if;
   begin
     perform cost_total_precise from public.qb_receipts limit 1;
@@ -77,8 +89,22 @@ begin
     '30000000-0000-0000-0000-000000000001',
     '[{"line_id":"50000000-0000-0000-0000-000000000001","cost_base_unit":4,"notes":"Fixture"}]'::jsonb);
   perform public.emit_qb_receipt('30000000-0000-0000-0000-000000000001');
+  perform public.set_qb_receipt_manual_tracking('30000000-0000-0000-0000-000000000001',true,'pagado');
+  select status, payment_status, receipt_sent_at, total_amount
+    into v_status, v_payment_status, v_sent_at, v_amount
+    from public.qb_supervisor_receipts where id='30000000-0000-0000-0000-000000000001';
+  if v_status is distinct from 'emitido' or v_payment_status is distinct from 'pagado'
+    or v_sent_at is null or v_amount is distinct from 15 then
+    raise exception 'Supervisor cannot read the individual receipt commercial/status fields';
+  end if;
+  select cost_base_unit_snapshot, final_unit_price, line_total
+    into v_unit_cost, v_unit_price, v_line_total
+    from public.qb_supervisor_receipt_lines where id='50000000-0000-0000-0000-000000000001';
+  if v_unit_cost is distinct from 4 or v_unit_price is distinct from 5
+    or v_line_total is distinct from 15 then
+    raise exception 'Supervisor cannot read approved unit cost and customer-facing line amounts';
+  end if;
   perform public.void_qb_receipt('30000000-0000-0000-0000-000000000001','fixture');
-  perform public.set_qb_receipt_manual_tracking('30000000-0000-0000-0000-000000000001',false,'pendiente');
 
   v_denied := false;
   begin
