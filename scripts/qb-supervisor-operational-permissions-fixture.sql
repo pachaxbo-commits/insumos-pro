@@ -35,7 +35,7 @@ create table public.qb_receipts(
   surcharge_amount numeric, calculated_by uuid, calculated_at timestamptz, summary_snapshot jsonb
 );
 create table public.qb_receipt_lines(
-  id uuid primary key, receipt_id uuid, receipt_order_id uuid, order_id uuid,
+  id uuid primary key default gen_random_uuid(), receipt_id uuid, receipt_order_id uuid, order_id uuid,
   preparation_item_id uuid, product_id uuid,
   product_name_snapshot text, product_code_snapshot text, category_name_snapshot text,
   delivered_base_quantity numeric, base_unit_id uuid, base_unit_symbol text, visible_unit_label text,
