@@ -37,11 +37,11 @@ export function OperationalDateFilter({
   };
 
   return (
-    <div className="flex items-end gap-2">
-      <div className="space-y-1">
+    <div className="flex h-9 items-center gap-2">
+      <div className="flex items-center gap-2">
         <Label
           htmlFor="operational-date-filter-input"
-          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+          className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground"
         >
           <Calendar className="size-3.5 text-primary" />
           {label}
@@ -54,7 +54,7 @@ export function OperationalDateFilter({
             defaultValue={currentDate}
             key={currentDate}
             onChange={(e) => handleDateChange(e.target.value)}
-            className="h-10 w-44 rounded-md border bg-background px-3 text-sm font-medium shadow-xs focus-visible:ring-1"
+            className="h-9 w-36 rounded-md border bg-background px-2.5 text-sm font-medium shadow-none focus-visible:ring-1 sm:w-40"
           />
           {isPending ? (
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">
