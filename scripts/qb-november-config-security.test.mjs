@@ -80,6 +80,9 @@ test("la contraseña inicial solo se envía a Supabase Auth y nunca a perfil ni 
   assert.doesNotMatch(actions, /metadata:\s*\{[\s\S]{0,200}initial_password/);
   assert.match(form, /type="password" autoComplete="new-password"/);
   assert.match(form, /delivery_method/);
+  assert.match(form, /DialogTitle>Crear usuario/);
+  assert.match(form, /Completa el perfil y elige si la persona recibirá un enlace o una contraseña inicial/);
+  assert.match(form, /<UserPlus className="size-4" \/>\s*Crear usuario/);
 });
 
 test("los resets heredados permanecen bloqueados y su acción no puede borrar datos", () => {

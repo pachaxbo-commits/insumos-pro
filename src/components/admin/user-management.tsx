@@ -313,14 +313,14 @@ export function UserManagement({
             <DialogTrigger asChild>
               <Button disabled={!serviceRoleConfigured} className="rounded-xl">
                 <UserPlus className="size-4" />
-                Invitar usuario
+                Crear usuario
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Invitar usuario</DialogTitle>
+                <DialogTitle>Crear usuario</DialogTitle>
                 <DialogDescription>
-                  Se creará el perfil y la persona recibirá un enlace para definir su propia contraseña.
+                  Completa el perfil y elige si la persona recibirá un enlace o una contraseña inicial.
                 </DialogDescription>
               </DialogHeader>
               <CreateUserForm disabled={!serviceRoleConfigured} />
