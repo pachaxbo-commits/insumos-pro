@@ -10,7 +10,9 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRoleAccess("/ingresos/compras-almacen");
-  if (auth.user.role === "supervisor") return new Response("Exportación financiera no disponible para Supervisor.", { status: 403 });
+  if (auth.user.role !== "administrador") {
+    return new Response("La exportación de importes de compras está disponible solo para Administración.", { status: 403 });
+  }
   const supplied = request.nextUrl.searchParams.get("date");
   const date = supplied && /^\d{4}-\d{2}-\d{2}$/.test(supplied) ? supplied : todayInBolivia();
   const { catalog, rows, expenses, error } = await getWarehousePurchases(date, auth.user.role!);
@@ -32,16 +34,16 @@ export async function GET(request: NextRequest) {
   sheet.addRow(["N°", "Descripción", "Ud compra", "Cant.", "PU compra", "Total Bs", "Unidad referencia", "Precio referencial", "Observaciones", "Estado"]);
   rows.forEach((row, index) => sheet.addRow([
     index + 1, row.productName, row.unitLabel, row.quantity, row.unitPrice,
-    row.total, row.referenceUnitId ? units.get(row.referenceUnitId) ?? "" : "", row.referencePrice,
+    row.total ?? "", row.referenceUnitId ? units.get(row.referenceUnitId) ?? "" : "", row.referencePrice,
     row.notes, row.status,
   ]));
-  sheet.addRow(["", "TOTAL", "", "", "", rows.reduce((sum, row) => sum + row.total, 0)]);
+  sheet.addRow(["", "TOTAL", "", "", "", rows.reduce((sum, row) => sum + (row.total ?? 0), 0)]);
   sheet.addRow([]);
   sheet.addRow(["GASTOS OPERATIVOS"]);
   sheet.addRow(["N°", "Concepto", "", "", "", "Importe Bs"]);
   expenses.forEach((expense, index) => sheet.addRow([index + 1, expense.concept, "", "", "", expense.amount]));
   const expensesTotalRow = sheet.addRow(["", "SUBTOTAL GASTOS OPERATIVOS", "", "", "", expenses.reduce((sum, expense) => sum + expense.amount, 0)]);
-  const merchandiseSubtotal = rows.reduce((sum, row) => sum + row.total, 0);
+  const merchandiseSubtotal = rows.reduce((sum, row) => sum + (row.total ?? 0), 0);
   sheet.addRow(["", "SUBTOTAL MERCADERÍA", "", "", "", merchandiseSubtotal]);
   sheet.addRow(["", "TOTAL EGRESOS", "", "", "", merchandiseSubtotal + expenses.reduce((sum, expense) => sum + expense.amount, 0)]);
   sheet.getColumn(4).numFmt = "#,##0.######";

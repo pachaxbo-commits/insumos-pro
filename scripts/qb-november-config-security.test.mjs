@@ -41,6 +41,21 @@ test("Supervisor recibe campos operativos y costo base permitido, sin precios de
   assert.doesNotMatch(operationalReceiptPage, /sale_price|base_sale_price|profit|margin|total_amount/);
 });
 
+test("la proyección de Compras oculta totales a empleados y el Excel es administrativo", () => {
+  const migration = read("../supabase/migrations/20261103180000_qb_supervisor_purchase_cost_projection.sql");
+  const data = read("../src/lib/warehouse-purchases/data.ts");
+  const table = read("../src/app/(private)/ingresos/compras-almacen/warehouse-purchase-table.tsx");
+  const excel = read("../src/app/api/ingresos/compras-almacen.xlsx/route.ts");
+
+  assert.match(migration, /current_user_role\(\) in \('admin', 'administrador'\)[\s\S]*then line\.total_cost[\s\S]*else null::numeric/);
+  assert.match(migration, /current_user_role\(\) in \('admin', 'administrador', 'supervisor'\)[\s\S]*then line\.unit_cost/);
+  assert.match(data, /if \(role !== "administrador"\)[\s\S]*from\("qb_operational_warehouse_purchases"\)/);
+  assert.match(data, /total: null/);
+  assert.match(table, /showExpenses \? <th[^\n]*Total Bs/);
+  assert.match(table, /showFinancialTotals \? <td[^\n]*row\.total/);
+  assert.match(excel, /auth\.user\.role !== "administrador"[\s\S]*status: 403/);
+});
+
 test("los resets heredados permanecen bloqueados y su acción no puede borrar datos", () => {
   const config = read("../src/lib/test-data-reset/config.ts");
   const actions = read("../src/lib/test-data-reset/actions.ts");
