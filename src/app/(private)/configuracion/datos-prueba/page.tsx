@@ -10,7 +10,7 @@ export default async function DatosPruebaPage() {
     <PageHeader eyebrow="Configuración" title="Datos de prueba" description="La limpieza antigua de grupos de prueba fue retirada para proteger las operaciones y auditorías." />
     <SettingsNav current="/configuracion/datos-prueba" />
     <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      Este mecanismo heredado está retirado. QA debe usar fixtures transaccionales; el corte preoperativo requiere el procedimiento separado, su vista previa y autorización explícita.
+      La limpieza no está disponible mientras su vista previa transaccional y sus pruebas aisladas estén pendientes. Los resets heredados permanecen bloqueados. No se ha modificado ningún dato.
     </p>
   </div>;
 
