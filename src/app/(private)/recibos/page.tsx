@@ -8,11 +8,12 @@ export default async function RecibosPage({
 }: {
   searchParams: Promise<{ section?: string }>;
 }) {
-  await requireRoleAccess("/recibos");
+  const auth = await requireRoleAccess("/recibos");
   const { section } = await searchParams;
-  const data = await getQbReceiptsData();
-  const initialSection = ["pendientes", "borradores", "emitidos", "historial", "general"].includes(section ?? "")
-    ? (section as "pendientes" | "borradores" | "emitidos" | "historial" | "general")
+  const data = await getQbReceiptsData(auth.user.role!);
+  const safeSection = auth.user.role === "supervisor" && section === "general" ? "emitidos" : section;
+  const initialSection = ["pendientes", "borradores", "emitidos", "historial", "general"].includes(safeSection ?? "")
+    ? (safeSection as "pendientes" | "borradores" | "emitidos" | "historial" | "general")
     : undefined;
 
   return (
@@ -25,6 +26,7 @@ export default async function RecibosPage({
       <QbReceiptsManagement
         key={initialSection ?? "automatico"}
         {...data}
+        userRole={auth.user.role!}
         initialSection={initialSection}
       />
     </div>

@@ -23,9 +23,9 @@ export default async function ReceiptDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRoleAccess("/recibos");
+  const auth = await requireRoleAccess("/recibos");
   const { id } = await params;
-  const { receipt, error } = await getQbReceiptDetailData(id);
+  const { receipt, error } = await getQbReceiptDetailData(id, auth.user.role!);
 
   if (!receipt) {
     return (
@@ -77,14 +77,17 @@ export default async function ReceiptDetailPage({
         </div>
       </div>
 
-      <Tabs defaultValue="cliente" className="qb-receipt-screen-tabs space-y-4">
+      {auth.user.role === "supervisor" ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 print:hidden">
+            Vista del cliente. Muestra el importe individual del recibo y no incluye resultados financieros internos.
+          </div>
+          <div className="qb-receipt-print-document"><ReceiptDocument receipt={receipt} variant="customer-export" /></div>
+        </div>
+      ) : <Tabs defaultValue="cliente" className="qb-receipt-screen-tabs space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start rounded-xl bg-muted/70 p-1 print:hidden">
-          <TabsTrigger value="cliente" className="min-h-10 flex-none px-4">
-            Vista del cliente
-          </TabsTrigger>
-          <TabsTrigger value="administracion" className="min-h-10 flex-none px-4">
-            Información interna
-          </TabsTrigger>
+          <TabsTrigger value="cliente" className="min-h-10 flex-none px-4">Vista del cliente</TabsTrigger>
+          <TabsTrigger value="administracion" className="min-h-10 flex-none px-4">Información interna</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cliente" className="space-y-3">
@@ -102,7 +105,7 @@ export default async function ReceiptDetailPage({
           </div>
           <ReceiptDocument receipt={receipt} variant="admin" />
         </TabsContent>
-      </Tabs>
+      </Tabs>}
 
       <div className="qb-receipt-print-only hidden">
         <ReceiptDocument receipt={receipt} variant="customer-export" />

@@ -55,6 +55,7 @@ import type {
   QbReceiptLine,
   QbReceiptStatus,
 } from "@/types/qb-receipts";
+import type { UserRole } from "@/types/auth";
 
 const initialState: QbReceiptActionState = { success: false };
 
@@ -569,6 +570,7 @@ function DraftEditor({
   voidAction,
   voidPending,
   comparisonUnits,
+  isSupervisor = false,
 }: {
   receipt: QbReceipt;
   updateAction: (formData: FormData) => void;
@@ -578,6 +580,7 @@ function DraftEditor({
   voidAction: (formData: FormData) => void;
   voidPending: boolean;
   comparisonUnits: QbReceiptComparisonUnit[];
+  isSupervisor?: boolean;
 }) {
   const [draftStep, setDraftStep] = useState("venta");
   const [lines, setLines] = useState<Record<string, LineDraft>>(() =>
@@ -716,10 +719,10 @@ function DraftEditor({
             <CircleDollarSign className="size-4" />
             1. Precios de venta
           </TabsTrigger>
-          <TabsTrigger value="costos" className="min-h-10 flex-none px-4">
+          {!isSupervisor ? <TabsTrigger value="costos" className="min-h-10 flex-none px-4">
             <ClipboardList className="size-4" />
             2. Costos y utilidad
-          </TabsTrigger>
+          </TabsTrigger> : null}
           <TabsTrigger value="emitir" className="min-h-10 flex-none px-4">
             <CheckCircle2 className="size-4" />
             3. Revisar y emitir
@@ -730,8 +733,14 @@ function DraftEditor({
           <form action={updateAction} className="space-y-4 rounded-xl border bg-muted/15 p-4">
             <input type="hidden" name="receipt_id" value={receipt.id} />
             <input type="hidden" name="lines" value={linesPayload} />
+            {isSupervisor ? <>
+              <input type="hidden" name="distance_factor_percent" value="0" />
+              <input type="hidden" name="exigency_factor_percent" value="0" />
+              <input type="hidden" name="weather_factor_percent" value="0" />
+              <input type="hidden" name="extraordinary_factor_percent" value="0" />
+            </> : null}
 
-            <section className="rounded-lg border bg-background p-3">
+            {!isSupervisor ? <section className="rounded-lg border bg-background p-3">
               <div className="flex items-center gap-2 font-medium">
                 <Settings2 className="size-4" />
                 Ajustes porcentuales del recibo (opcional)
@@ -745,7 +754,7 @@ function DraftEditor({
                 <ReceiptFactorInput receiptId={receipt.id} label="Clima" name="weather_factor_percent" defaultValue={receipt.weatherFactorPercent} />
                 <ReceiptFactorInput receiptId={receipt.id} label="Extraordinario" name="extraordinary_factor_percent" defaultValue={receipt.extraordinaryFactorPercent} />
               </div>
-            </section>
+            </section> : <p className="rounded-lg border bg-background p-3 text-sm text-muted-foreground">Los ajustes internos se conservan. Puedes actualizar el precio de venta de este recibo sin cambiar precios maestros.</p>}
 
             <div>
               <h3 className="font-semibold">Define cuánto se cobrará</h3>
@@ -817,7 +826,7 @@ function DraftEditor({
                               const isValid = getDraftPriceState(basePriceUsed) === "valid";
                               updateLine(line.id, {
                                 basePriceUsed,
-                                ...(isValid
+                                  ...(!isSupervisor && isValid
                                   ? line.currentBasePrice === null && !wasValid
                                     ? { saveAsNewBasePrice: true }
                                     : {}
@@ -834,7 +843,7 @@ function DraftEditor({
                         <p className="text-xs font-medium text-muted-foreground md:hidden">Total</p>
                         <p className="font-semibold">{totalLabel}</p>
                       </div>
-                      <details className="text-xs text-muted-foreground md:col-span-4">
+                      {!isSupervisor ? <details className="text-xs text-muted-foreground md:col-span-4">
                         <summary className="cursor-pointer select-none font-medium text-slate-600">
                           Ver precio anterior y opciones avanzadas
                         </summary>
@@ -886,7 +895,7 @@ function DraftEditor({
                           </div>
                           <p className="font-mono text-[11px] sm:col-span-2 lg:col-span-3">Pedido: {line.orderReference}</p>
                         </div>
-                      </details>
+                      </details> : null}
                     </div>
                   );
                 })}
@@ -903,7 +912,7 @@ function DraftEditor({
                 </div>
                 <div className="space-y-2">
                   <Label>Nota interna</Label>
-                  <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} />
+                  {!isSupervisor ? <Textarea name="internal_notes" defaultValue={receipt.internalNotes ?? ""} rows={2} /> : <input type="hidden" name="internal_notes" value="" />}
                   <p className="text-xs text-muted-foreground">Solo la ve administración.</p>
                 </div>
               </div>
@@ -923,9 +932,9 @@ function DraftEditor({
           </form>
         </TabsContent>
 
-        <TabsContent value="costos">
+        {!isSupervisor ? <TabsContent value="costos">
           <PurchaseCostEditor receipt={receipt} comparisonUnits={comparisonUnits} />
-        </TabsContent>
+        </TabsContent> : null}
 
         <TabsContent value="emitir">
           <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
@@ -996,6 +1005,7 @@ function ReceiptCard({
   emitPending,
   voidAction,
   voidPending,
+  isSupervisor = false,
 }: {
   receipt: QbReceipt;
   relatedReceipts: QbReceipt[];
@@ -1007,6 +1017,7 @@ function ReceiptCard({
   emitPending: boolean;
   voidAction: (formData: FormData) => void;
   voidPending: boolean;
+  isSupervisor?: boolean;
 }) {
   const [trackingState, trackingAction, trackingPending] = useActionState(
     setQbReceiptManualTrackingAction,
@@ -1074,18 +1085,19 @@ function ReceiptCard({
 
         {receipt.pricingMode === "line_cost_markup" ?
           <ReceiptLineWorkspace receipt={receipt} relatedReceipts={relatedReceipts}
+            userRole={isSupervisor ? "supervisor" : "administrador"}
             hideMonthlySummary={hideMonthlySummary}
             emitAction={emitAction} emitPending={emitPending}
             voidAction={voidAction} voidPending={voidPending} /> : null}
         {receipt.pricingMode === "legacy" && receipt.status !== "borrador" ? (
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[1240px] text-xs">
+            <table className={`w-full ${isSupervisor ? "min-w-[900px]" : "min-w-[1240px]"} text-xs`}>
               <thead className="bg-slate-100 text-left">
-                <tr>{[
+                <tr>{(isSupervisor ? ["Pedido", "Producto", "UD", "Cantidad", "Costo base/UD", "Precio venta/UD", "Venta Bs", "Estado"] : [
                   "Pedido", "Producto", "UD", "Cantidad", "Dist. %", "Exig. %", "Clima %", "Extra. %",
                   "Costo base/UD", "Precio anterior", "Precio venta/UD", "Precio ref. / @",
                   "Costo total Bs", "Venta Bs", "Utilidad Bs", "Estado"
-                ].map((label) =>
+                ]).map((label) =>
                   <th key={label} className="whitespace-nowrap px-2 py-2">{label}</th>)}</tr>
               </thead>
               <tbody className="divide-y">
@@ -1095,15 +1107,17 @@ function ReceiptCard({
                     <td className="px-2 py-2 font-medium">{line.productName}</td>
                     <td className="px-2 py-2">{line.baseUnitSymbol}</td>
                     <td className="px-2 py-2 text-right">{quantity(line.deliveredBaseQuantity)}</td>
-                    {[line.distanceFactorPercent, line.exigencyFactorPercent, line.weatherFactorPercent, line.extraordinaryFactorPercent].map((factor, index) =>
-                      <td key={index} className="px-2 py-2 text-right">{factor}%</td>)}
+                    {!isSupervisor ? [line.distanceFactorPercent, line.exigencyFactorPercent, line.weatherFactorPercent, line.extraordinaryFactorPercent].map((factor, index) =>
+                      <td key={index} className="px-2 py-2 text-right">{factor}%</td>) : null}
                     <td className="px-2 py-2 text-right">{line.costBaseUnitSnapshot === null ? "—" : money(Number(line.costBaseUnitSnapshot))}</td>
-                    <td className="px-2 py-2 text-right font-mono text-slate-600">{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}</td>
+                    {!isSupervisor ? <td className="px-2 py-2 text-right font-mono text-slate-600">{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}</td> : null}
                     <td className="px-2 py-2 text-right font-semibold">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice)}</td>
-                    <td className="px-2 py-2 text-right font-mono text-slate-600">{line.salePricePerArroba !== null ? money(line.salePricePerArroba) : "Sin equivalencia"}</td>
-                    <td className="px-2 py-2 text-right">{line.costTotalPrecise === null ? "—" : money(Number(line.costTotalPrecise))}</td>
+                    {!isSupervisor ? <>
+                      <td className="px-2 py-2 text-right font-mono text-slate-600">{line.salePricePerArroba !== null ? money(line.salePricePerArroba) : "Sin equivalencia"}</td>
+                      <td className="px-2 py-2 text-right">{line.costTotalPrecise === null ? "—" : money(Number(line.costTotalPrecise))}</td>
+                    </> : null}
                     <td className="px-2 py-2 text-right">{line.saleTotalPrecise === null ? line.lineTotal === null ? "—" : money(line.lineTotal) : money(Number(line.saleTotalPrecise))}</td>
-                    <td className="px-2 py-2 text-right">{line.profitTotalPrecise === null ? "—" : money(Number(line.profitTotalPrecise))}</td>
+                    {!isSupervisor ? <td className="px-2 py-2 text-right">{line.profitTotalPrecise === null ? "—" : money(Number(line.profitTotalPrecise))}</td> : null}
                     <td className="px-2 py-2">{statusLabels[receipt.status]}</td>
                   </tr>
                 ))}
@@ -1130,6 +1144,7 @@ function ReceiptCard({
               voidAction={voidAction}
               voidPending={voidPending}
               comparisonUnits={comparisonUnits}
+              isSupervisor={isSupervisor}
             />
           </details>
         ) : receipt.status === "emitido" ? (
@@ -1363,9 +1378,11 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
 function ReceiptHistoryPanel({
   receipts,
   renderReceipts,
+  isSupervisor = false,
 }: {
   receipts: QbReceipt[];
   renderReceipts: (items: QbReceipt[]) => React.ReactNode;
+  isSupervisor?: boolean;
 }) {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [month, setMonth] = useState(currentBoliviaMonth);
@@ -1391,7 +1408,7 @@ function ReceiptHistoryPanel({
       {activeCustomerId ? (
         <>
           <div className="space-y-4">{renderReceipts(customerReceipts)}</div>
-          <Card>
+          {!isSupervisor ? <Card>
             <CardHeader><CardTitle>Resumen mensual</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <label className="block max-w-56 space-y-1 text-sm font-medium">Mes
@@ -1432,7 +1449,7 @@ function ReceiptHistoryPanel({
               </div>
               {knownCostReceipts.length !== monthlyReceipts.length ? <p className="text-xs text-amber-700">Los recibos históricos sin costo no se incluyen en los totales de utilidad.</p> : null}
             </CardContent>
-          </Card>
+          </Card> : null}
         </>
       ) : null}
     </div>
@@ -1462,13 +1479,16 @@ export function QbReceiptsManagement({
   comparisonUnits,
   initialSection,
   error,
+  userRole,
 }: {
   receipts: QbReceipt[];
   pendingGroups: QbReceiptCustomerGroup[];
   comparisonUnits: QbReceiptComparisonUnit[];
   initialSection?: "pendientes" | "borradores" | "emitidos" | "historial" | "general";
   error?: string;
+  userRole: UserRole;
 }) {
+  const isSupervisor = userRole === "supervisor";
   const [createState, createAction, createPending] = useActionState(
     createQbReceiptDraftAction,
     initialState,
@@ -1526,6 +1546,7 @@ export function QbReceiptsManagement({
         emitPending={emitPending}
         voidAction={voidAction}
         voidPending={voidPending}
+        isSupervisor={isSupervisor}
       />
     ));
   }
@@ -1568,7 +1589,7 @@ export function QbReceiptsManagement({
             <History className="size-4" />
             Historial por cliente
           </TabsTrigger>
-          <TabsTrigger value="general" className="min-h-11 flex-none px-4">Resumen general</TabsTrigger>
+          {!isSupervisor ? <TabsTrigger value="general" className="min-h-11 flex-none px-4">Resumen general</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="pendientes" className="space-y-4">
@@ -1579,8 +1600,8 @@ export function QbReceiptsManagement({
         </TabsContent>
 
         <TabsContent id="borradores" value="borradores" className="scroll-mt-28 space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Completa precios y costos, revisa el documento y emítelo cuando esté listo.
+            <p className="text-sm text-muted-foreground">
+            {isSupervisor ? "Completa el precio de la operación y los costos unitarios autorizados, revisa el documento y emítelo cuando esté listo." : "Completa precios y costos, revisa el documento y emítelo cuando esté listo."}
           </p>
           {legacyDraftCount > 0 ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
@@ -1603,9 +1624,9 @@ export function QbReceiptsManagement({
         </TabsContent>
 
         <TabsContent value="historial">
-          <ReceiptHistoryPanel receipts={historyReceipts} renderReceipts={(items) => receiptCards(items, "No hay historial para este cliente.", true)} />
+          <ReceiptHistoryPanel receipts={historyReceipts} isSupervisor={isSupervisor} renderReceipts={(items) => receiptCards(items, "No hay historial para este cliente.", true)} />
         </TabsContent>
-        <TabsContent value="general"><ReceiptGeneralSummary receipts={receipts} /></TabsContent>
+        {!isSupervisor ? <TabsContent value="general"><ReceiptGeneralSummary receipts={receipts} /></TabsContent> : null}
       </Tabs>
     </div>
   );

@@ -13,6 +13,7 @@ import type {
   QbReceiptPendingOrder,
   QbReceiptsData,
 } from "@/types/qb-receipts";
+import type { UserRole } from "@/types/auth";
 
 type ReceiptRow = {
   id: string;
@@ -144,6 +145,41 @@ type PendingOrderRow = {
 type DeliveredMovementRow = {
   order_id: string;
   delivered_base_quantity: number | string;
+};
+
+type SupervisorReceiptRow = {
+  id: string; receipt_number: string; status: QbReceipt["status"];
+  pricing_mode: QbReceipt["pricingMode"]; customer_account_id: string;
+  customer_name: string; customer_email: string; customer_phone: string | null;
+  period_start: string | null; period_end: string | null;
+  subtotal_amount: number | string; total_amount: number | string;
+  visible_note: string | null; issued_at: string | null;
+  receipt_sent_at: string | null; receipt_sent_by: string | null;
+  payment_status: QbReceipt["paymentStatus"]; paid_at: string | null;
+  paid_by: string | null; voided_at: string | null; void_reason: string | null;
+  created_at: string;
+};
+
+type SupervisorReceiptLineRow = {
+  id: string; receipt_id: string; order_id: string; order_reference: string;
+  product_id: string; product_name_snapshot: string; product_code_snapshot: string | null;
+  category_name_snapshot: string | null; delivered_base_quantity: number | string;
+  base_unit_symbol: string; visible_unit_label: string;
+  order_input_mode: QbReceiptLine["inputMode"];
+  requested_amount_bs: number | string | null; currency_snapshot: string | null;
+  pricing_unit_symbol: string | null; estimated_base_quantity: number | string | null;
+  fixed_line_amount: number | string | null; base_price_used: number | string | null;
+  final_unit_price: number | string | null; line_total: number | string | null;
+  cost_base_unit_snapshot: number | string | null; notes: string | null;
+};
+
+type SupervisorReceiptOrderRow = {
+  id: string; receipt_id: string; order_id: string;
+  inclusion_status: QbReceiptOrder["status"]; order_reference: string;
+};
+
+type SupervisorReceiptEventRow = {
+  id: string; receipt_id: string; event_type: string; created_at: string;
 };
 
 function single<T>(value: T | T[] | null | undefined) {
@@ -690,7 +726,159 @@ async function getPendingReceiptGroups(
   );
 }
 
-export async function getQbReceiptsData(): Promise<QbReceiptsData> {
+function mapSupervisorReceipt(
+  row: SupervisorReceiptRow,
+  orders: QbReceiptOrder[],
+  lines: QbReceiptLine[],
+  events: ReceiptEventRow[],
+): QbReceipt {
+  return {
+    id: row.id,
+    number: row.receipt_number,
+    status: row.status,
+    pricingMode: row.pricing_mode,
+    customerId: row.customer_account_id,
+    customerName: row.customer_name?.trim() || "Cliente",
+    customerEmail: row.customer_email ?? "Sin correo",
+    customerPhone: row.customer_phone,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    // These fields are deliberately omitted from the supervisor projection.
+    distanceFactorPercent: 0,
+    exigencyFactorPercent: 0,
+    weatherFactorPercent: 0,
+    extraordinaryFactorPercent: 0,
+    subtotalAmount: numberValue(row.subtotal_amount),
+    totalAmount: numberValue(row.total_amount),
+    costTotalPrecise: null,
+    saleTotalPrecise: nullableDecimalText(row.total_amount),
+    profitTotalPrecise: null,
+    hasPendingPrices: lines.some((line) =>
+      line.deliveredBaseQuantity <= 0 || line.lineTotal === null || line.lineTotal <= 0 ||
+      (row.pricing_mode === "line_cost_markup" && line.costBaseUnitSnapshot === null) ||
+      (line.inputMode === "quantity" && (line.finalUnitPrice === null || line.finalUnitPrice <= 0)) ||
+      (line.inputMode === "amount_bs" && line.fixedLineAmount !== line.requestedAmountBs)),
+    visibleNote: row.visible_note,
+    internalNotes: null,
+    issuedAt: row.issued_at,
+    receiptSentAt: row.receipt_sent_at,
+    receiptSentBy: row.receipt_sent_by,
+    paymentStatus: row.payment_status,
+    paidAt: row.paid_at,
+    paidBy: row.paid_by,
+    voidedAt: row.voided_at,
+    voidReason: row.void_reason,
+    createdAt: row.created_at,
+    orders,
+    lines,
+    events: events.map((event) => ({ id: event.id, eventType: event.event_type, createdAt: event.created_at })),
+  };
+}
+
+function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine {
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    orderReference: row.order_reference,
+    productId: row.product_id,
+    productName: row.product_name_snapshot,
+    productCode: row.product_code_snapshot,
+    categoryName: row.category_name_snapshot,
+    deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
+    baseUnitSymbol: row.base_unit_symbol,
+    visibleUnitLabel: row.visible_unit_label,
+    inputMode: row.order_input_mode,
+    requestedAmountBs: nullableNumberValue(row.requested_amount_bs),
+    currencySnapshot: row.currency_snapshot,
+    pricingUnitSymbol: row.pricing_unit_symbol,
+    estimatedBaseQuantity: nullableNumberValue(row.estimated_base_quantity),
+    fixedLineAmount: nullableNumberValue(row.fixed_line_amount),
+    originalBasePrice: null,
+    currentBasePrice: null,
+    currentBasePriceUnitSymbol: null,
+    basePriceUsed: nullableNumberValue(row.base_price_used),
+    basePriceEdited: false,
+    saveAsNewBasePrice: false,
+    finalUnitPrice: nullableNumberValue(row.final_unit_price),
+    lineTotal: nullableNumberValue(row.line_total),
+    basePricePerArroba: null,
+    previousBasePrice: null,
+    previousBasePricePerArroba: null,
+    previousSalePrice: null,
+    salePricePerArroba: null,
+    arrobaFactor: null,
+    purchaseCostTotal: null,
+    costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
+    costTotalPrecise: null,
+    saleTotalPrecise: null,
+    profitUnitPrecise: null,
+    profitTotalPrecise: null,
+    costSource: null,
+    distanceFactorPercent: 0,
+    exigencyFactorPercent: 0,
+    weatherFactorPercent: 0,
+    extraordinaryFactorPercent: 0,
+    purchaseCostReferenceUnitId: null,
+    purchaseCostReferenceUnitSymbol: null,
+    purchaseCostReferenceValue: null,
+    previousPurchaseCostReferenceUnitSymbol: null,
+    previousPurchaseCostReferenceValue: null,
+    notes: row.notes,
+  };
+}
+
+async function getSupervisorQbReceiptsData(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+): Promise<QbReceiptsData> {
+  const { data: receiptData, error } = await supabase.from("qb_supervisor_receipts")
+    .select("id,receipt_number,status,pricing_mode,customer_account_id,customer_name,customer_email,customer_phone,period_start,period_end,subtotal_amount,total_amount,visible_note,issued_at,receipt_sent_at,receipt_sent_by,payment_status,paid_at,paid_by,voided_at,void_reason,created_at")
+    .order("created_at", { ascending: false });
+  if (error) return { receipts: [], pendingGroups: [], comparisonUnits: [], error: "No pudimos cargar la vista operativa de recibos." };
+
+  const headers = (receiptData ?? []) as SupervisorReceiptRow[];
+  const ids = headers.map((row) => row.id);
+  const [lineResult, orderResult, eventResult, pendingGroups] = await Promise.all([
+    ids.length ? supabase.from("qb_supervisor_receipt_lines")
+      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes")
+      .in("receipt_id", ids).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
+    ids.length ? supabase.from("qb_supervisor_receipt_orders")
+      .select("id,receipt_id,order_id,inclusion_status,order_reference")
+      .in("receipt_id", ids) : Promise.resolve({ data: [], error: null }),
+    ids.length ? supabase.from("qb_supervisor_receipt_events")
+      .select("id,receipt_id,event_type,created_at")
+      .in("receipt_id", ids).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    getPendingReceiptGroups(supabase),
+  ]);
+  const partError = lineResult.error ?? orderResult.error ?? eventResult.error;
+  if (partError) return { receipts: [], pendingGroups: [], comparisonUnits: [], error: "No pudimos cargar los detalles operativos de recibos." };
+
+  const lines = new Map<string, QbReceiptLine[]>();
+  for (const raw of (lineResult.data ?? []) as SupervisorReceiptLineRow[]) {
+    const entries = lines.get(raw.receipt_id) ?? [];
+    entries.push(mapSupervisorReceiptLine(raw));
+    lines.set(raw.receipt_id, entries);
+  }
+  const orders = new Map<string, QbReceiptOrder[]>();
+  for (const raw of (orderResult.data ?? []) as SupervisorReceiptOrderRow[]) {
+    const entries = orders.get(raw.receipt_id) ?? [];
+    entries.push({ id: raw.id, orderId: raw.order_id, orderReference: raw.order_reference, status: raw.inclusion_status });
+    orders.set(raw.receipt_id, entries);
+  }
+  const events = new Map<string, ReceiptEventRow[]>();
+  for (const raw of (eventResult.data ?? []) as SupervisorReceiptEventRow[]) {
+    const entries = events.get(raw.receipt_id) ?? [];
+    entries.push({ id: raw.id, receipt_id: raw.receipt_id, event_type: raw.event_type, created_at: raw.created_at });
+    events.set(raw.receipt_id, entries);
+  }
+
+  return {
+    receipts: headers.map((row) => mapSupervisorReceipt(row, orders.get(row.id) ?? [], lines.get(row.id) ?? [], events.get(row.id) ?? [])),
+    pendingGroups,
+    comparisonUnits: [],
+  };
+}
+
+export async function getQbReceiptsData(role: UserRole): Promise<QbReceiptsData> {
   noStore();
 
   const supabase = await createSupabaseServerClient();
@@ -702,6 +890,8 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
       error:
         "No pudimos cargar los recibos en este momento. Comunícate con el administrador de QB Insumos.",
     };
+
+  if (role === "supervisor") return getSupervisorQbReceiptsData(supabase);
 
   const { data, error } = await supabase
     .from("qb_receipts")
@@ -762,6 +952,7 @@ export async function getQbReceiptsData(): Promise<QbReceiptsData> {
 
 export async function getQbReceiptDetailData(
   receiptId: string,
+  role: UserRole,
 ): Promise<QbReceiptDetailData> {
   noStore();
 
@@ -772,6 +963,14 @@ export async function getQbReceiptDetailData(
       error:
         "No pudimos cargar el recibo en este momento. Comunícate con el administrador de QB Insumos.",
     };
+
+  if (role === "supervisor") {
+    const { receipts, error } = await getSupervisorQbReceiptsData(supabase);
+    return {
+      receipt: receipts.find((item) => item.id === receiptId) ?? null,
+      error: receipts.some((item) => item.id === receiptId) ? undefined : error ?? "No se encontró el recibo solicitado.",
+    };
+  }
 
   const { data, error } = await supabase
     .from("qb_receipts")
