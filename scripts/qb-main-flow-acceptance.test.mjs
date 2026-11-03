@@ -211,7 +211,7 @@ assert.doesNotMatch(matrix, /selectedMobileOrder|MobileRow/);
 assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
 assert.match(matrix, /Unidad de \$\{label\.toLowerCase\(\)\}/);
 assert.doesNotMatch(matrix, /orders\.filter/);
-assert.match(matrix, /touch-pan-x[\s\S]*overflow-auto/);
+assert.match(matrix, /touch-pan-x overflow-x-auto overflow-y-visible overscroll-x-contain/);
 assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /data-customer-group=\{groupDomId\(group\.id\)\}/);
 assert.match(matrix, /scrollIntoView/);
@@ -231,7 +231,7 @@ assert.match(matrix, /sticky left-\[196px\] top-0[\s\S]*UD/);
 assert.match(matrix, /sticky left-0 z-30/);
 assert.match(matrix, /sticky left-9 z-30/);
 assert.match(matrix, /sticky left-\[196px\] z-30/);
-assert.match(matrix, /sticky top-\[86px\]/);
+assert.match(matrix, /sticky top-\[68px\]/);
 assert.match(matrix, /data-category-row=/);
 assert.match(matrix, /TOTALES/);
 assert.match(matrix, /TOTALES POR CLIENTE/);
@@ -251,8 +251,7 @@ assert.doesNotMatch(
   matrix,
   /Hay cambios de este cliente guardándose/,
 );
-assert.match(matrix, /Confirmación de Inventario/);
-assert.match(matrix, /Confirmación del Entregador/);
+assert.doesNotMatch(matrix, /Confirmación de Inventario|Confirmación del Entregador/);
 assert.match(matrix, /disabled=\{!editable\}/);
 assert.match(matrix, /preparationCheck/);
 assert.match(matrix, /deliveryCheck/);

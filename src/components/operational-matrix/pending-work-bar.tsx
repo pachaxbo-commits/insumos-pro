@@ -59,8 +59,8 @@ export function PendingWorkBar({
 
   if (dates.length === 0) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3.5 py-2.5 text-xs text-muted-foreground dark:border-slate-800 dark:bg-slate-900/40">
-        <CheckCircle2 className="size-4 text-emerald-600" />
+      <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        <CheckCircle2 className="size-3.5 text-emerald-600" />
         <span>{headline}</span>
       </div>
     );
@@ -72,20 +72,15 @@ export function PendingWorkBar({
       : `TODOS LOS PENDIENTES · ${totalOrders}`;
 
   return (
-    <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-950">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
-        <div className="flex items-center gap-2">
-          <Clock className="size-4 text-amber-600 dark:text-amber-500" />
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-foreground">
-            {headline}
-          </h2>
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          Pulsa una fecha para abrir su jornada
-        </p>
-      </div>
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+    <details className="group relative">
+      <summary className="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-xs font-medium text-amber-950 marker:hidden hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Clock className="size-3.5 text-amber-700" />
+        <span>{headline}</span>
+        <span className="text-amber-800" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="absolute right-0 top-full z-[60] mt-1 w-[min(94vw,42rem)] rounded-lg border bg-white p-2 shadow-lg dark:bg-slate-950">
+        <p className="mb-1.5 text-[11px] text-muted-foreground">Fechas pendientes · pulsa una para abrir la jornada</p>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
         {dates.map((d) => {
           const isSelected = !isAllPending && currentDate === d.date;
           const countLabel =
@@ -98,7 +93,7 @@ export function PendingWorkBar({
               key={d.date}
               href={buildUrl(d.date)}
               className={cn(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-all",
                 isSelected
                   ? "border-emerald-700 bg-emerald-700 text-white shadow-xs dark:border-emerald-600 dark:bg-emerald-600"
                   : d.isOverdue
@@ -131,7 +126,7 @@ export function PendingWorkBar({
         <Link
           href={buildUrl(undefined, true)}
           className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+            "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-all",
             isAllPending
               ? "border-emerald-700 bg-emerald-700 text-white shadow-xs dark:border-emerald-600 dark:bg-emerald-600"
               : "border-dashed border-slate-300 bg-slate-50/60 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300",
@@ -140,7 +135,8 @@ export function PendingWorkBar({
           <Layers className="size-3.5" />
           <span>{allPendingLabel}</span>
         </Link>
+        </div>
       </div>
-    </div>
+    </details>
   );
 }

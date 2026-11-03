@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { OperationalDateFilter } from "@/components/operational-matrix/operational-date-filter";
+import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   quantityInOriginalUnit,
@@ -52,6 +54,7 @@ import type {
   MatrixWeightUnit,
   OperationalMatrixData,
 } from "@/types/operational-matrix";
+import type { PendingStageSummary } from "@/lib/operational-matrix/pending-work";
 
 function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -146,39 +149,12 @@ function customerDividerClass(focused = false) {
   }`;
 }
 
-function stageGuidance(stage: MatrixStage) {
-  if (stage === "preparacion") {
-    return {
-      title: "Confirmación de Inventario",
-      detail:
-        "Registra las cantidades y el peso real preparado. Esta etapa no descuenta stock ni requiere decidir el origen de la mercadería; se confirma explícitamente durante Entrega.",
-    };
-  }
-  if (stage === "entrega") {
-    return {
-      title: "Confirmación del Entregador",
-      detail:
-        "Compara lo registrado por Inventario en PREPARADO con la cantidad y el peso finales de ENTREGADO REAL. Entrega puede modificar sus valores sin desmarcar el check y explicar aumentos o faltantes en Observación.",
-    };
-  }
-  if (stage === "resumen") {
-    return {
-      title: "Resumen operativo",
-      detail:
-        "Vista de solo lectura para comparar solicitado, preparado y entregado.",
-    };
-  }
-  return {
-    title: "Pedido del cliente",
-    detail:
-      "CANT. muestra automáticamente lo solicitado por el cliente. Administración puede corregir una cantidad dejando motivo en la bitácora.",
-  };
-}
-
 type MatrixProps = {
   data: OperationalMatrixData;
   initialStage?: MatrixStage;
   initialOrderId?: string;
+  operationalDate: string;
+  pendingSummary: PendingStageSummary | null;
 };
 
 type MatrixCustomerGroup = {
@@ -378,6 +354,8 @@ export function OperationalMatrix({
   data,
   initialStage,
   initialOrderId,
+  operationalDate,
+  pendingSummary,
 }: MatrixProps) {
   const router = useRouter();
   const [stage, setStage] = useState<MatrixStage>(() =>
@@ -1184,7 +1162,6 @@ export function OperationalMatrix({
       ? ["pedido", "preparacion", "resumen"]
       : [defaultStage(data.role)];
   const headers = stageHeaders(stage);
-  const guidance = stageGuidance(stage);
   const matrixColumnCount = 3 + customerGroups.length * headers.length + 1;
   const pendingDeliveryOrders = actionableOrders(orders, new Set(orders.map((order) => order.id)), "confirm");
   const selectedConfirmationOrder = pendingDeliveryOrders.find((order) => order.id === selectedConfirmationOrderId) ?? pendingDeliveryOrders[0] ?? null;
@@ -1216,10 +1193,15 @@ export function OperationalMatrix({
     next();
   };
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-white px-2 py-1.5 shadow-xs">
+        <OperationalDateFilter
+          currentDate={operationalDate}
+          mode={stage}
+          basePath="/matriz-operativa"
+        />
         <div
-          className="flex rounded-lg border bg-muted p-1"
+          className="flex shrink-0 rounded-md border bg-muted p-0.5"
           role="tablist"
           aria-label="Etapa operativa"
         >
@@ -1239,19 +1221,55 @@ export function OperationalMatrix({
               })}
               role="tab"
               aria-selected={stage === item}
-              className="capitalize"
+              className="h-8 px-2.5 capitalize"
             >
               {item}
             </Button>
           ))}
         </div>
-        <div className="flex items-center gap-3 text-sm" aria-live="polite">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm" aria-live="polite">
           <div className="flex rounded-md border bg-white p-0.5" role="group" aria-label="Vista operativa">
-            <Button size="sm" variant={showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("formulario"))}>
+            <Button type="button" size="sm" variant={showForm ? "default" : "ghost"} className="h-8 px-2.5" onClick={() => void navigateForm(() => setViewMode("formulario"))}>
               {stage === "resumen" ? "Resumen" : "Formulario"}
             </Button>
-            <Button size="sm" variant={!showForm ? "default" : "ghost"} onClick={() => void navigateForm(() => setViewMode("tabla"))}>Tabla</Button>
+            <Button type="button" size="sm" variant={!showForm ? "default" : "ghost"} className="h-8 px-2.5" onClick={() => void navigateForm(() => setViewMode("tabla"))}>Tabla</Button>
           </div>
+          {pendingSummary ? (
+            <PendingWorkBar
+              summary={pendingSummary}
+              currentDate={operationalDate}
+              isAllPending={false}
+              basePath="/matriz-operativa"
+              mode={stage}
+            />
+          ) : null}
+          {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:flex-nowrap sm:justify-end">
+              <label className="sr-only" htmlFor="delivery-order-select">Pedido para confirmar entrega</label>
+              <select
+                id="delivery-order-select"
+                className="h-9 min-w-0 max-w-full flex-1 rounded-md border bg-white px-2 text-xs sm:max-w-[25rem]"
+                value={selectedConfirmationOrder?.id ?? ""}
+                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
+                aria-label="Seleccionar pedido para confirmar entrega"
+              >
+                {pendingDeliveryOrders.map((order) => (
+                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
+                ))}
+              </select>
+              {selectedConfirmationOrder ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 shrink-0 px-2.5 text-xs"
+                  disabled={Boolean(actionPending)}
+                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
+                >
+                  Confirmar · {selectedConfirmationOrder.reference}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {remotePending ? (
             <Button
               size="sm"
@@ -1281,22 +1299,37 @@ export function OperationalMatrix({
         </div>
       </div>
 
-      {!showForm ? <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-        <p className="font-semibold">{guidance.title}</p>
-        <p className="text-sky-900">{guidance.detail}</p>
-      </div> : null}
+      {!showForm && stage === "entrega" && selectedConfirmationOrder ? (
+        <details className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <span>Origen · {selectedConfirmationOrder.customerName} · {selectedConfirmationOrder.reference}</span>
+            <span className="shrink-0 text-amber-800">{deliveryOriginByOrder[selectedConfirmationOrder.id] ? "Origen seleccionado · editar" : "Origen requerido · seleccionar"}</span>
+          </summary>
+          <div className="pt-2">
+            <DeliveryOriginControl
+              orderId={selectedConfirmationOrder.id}
+              lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
+              choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
+              disabled={Boolean(actionPending)}
+              onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
+              onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
+              onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
+              message={message}
+            />
+          </div>
+        </details>
+      ) : null}
 
       {showForm ? (
-        <section className="space-y-3" aria-label="Pedidos por cliente">
-          {stage === "preparacion" ? <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">La preparación registra cantidades verificadas y no descuenta stock. El origen de la mercadería se confirma durante Entrega.</p> : null}
+        <section className="space-y-1.5" aria-label="Pedidos por cliente">
           {!customerGroups.length ? <p className="rounded-lg border bg-white p-6 text-sm">No hay pedidos para esta fecha.</p> : null}
           {customerGroups.map((group) => (
-            <div key={group.id} className="rounded-lg border bg-white p-3 sm:p-4">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+            <div key={group.id} className="rounded-lg border bg-white p-2">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5 border-b pb-1">
                 <h2 className="font-semibold">{group.customerName}</h2>
                 <span className="text-xs text-muted-foreground">{group.orders.length} pedidos · {groupStatus(group)}</span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {group.orders.map((order) => {
                   const orderLines = linesForOrder(lines, order.id).sort((left, right) =>
                     left.categoryName.localeCompare(right.categoryName, "es") || left.productName.localeCompare(right.productName, "es"));
@@ -1309,7 +1342,7 @@ export function OperationalMatrix({
                     ? !line.preparationCheck : !hasDeliveryCheck(line) || !line.deliverySourceConfirmed || line.deliveryVersion === 0).length;
                   return (
                     <article key={order.id} className="rounded-md border">
-                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2 py-1.5">
                         <div>
                           <h3 className="text-sm font-semibold">{order.reference}</h3>
                           <p className="text-xs text-muted-foreground">{orderLines.length} productos · {orderFormStatus(order)}
@@ -1333,11 +1366,11 @@ export function OperationalMatrix({
                           ) : null}
                         </div>
                       </div>
-                      {expanded ? <div className="space-y-3 p-3">
+                      {expanded ? <div className="space-y-2 p-2">
                         {order.customerNotes ? <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">Nota: {order.customerNotes}</p> : null}
                         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                           {orderLines.map((line) => (
-                            <div key={line.orderItemId} className="min-w-0 rounded-md border p-3" style={{ borderLeftColor: line.productColor ?? undefined, borderLeftWidth: 4 }}>
+                            <div key={line.orderItemId} className="min-w-0 rounded-md border p-2" style={{ borderLeftColor: line.productColor ?? undefined, borderLeftWidth: 4 }}>
                               <div className="mb-2 flex items-start justify-between gap-2">
                                 <div>
                                   <h4 className="text-sm font-semibold">{line.productName}</h4>
@@ -1479,53 +1512,6 @@ export function OperationalMatrix({
         </section>
       ) : <>
 
-      {!showForm && stage === "entrega" && pendingDeliveryOrders.length ? (
-        <section className="space-y-3 rounded-lg border border-sky-200 bg-white p-3 sm:p-4" aria-label="Confirmación de entrega en vista Tabla">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="min-w-56 flex-1 space-y-1 text-sm font-medium">
-              Pedido para confirmar
-              <select
-                className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                value={selectedConfirmationOrder?.id ?? ""}
-                onChange={(event) => setSelectedConfirmationOrderId(event.target.value)}
-                aria-label="Seleccionar pedido para confirmar entrega"
-              >
-                {pendingDeliveryOrders.map((order) => (
-                  <option key={order.id} value={order.id}>{order.customerName} · {order.reference}</option>
-                ))}
-              </select>
-            </label>
-            {selectedConfirmationOrder ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {selectedConfirmationOrder.customerName} · {selectedConfirmationOrder.reference} · {orderFormStatus(selectedConfirmationOrder)}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={Boolean(actionPending)}
-                  onClick={() => void actionForOrders([selectedConfirmationOrder], selectedConfirmationOrder.customerName + " · " + selectedConfirmationOrder.reference, selectedConfirmationOrder.id, "confirm")}
-                >
-                  Confirmar entrega · {selectedConfirmationOrder.reference}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          {selectedConfirmationOrder ? (
-            <DeliveryOriginControl
-              orderId={selectedConfirmationOrder.id}
-              lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
-              choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
-              disabled={Boolean(actionPending)}
-              onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
-              onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
-              onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
-              message={message}
-            />
-          ) : null}
-        </section>
-      ) : null}
-
       {!customerGroups.length ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-muted-foreground">
           No hay pedidos para esta fecha. Los pedidos nuevos se agregan
@@ -1534,7 +1520,7 @@ export function OperationalMatrix({
       ) : (
         <div
           ref={matrixScrollRef}
-          className="max-h-[calc(100vh-12rem)] touch-pan-x touch-pan-y overflow-auto overscroll-auto rounded-lg border"
+          className="touch-pan-x overflow-x-auto overflow-y-visible overscroll-x-contain rounded-lg border"
           data-matrix-layout="continuous-sheet"
           aria-label={`Matriz continua de todos los clientes para ${data.operationalDate}`}
         >
@@ -1543,19 +1529,19 @@ export function OperationalMatrix({
               <tr>
                 <th
                   rowSpan={2}
-                  className="sticky left-0 top-0 z-50 w-9 min-w-9 border-b border-r bg-slate-100 px-1 py-2 text-center"
+                  className="sticky left-0 top-0 z-50 w-9 min-w-9 border-b border-r bg-slate-100 px-1 py-1.5 text-center"
                 >
                   N°
                 </th>
                 <th
                   rowSpan={2}
-                  className="sticky left-9 top-0 z-50 w-40 min-w-40 border-b border-r bg-slate-100 px-2 py-2 text-left md:w-56 md:min-w-56"
+                  className="sticky left-9 top-0 z-50 w-40 min-w-40 border-b border-r bg-slate-100 px-2 py-1.5 text-left md:w-56 md:min-w-56"
                 >
                   DESCRIPCIÓN
                 </th>
                 <th
                   rowSpan={2}
-                  className="sticky left-[196px] top-0 z-50 w-[72px] min-w-[72px] border-b border-r bg-slate-100 px-2 py-2 text-left md:left-[260px]"
+                  className="sticky left-[196px] top-0 z-50 w-[72px] min-w-[72px] border-b border-r bg-slate-100 px-2 py-1.5 text-left md:left-[260px]"
                 >
                   UD
                 </th>
@@ -1566,7 +1552,7 @@ export function OperationalMatrix({
                       key={group.id}
                       data-customer-group={groupDomId(group.id)}
                       colSpan={headers.length}
-                      className={`sticky top-0 z-40 h-[86px] border-b border-r px-2 py-1.5 text-left ${customerDividerClass(focused)} ${
+                      className={`sticky top-0 z-40 h-[68px] border-b border-r px-2 py-1 text-left ${customerDividerClass(focused)} ${
                         focused
                           ? "border-b-sky-500 border-r-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
                           : "bg-slate-100"
@@ -1641,7 +1627,7 @@ export function OperationalMatrix({
                 })}
                 <th
                   rowSpan={2}
-                  className={`sticky top-0 z-40 min-w-40 border-b bg-emerald-100 px-3 py-2 text-left ${customerDividerClass()}`}
+                  className={`sticky top-0 z-40 min-w-40 border-b bg-emerald-100 px-3 py-1.5 text-left ${customerDividerClass()}`}
                 >
                   TOTALES
                 </th>
@@ -1651,7 +1637,7 @@ export function OperationalMatrix({
                   headers.map((header, index) => (
                     <th
                       key={`${group.id}:${header}`}
-                      className={`sticky top-[86px] z-40 min-w-[68px] border-b border-r px-1.5 py-1.5 text-center font-semibold ${
+                      className={`sticky top-[68px] z-40 min-w-[68px] border-b border-r px-1.5 py-1 text-center font-semibold ${
                         index === 0 ? customerDividerClass(group.id === focusedCustomerId) : ""
                       } ${
                         group.id === focusedCustomerId
@@ -1692,7 +1678,7 @@ export function OperationalMatrix({
                       <tr data-category-row={row.categoryName}>
                         <td
                           colSpan={matrixColumnCount}
-                          className="border-b border-t bg-slate-200 px-2 py-1.5 text-left font-bold uppercase tracking-wide text-slate-700"
+                          className="border-b border-t bg-slate-200 px-2 py-1 text-left font-bold uppercase tracking-wide text-slate-700"
                         >
                           {row.categoryName}
                         </td>
@@ -1703,7 +1689,7 @@ export function OperationalMatrix({
                         style={{
                           backgroundColor: row.productColor ?? "#FFFFFF",
                         }}
-                        className="sticky left-0 z-30 border-b border-r px-1 py-1.5 text-center text-muted-foreground"
+                        className="sticky left-0 z-30 border-b border-r px-1 py-1 text-center text-muted-foreground"
                       >
                         {index + 1}
                       </td>
@@ -1711,7 +1697,7 @@ export function OperationalMatrix({
                         style={{
                           backgroundColor: row.productColor ?? "#FFFFFF",
                         }}
-                        className="sticky left-9 z-30 max-w-40 border-b border-r px-2 py-1.5 font-medium md:max-w-56"
+                        className="sticky left-9 z-30 max-w-40 border-b border-r px-2 py-1 font-medium md:max-w-56"
                       >
                         {row.productName}
                       </td>
@@ -1719,7 +1705,7 @@ export function OperationalMatrix({
                         style={{
                           backgroundColor: row.productColor ?? "#FFFFFF",
                         }}
-                        className="sticky left-[196px] z-30 border-b border-r px-1.5 py-1.5 md:left-[260px]"
+                        className="sticky left-[196px] z-30 border-b border-r px-1.5 py-1 md:left-[260px]"
                       >
                         <span className="block uppercase">
                           {row.sourceLabel}
@@ -1806,7 +1792,7 @@ export function OperationalMatrix({
                             style={{
                               backgroundColor: row.productColor ?? "#FFFFFF",
                             }}
-                            className={`border-b border-r px-2 py-1.5 text-center text-muted-foreground ${customerDividerClass(focused)} ${
+                            className={`border-b border-r px-2 py-1 text-center text-muted-foreground ${customerDividerClass(focused)} ${
                               focused ? "ring-1 ring-inset ring-sky-400" : ""
                             }`}
                           >

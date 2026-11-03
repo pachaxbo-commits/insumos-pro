@@ -51,7 +51,14 @@ assert.match(selector, /ingresos físicos confirmados durante esa misma jornada/
 assert.match(selector, /sin descontar inventario/);
 assert.doesNotMatch(selector, /<option value="review">/);
 assert.doesNotMatch(matrix, /actionForCustomer\(group, "confirm"\)/);
-assert.match(matrix, /El origen de la mercadería se confirma durante Entrega/);
+assert.match(matrix, /<OperationalDateFilter[\s\S]*currentDate=\{operationalDate\}/);
+assert.match(matrix, /<PendingWorkBar[\s\S]*isAllPending=\{false\}/);
+assert.match(matrix, /role="tablist"[\s\S]*aria-label="Etapa operativa"/);
+assert.match(matrix, /role="group" aria-label="Vista operativa"/);
+assert.match(matrix, /<details className="rounded-md border border-slate-200 bg-white px-2\.5 py-1\.5">[\s\S]*Origen requerido · seleccionar/);
+assert.doesNotMatch(matrix, /function stageGuidance\(|Confirmación de Inventario|Confirmación del Entregador/);
+assert.doesNotMatch(matrix, /max-h-\[calc\(100vh-12rem\)\]/);
+assert.match(matrix, /overflow-x-auto overflow-y-visible overscroll-x-contain/);
 
 assert.match(migration, /pi\.prepared_at_line is null/);
 assert.doesNotMatch(migration, /origin_plan_confirmed\s+or|actual_base_quantity\s*\+/i);
