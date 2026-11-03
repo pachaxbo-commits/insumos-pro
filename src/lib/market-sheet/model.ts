@@ -22,6 +22,14 @@ export type MarketSheetLineRef = {
   provisionCostUnit: number | null;
 };
 
+export type MarketSheetCostUnit = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  kilograms: number;
+};
+
 export type MarketSheetRow = {
   key: string;
   productId: string;
@@ -40,6 +48,7 @@ export type MarketSheetRow = {
   actualWeightOrQuantity: number | null;
   baseSalePrice: number | null;
   provisionCostUnit: number | null;
+  baseUnitKgFactor: number | null;
   basePriceUnitId: string | null;
   priceUnitSymbol: string | null;
   lines: MarketSheetLineRef[];
@@ -51,7 +60,28 @@ export type MarketSheetModel = {
   rows: MarketSheetRow[];
   totalLineCount: number;
   customerLineCounts: number[];
+  costReferenceUnits: MarketSheetCostUnit[];
 };
+
+export function costPerBaseUnitFromReference(
+  costPerReferenceUnit: number,
+  referenceUnitFactor: number,
+  baseUnitFactor: number,
+) {
+  if (![costPerReferenceUnit, referenceUnitFactor, baseUnitFactor].every(Number.isFinite) ||
+    costPerReferenceUnit < 0 || referenceUnitFactor <= 0 || baseUnitFactor <= 0) return null;
+  return Number((costPerReferenceUnit * baseUnitFactor / referenceUnitFactor).toFixed(8));
+}
+
+export function costPerReferenceUnitFromBase(
+  costPerBaseUnit: number,
+  referenceUnitFactor: number,
+  baseUnitFactor: number,
+) {
+  if (![costPerBaseUnit, referenceUnitFactor, baseUnitFactor].every(Number.isFinite) ||
+    costPerBaseUnit < 0 || referenceUnitFactor <= 0 || baseUnitFactor <= 0) return null;
+  return Number((costPerBaseUnit * referenceUnitFactor / baseUnitFactor).toFixed(8));
+}
 
 function uniqueText(values: Array<string | null>) {
   return [...new Set(values.map((value) => value?.trim()).filter(Boolean))].join(
@@ -100,6 +130,7 @@ function pendingQuantity(line: MatrixLine) {
 export function buildMarketSheetModel(
   data: OperationalMatrixData,
 ): MarketSheetModel {
+  const costReferenceUnits = data.weightUnits.filter((unit) => unit.kilograms > 0);
   const customers = buildCustomers(
     data.orders.filter((order) => order.status !== "cancelado"),
   );
@@ -177,6 +208,10 @@ export function buildMarketSheetModel(
 
       const provisionCostUnit =
         lines.find((l) => l.provisionCostUnit !== null)?.provisionCostUnit ?? null;
+      const normalizedBaseUnit = first.baseUnitSymbol.trim().toLocaleLowerCase("es");
+      const baseUnitKgFactor = costReferenceUnits.find((unit) =>
+        [unit.code, unit.name, unit.symbol].some((label) => label.trim().toLocaleLowerCase("es") === normalizedBaseUnit),
+      )?.kilograms ?? null;
 
       return {
         key,
@@ -196,6 +231,7 @@ export function buildMarketSheetModel(
         actualWeightOrQuantity,
         baseSalePrice: first.baseSalePrice,
         provisionCostUnit,
+        baseUnitKgFactor,
         basePriceUnitId: first.basePriceUnitId,
         priceUnitSymbol: first.priceUnitSymbol ?? first.baseUnitSymbol,
         lines: lineRefs,
@@ -219,5 +255,6 @@ export function buildMarketSheetModel(
     rows,
     totalLineCount: customerLineCounts.reduce((sum, count) => sum + count, 0),
     customerLineCounts,
+    costReferenceUnits,
   };
 }

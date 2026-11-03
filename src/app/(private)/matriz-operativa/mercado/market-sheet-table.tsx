@@ -5,6 +5,7 @@ import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { MarketSheetModel, MarketSheetRow } from "@/lib/market-sheet/model";
+import { costPerBaseUnitFromReference, costPerReferenceUnitFromBase } from "@/lib/market-sheet/model";
 import {
   updateMarketSheetProductCostAction,
   updateMarketSheetProductActualAction,
@@ -61,7 +62,7 @@ export function MarketSheetTable({
               PESO / CANT. REAL
             </th>
             <th className="min-w-28 border border-slate-500 bg-indigo-50 px-2 py-2 font-bold">
-              COSTO DE PROVISIÓN (Bs/UD)
+              COSTO DE PROVISIÓN POR UNIDAD FÍSICA
             </th>
           </tr>
         </thead>
@@ -70,6 +71,7 @@ export function MarketSheetTable({
             <MarketSheetTableRow
               key={row.key}
               row={row}
+              costReferenceUnits={model.costReferenceUnits}
               index={index}
               customers={model.customers}
               isAdmin={isAdmin}
@@ -105,11 +107,13 @@ export function MarketSheetTable({
 
 function MarketSheetTableRow({
   row,
+  costReferenceUnits,
   index,
   customers,
   isAdmin,
 }: {
   row: MarketSheetRow;
+  costReferenceUnits: MarketSheetModel["costReferenceUnits"];
   index: number;
   customers: MarketSheetModel["customers"];
   isAdmin: boolean;
@@ -120,6 +124,7 @@ function MarketSheetTableRow({
   const [costInput, setCostInput] = useState<string>(
     row.provisionCostUnit !== null ? String(row.provisionCostUnit) : "",
   );
+  const [costReferenceUnitId, setCostReferenceUnitId] = useState("base");
   const [isSavingActual, startActualTransition] = useTransition();
   const [isSavingCost, startCostTransition] = useTransition();
   const [savedActual, setSavedActual] = useState(false);
@@ -159,13 +164,30 @@ function MarketSheetTableRow({
       toast.error("Ingresa un costo de provisión válido.");
       return;
     }
-    if (parsed === row.provisionCostUnit) return;
+    const baseFactor = row.baseUnitKgFactor;
+    const referenceFactor = costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.kilograms
+      ?? baseFactor;
+    const normalizedCost = parsed === null
+      ? null
+      : baseFactor !== null && referenceFactor !== null
+        ? costPerBaseUnitFromReference(parsed, referenceFactor, baseFactor)
+        : parsed;
+    if (parsed !== null && normalizedCost === null) {
+      toast.error("No hay una equivalencia física validada para convertir este costo.");
+      return;
+    }
+    const existingAtReference = row.provisionCostUnit === null
+      ? null
+      : baseFactor !== null && referenceFactor !== null
+        ? costPerReferenceUnitFromBase(row.provisionCostUnit, referenceFactor, baseFactor)
+        : row.provisionCostUnit;
+    if (parsed === existingAtReference) return;
 
     startCostTransition(async () => {
       const lineIds = row.lines.map((line) => line.orderItemId);
       const res = await updateMarketSheetProductCostAction(
         lineIds,
-        parsed,
+        normalizedCost,
       );
       if (res.success) {
         setSavedCost(true);
@@ -267,7 +289,31 @@ function MarketSheetTableRow({
       {/* Provision cost editable */}
       <td className="border-r border-slate-300 bg-indigo-50/40 px-1.5 py-1 text-center">
         {isAdmin ? (
-          <div className="flex items-center justify-center gap-1 print:hidden">
+          <div className="flex flex-col items-center justify-center gap-1 print:hidden">
+            <span className="text-[9px] font-medium text-slate-600">
+              Bs / {costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.symbol || row.unit} (se guarda por {row.unit})
+            </span>
+            {row.baseUnitKgFactor !== null && costReferenceUnits.length > 0 ? (
+              <select
+                aria-label={`Unidad de referencia del costo de ${row.productName}`}
+                className="h-6 max-w-28 rounded border border-slate-300 bg-white px-1 text-[9px]"
+                value={costReferenceUnitId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  const oldFactor = costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.kilograms ?? row.baseUnitKgFactor!;
+                  const nextFactor = costReferenceUnits.find((unit) => unit.id === nextId)?.kilograms ?? row.baseUnitKgFactor!;
+                  const current = costInput.trim() ? Number(costInput.replace(",", ".")) : null;
+                  setCostInput(current !== null && Number.isFinite(current)
+                    ? String(Number((current * nextFactor / oldFactor).toFixed(8)))
+                    : costInput);
+                  setCostReferenceUnitId(nextId);
+                }}
+              >
+                <option value="base">Por {row.unit} (base)</option>
+                {costReferenceUnits.map((unit) => <option key={unit.id} value={unit.id}>Por {unit.symbol || unit.name}</option>)}
+              </select>
+            ) : null}
+            <div className="flex items-center justify-center gap-1">
             <span className="text-[9px] text-slate-500">Bs</span>
             <input
               type="text"
@@ -278,7 +324,7 @@ function MarketSheetTableRow({
               onKeyDown={(e) => e.key === "Enter" && handleBlurCost()}
               disabled={isSavingCost}
               placeholder={row.provisionCostUnit !== null ? String(row.provisionCostUnit) : "—"}
-              aria-label={`Costo de provisión de ${row.productName}`}
+              aria-label={`Costo de provisión en bolivianos por ${costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.symbol || row.unit} para ${row.productName}`}
               className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600 disabled:opacity-60"
             />
             {isSavingCost ? (
@@ -286,6 +332,7 @@ function MarketSheetTableRow({
             ) : savedCost ? (
               <Check className="size-3 text-emerald-600" />
             ) : null}
+            </div>
           </div>
         ) : (
           <span className="print:hidden">
@@ -293,7 +340,7 @@ function MarketSheetTableRow({
           </span>
         )}
         <div className="hidden print:block text-center font-medium">
-          {row.provisionCostUnit !== null ? formatMoney(row.provisionCostUnit) : "—"}
+          {row.provisionCostUnit !== null ? `${formatMoney(row.provisionCostUnit)} / ${row.unit}` : "—"}
         </div>
       </td>
     </tr>

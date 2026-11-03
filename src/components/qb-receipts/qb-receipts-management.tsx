@@ -1292,6 +1292,21 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
   const totalTracking = summarizeReceiptTracking(summary.selected);
   const years = [...new Set(receipts.map((receipt) =>
     (receipt.periodEnd ?? receipt.issuedAt ?? receipt.createdAt).slice(0, 4)))].sort().reverse();
+  const trackingTone = {
+    positive: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    negative: "border-rose-200 bg-rose-50 text-rose-800",
+    pending: "border-amber-200 bg-amber-50 text-amber-900",
+  } as const;
+  const trackingCount = (
+    count: number,
+    singular: string,
+    plural: string,
+    tone: keyof typeof trackingTone,
+  ) => (
+    <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold tabular-nums ${trackingTone[tone]}`}>
+      {count} {count === 1 ? singular : plural}
+    </span>
+  );
   return <div className="space-y-3 rounded-lg border bg-white p-3">
     <div className="flex flex-wrap items-end gap-2 text-xs">
       <label>Cliente<select className="ml-1 h-8 rounded border px-2" value={customerId}
@@ -1314,15 +1329,18 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
     <div className="overflow-x-auto"><table className="w-full text-sm">
       <thead className="bg-slate-100 text-left text-xs"><tr>
         <th className="px-2 py-2">Cliente</th><th className="px-2 py-2 text-right">Recibos</th>
-        <th className="px-2 py-2 text-right">Envío · enviados / pendientes</th><th className="px-2 py-2 text-right">Pago · pagados / pendientes</th>
+        <th className="px-2 py-2 text-right">Enviados</th><th className="px-2 py-2 text-right">No enviados</th>
+        <th className="px-2 py-2 text-right">Pagados</th><th className="px-2 py-2 text-right">Pendientes de pago</th>
         <th className="px-2 py-2 text-right">Costo Bs</th><th className="px-2 py-2 text-right">Venta Bs</th>
         <th className="px-2 py-2 text-right">Utilidad Bs</th><th className="px-2 py-2 text-right">% Utilidad</th>
       </tr></thead><tbody>
       {summary.customers.map((item) => <tr key={item.customerId} className="border-t">
         <td className="px-2 py-2">{customers.find(([id]) => id === item.customerId)?.[1] ?? "Cliente"}</td>
         <td className="px-2 py-2 text-right">{item.count}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.sent ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingSend ?? 0}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{trackingByCustomer.get(item.customerId)?.paid ?? 0} / {trackingByCustomer.get(item.customerId)?.pendingPayment ?? 0}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(trackingByCustomer.get(item.customerId)?.sent ?? 0, "enviado", "enviados", "positive")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(trackingByCustomer.get(item.customerId)?.pendingSend ?? 0, "no enviado", "no enviados", "negative")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(trackingByCustomer.get(item.customerId)?.paid ?? 0, "pagado", "pagados", "positive")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(trackingByCustomer.get(item.customerId)?.pendingPayment ?? 0, "pendiente de pago", "pendientes de pago", "pending")}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(item.profitTotal))}</td>
@@ -1330,8 +1348,10 @@ function ReceiptGeneralSummary({ receipts }: { receipts: QbReceipt[] }) {
       </tr>)}
       </tbody><tfoot className="border-t bg-emerald-50 font-semibold"><tr>
         <td className="px-2 py-2">TOTAL GENERAL</td><td className="px-2 py-2 text-right">{summary.selected.length}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.sent} / {totalTracking.pendingSend}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{totalTracking.paid} / {totalTracking.pendingPayment}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(totalTracking.sent, "enviado", "enviados", "positive")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(totalTracking.pendingSend, "no enviado", "no enviados", "negative")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(totalTracking.paid, "pagado", "pagados", "positive")}</td>
+        <td className="px-2 py-2 text-right">{trackingCount(totalTracking.pendingPayment, "pendiente de pago", "pendientes de pago", "pending")}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.costTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.saleTotal))}</td>
         <td className="px-2 py-2 text-right">{money(Number(summary.total.profitTotal))}</td>

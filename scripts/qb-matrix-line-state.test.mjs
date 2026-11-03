@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   applyAutomaticDeliveryValues,
+  comparePreparationCoverage,
   preparedQuantityAfterCheck,
   updateDeliveryChecks,
 } from "../src/lib/operational-matrix/line-state.ts";
@@ -89,4 +91,45 @@ test("delivery checks can be checked and unchecked for only the selected grouped
 
   const unchecked = updateDeliveryChecks(checked, selected, false);
   assert.deepEqual(unchecked.map((line) => line.deliveryCheck), [false, false, false]);
+});
+
+test("preparation coverage compares physical base units and reports short, exact, excess, and unknown", () => {
+  // 2 CUARTILLAS at the persisted 11.25 KG factor are compared with the
+  // measured preparation in KG, never by comparing their displayed numbers.
+  assert.deepEqual(comparePreparationCoverage({
+    requestedBaseQuantity: 22.5,
+    preparedBaseQuantity: 22.5,
+    requestedConversionValid: true,
+  }), { status: "complete" });
+  assert.deepEqual(comparePreparationCoverage({
+    requestedBaseQuantity: 20,
+    preparedBaseQuantity: 8,
+    requestedConversionValid: true,
+  }), { status: "short", missingBaseQuantity: 12 });
+  assert.deepEqual(comparePreparationCoverage({
+    requestedBaseQuantity: 20,
+    preparedBaseQuantity: 0,
+    requestedConversionValid: true,
+  }), { status: "short", missingBaseQuantity: 20 });
+  assert.deepEqual(comparePreparationCoverage({
+    requestedBaseQuantity: 20,
+    preparedBaseQuantity: 22,
+    requestedConversionValid: true,
+  }), { status: "over", excessBaseQuantity: 2 });
+  assert.deepEqual(comparePreparationCoverage({
+    requestedBaseQuantity: 20,
+    preparedBaseQuantity: 8,
+    requestedConversionValid: false,
+  }), { status: "unverified" });
+});
+
+test("delivery verification stays independent from preparation and round-trips its saved boolean", () => {
+  const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
+  const actions = readFileSync("src/lib/operational-matrix/actions.ts", "utf8");
+  const initial = deliveryLine({ preparationCheck: true, deliveryCheck: false });
+  assert.equal(initial.deliveryCheck, false);
+  assert.equal(updateDeliveryChecks([initial], new Set(["item-1"]), true)[0].deliveryCheck, true);
+  assert.equal(updateDeliveryChecks([initial], new Set(["item-1"]), false)[0].deliveryCheck, false);
+  assert.match(data, /const deliveryCheck = Boolean\(delivery\?\.delivery_check\)/);
+  assert.match(actions, /p_delivery_check:\s*parsed\.data\.deliveryCheck/);
 });
