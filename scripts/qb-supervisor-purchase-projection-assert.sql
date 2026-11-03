@@ -7,6 +7,10 @@ declare
   total_cost_type text;
   ref_price_type text;
 begin
+  if has_table_privilege('authenticated', 'public.qb_merchandise_receipt_lines', 'select') then
+    raise exception 'Authenticated users can bypass the role-filtered projection through the source table';
+  end if;
+
   select format_type(a.atttypid, a.atttypmod) into unit_cost_type
   from pg_attribute a where a.attrelid = 'public.qb_operational_warehouse_purchases'::regclass
     and a.attname = 'unit_cost' and not a.attisdropped;
@@ -29,16 +33,20 @@ begin
   end if;
 
   perform set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', false);
-  select unit_cost, total_cost, reference_price into row_data
+  select product_name, source_label, source_quantity, unit_cost, total_cost, reference_price into row_data
     from public.qb_operational_warehouse_purchases;
-  if row_data.unit_cost <> 600 or row_data.total_cost is not null or row_data.reference_price <> 760 then
+  if row_data.product_name <> 'FICTICIO PROJECTION TEST' or row_data.source_label <> 'SACO'
+     or row_data.source_quantity <> 3 or row_data.unit_cost <> 600
+     or row_data.total_cost is not null or row_data.reference_price <> 760 then
     raise exception 'Supervisor projection did not restrict aggregate totals';
   end if;
 
   perform set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000003', false);
-  select unit_cost, total_cost, reference_price into row_data
+  select product_name, source_label, source_quantity, unit_cost, total_cost, reference_price into row_data
     from public.qb_operational_warehouse_purchases;
-  if row_data.unit_cost is not null or row_data.total_cost is not null or row_data.reference_price is not null then
+  if row_data.product_name <> 'FICTICIO PROJECTION TEST' or row_data.source_label <> 'SACO'
+     or row_data.source_quantity <> 3 or row_data.unit_cost is not null
+     or row_data.total_cost is not null or row_data.reference_price is not null then
     raise exception 'Inventory projection exposed a cost field';
   end if;
 end $$;
