@@ -19,9 +19,13 @@ export type MarketSheetLineRef = {
   requestedUnitLabel: string;
   requestedBaseQuantity: number;
   pendingBaseQuantity: number | null;
+  /** Quantity shown in the delivery-selected unit only when its snapshot is verifiable. */
   deliveredQuantity: number;
+  deliveredDisplayQuantity: number;
   deliveredUnitLabel: string;
+  deliveredDisplayWarning: string | null;
   deliveredBaseQuantity: number;
+  deliveredWeightKg: number | null;
   conversionValid: boolean;
   baseUnitId: string;
   inventoryBaseUnitId: string | null;
@@ -149,6 +153,49 @@ function displayUnitLabel(line: MatrixLine, unitId: string, fallback: string) {
   return line.quantityUnits?.find((unit) => unit.id === unitId)?.label ?? fallback;
 }
 
+function resolveDeliveredDisplay(line: MatrixLine) {
+  const original = {
+    quantity: line.deliveredQuantity,
+    unitLabel: line.sourceLabel,
+    warning: null as string | null,
+  };
+  const selectedUnitId = line.deliveryDisplayUnitId;
+  if (!selectedUnitId || selectedUnitId === "original") return original;
+
+  const selectedUnit = line.quantityUnits.find((unit) => unit.id === selectedUnitId);
+  const basePerSource = line.requestedQuantity > 0
+    ? line.requestedBaseQuantity / line.requestedQuantity
+    : 0;
+  // Actual-weight items keep commercial delivery quantity and measured weight
+  // separate. Their base quantity can represent a pricing weight, not a unit
+  // conversion of the delivered commercial quantity.
+  if (!selectedUnit || line.controlsActualWeight || !line.requestedConversionValid ||
+    !(selectedUnit.sourceQuantity > 0) || !(basePerSource > 0) ||
+    !Number.isFinite(selectedUnit.sourceQuantity) || !Number.isFinite(basePerSource)) {
+    return {
+      ...original,
+      warning: `No se pudo verificar la conversión a ${displayUnitLabel(line, selectedUnitId, selectedUnitId)}; se conserva la cantidad comercial original.`,
+    };
+  }
+
+  const displayQuantity = Number((line.deliveredQuantity / selectedUnit.sourceQuantity).toFixed(6));
+  const expectedBaseQuantity = displayQuantity * selectedUnit.sourceQuantity * basePerSource;
+  const tolerance = Math.max(0.00001, Math.abs(line.deliveredBaseQuantity) * 0.000001);
+  if (!Number.isFinite(displayQuantity) ||
+    Math.abs(expectedBaseQuantity - line.deliveredBaseQuantity) > tolerance) {
+    return {
+      ...original,
+      warning: `La equivalencia a ${selectedUnit.label} no coincide con el snapshot físico; se conserva la cantidad comercial original.`,
+    };
+  }
+
+  return {
+    quantity: displayQuantity,
+    unitLabel: selectedUnit.label,
+    warning: null,
+  };
+}
+
 function roundQuantity(value: number) {
   return Number(value.toFixed(6));
 }
@@ -250,7 +297,7 @@ export function buildMarketSheetModel(
       const controlsActualWeight = Boolean(first.controlsActualWeight);
       let actualWeightOrQuantity: number | null = null;
       if (controlsActualWeight) {
-          const hasWeights = lines.some(
+        const hasWeights = lines.some(
           (l) => l.preparationActualWeightKg !== null,
         );
         if (hasWeights) {
@@ -273,27 +320,33 @@ export function buildMarketSheetModel(
         }
       }
 
-      const lineRefs: MarketSheetLineRef[] = lines.map((l) => ({
-        orderItemId: l.orderItemId,
-        orderId: l.orderId,
-        preparationVersion: l.preparationVersion,
-        requestedQuantity: l.requestedQuantity,
-        requestedUnitLabel: l.sourceLabel,
-        requestedBaseQuantity: l.requestedBaseQuantity,
-        pendingBaseQuantity: l.requestedConversionValid !== false
-          ? roundQuantity(Math.max(l.requestedBaseQuantity - l.deliveredBaseQuantity, 0))
-          : null,
-        deliveredQuantity: l.deliveredQuantity,
-        deliveredUnitLabel: displayUnitLabel(l, l.deliveryDisplayUnitId, l.sourceLabel),
-        deliveredBaseQuantity: l.deliveredBaseQuantity,
-        conversionValid: l.requestedConversionValid !== false,
-        baseUnitId: baseUnitKey(l),
-        inventoryBaseUnitId: l.inventoryBaseUnitId ?? null,
-        actualWeightKg: l.preparationActualWeightKg,
-        preparedQuantity: l.preparedQuantity,
-        preparationCheck: l.preparationCheck,
-        provisionCostUnit: l.provisionCostUnit,
-      }));
+      const lineRefs: MarketSheetLineRef[] = lines.map((l) => {
+        const deliveredDisplay = resolveDeliveredDisplay(l);
+        return {
+          orderItemId: l.orderItemId,
+          orderId: l.orderId,
+          preparationVersion: l.preparationVersion,
+          requestedQuantity: l.requestedQuantity,
+          requestedUnitLabel: l.sourceLabel,
+          requestedBaseQuantity: l.requestedBaseQuantity,
+          pendingBaseQuantity: l.requestedConversionValid !== false
+            ? roundQuantity(Math.max(l.requestedBaseQuantity - l.deliveredBaseQuantity, 0))
+            : null,
+          deliveredQuantity: l.deliveredQuantity,
+          deliveredDisplayQuantity: deliveredDisplay.quantity,
+          deliveredUnitLabel: deliveredDisplay.unitLabel,
+          deliveredDisplayWarning: deliveredDisplay.warning,
+          deliveredBaseQuantity: l.deliveredBaseQuantity,
+          deliveredWeightKg: l.deliveryActualWeightKg,
+          conversionValid: l.requestedConversionValid !== false,
+          baseUnitId: baseUnitKey(l),
+          inventoryBaseUnitId: l.inventoryBaseUnitId ?? null,
+          actualWeightKg: l.preparationActualWeightKg,
+          preparedQuantity: l.preparedQuantity,
+          preparationCheck: l.preparationCheck,
+          provisionCostUnit: l.provisionCostUnit,
+        };
+      });
       const customerLines = customers.map((customer) => lineRefs.filter((line) =>
         customer.orderIds.includes(line.orderId),
       ));

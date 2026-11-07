@@ -158,7 +158,14 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
           const pending = line.pendingBaseQuantity === null
             ? "Revisar conversión"
             : `${quantityText(line.pendingBaseQuantity)} ${item.unit}`;
-          return `Solicitado ${quantityText(line.requestedQuantity)} ${line.requestedUnitLabel} · Entregado ${quantityText(line.deliveredQuantity)} ${line.deliveredUnitLabel} · Pendiente ${pending}`;
+          const delivered = `Entregado ${quantityText(line.deliveredDisplayQuantity)} ${line.deliveredUnitLabel}` +
+            (line.deliveredWeightKg === null ? "" : ` · Peso real ${quantityText(line.deliveredWeightKg)} kg`);
+          return [
+            `Solicitado ${quantityText(line.requestedQuantity)} ${line.requestedUnitLabel}`,
+            delivered,
+            `Pendiente ${pending}`,
+            line.deliveredDisplayWarning,
+          ].filter(Boolean).join(" · ");
         }).join("\n"),
         null,
       ]),

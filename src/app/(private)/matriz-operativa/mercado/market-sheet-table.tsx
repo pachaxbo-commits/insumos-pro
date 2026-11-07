@@ -154,7 +154,9 @@ export function MarketSheetTable({
                         {row.customerLines[customerIndex]?.map((line) => (
                           <div key={line.orderItemId}>
                             Sol. {formatQuantity(line.requestedQuantity)} {line.requestedUnitLabel}<br />
-                            Ent. {formatQuantity(line.deliveredQuantity)} {line.deliveredUnitLabel}<br />
+                            Ent. {formatQuantity(line.deliveredDisplayQuantity)} {line.deliveredUnitLabel}
+                            {line.deliveredWeightKg !== null ? ` · Peso real ${formatQuantity(line.deliveredWeightKg)} kg` : ""}<br />
+                            {line.deliveredDisplayWarning ? <span className="font-semibold text-amber-800">{line.deliveredDisplayWarning}<br /></span> : null}
                             Pend. {line.pendingBaseQuantity === null ? "Revisar conversión" : `${formatQuantity(line.pendingBaseQuantity)} ${row.unit}`}
                           </div>
                         ))}
@@ -303,7 +305,11 @@ function MarketSheetTableRow({
             {lines.length ? lines.map((line) => (
               <div key={line.orderItemId} className="px-2 py-1 text-[9px] leading-4">
                 <div><b>Solicitado:</b> {formatQuantity(line.requestedQuantity)} {line.requestedUnitLabel}</div>
-                <div><b>Entregado:</b> {formatQuantity(line.deliveredQuantity)} {line.deliveredUnitLabel}</div>
+                <div>
+                  <b>Entregado:</b> {formatQuantity(line.deliveredDisplayQuantity)} {line.deliveredUnitLabel}
+                  {line.deliveredWeightKg !== null ? ` · Peso real ${formatQuantity(line.deliveredWeightKg)} kg` : ""}
+                </div>
+                {line.deliveredDisplayWarning ? <div className="font-semibold text-amber-800">{line.deliveredDisplayWarning}</div> : null}
                 <div className={line.pendingBaseQuantity === null ? "font-semibold text-amber-800" : "text-slate-600"}>
                   <b>Pendiente:</b> {line.pendingBaseQuantity === null ? "Revisar conversión" : `${formatQuantity(line.pendingBaseQuantity)} ${row.unit}`}
                 </div>

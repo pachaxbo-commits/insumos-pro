@@ -37,6 +37,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     controlsActualWeight: false,
     categoryName: "Verduras",
     sourceLabel,
+    quantityUnits: [{ id: "original", label: sourceLabel, sourceQuantity: 1 }],
     baseUnitId: "unit-kg",
     inventoryBaseUnitId: "unit-kg",
     baseUnitSymbol: "kg",
@@ -215,6 +216,101 @@ test("base-unit edits are converted back to each line's captured request unit", 
   assert.equal(baseQuantityAsRequestedUnit(1, 0.5, 2), 0.25);
   assert.equal(baseQuantityAsRequestedUnit(2, 1, 2), 1);
   assert.equal(baseQuantityAsRequestedUnit(1, 1, 0), null);
+});
+
+test("delivery display units never relabel an original commercial quantity without a verified conversion", () => {
+  const displayCases = {
+    ...data,
+    orders: [
+      order("arroba-order", "customer-a", "Cliente A", 1),
+      order("pepper-order", "customer-b", "Cliente B", 2),
+      order("cuartilla-order", "customer-c", "Cliente C", 3),
+    ],
+    lines: [
+      {
+        ...line("arroba-order", "ARROBA", 2, "arroba"),
+        productId: "papa",
+        productName: "Papa",
+        requestedBaseQuantity: 22.5,
+        deliveredQuantity: 1,
+        deliveredBaseQuantity: 11.25,
+        deliveryDisplayUnitId: "unit:kg",
+        quantityUnits: [
+          { id: "original", label: "ARROBA", sourceQuantity: 1 },
+          { id: "unit:kg", label: "KG", sourceQuantity: 1 / 11.25 },
+        ],
+      },
+      {
+        ...line("pepper-order", "UNIDAD", 8, "pepper"),
+        productId: "pepper",
+        productName: "Pimentón",
+        controlsActualWeight: true,
+        requestedBaseQuantity: 8,
+        deliveredQuantity: 8,
+        deliveredBaseQuantity: 3.40194,
+        deliveryActualWeightKg: 3.40194,
+        deliveryDisplayUnitId: "unit:kg",
+        quantityUnits: [
+          { id: "original", label: "UNIDAD", sourceQuantity: 1 },
+          { id: "unit:kg", label: "KG", sourceQuantity: 1 },
+        ],
+      },
+      {
+        ...line("cuartilla-order", "CUARTILLA", 1, "cuartilla"),
+        productId: "potato-quarter",
+        productName: "Papa por cuartilla",
+        requestedBaseQuantity: 0,
+        requestedConversionValid: false,
+        deliveredQuantity: 0.5,
+        deliveredBaseQuantity: 0,
+        deliveryDisplayUnitId: "unit:kg-unverified",
+      },
+    ],
+  };
+
+  const model = buildMarketSheetModel(displayCases);
+  const potatoLine = model.rows.find((row) => row.productId === "papa")?.lines[0];
+  const pepperLine = model.rows.find((row) => row.productId === "pepper")?.lines[0];
+  const quarterLine = model.rows.find((row) => row.productId === "potato-quarter")?.lines[0];
+  assert.ok(potatoLine && pepperLine && quarterLine);
+
+  assert.equal(potatoLine.deliveredQuantity, 1, "Stored commercial quantity remains one arroba");
+  assert.equal(potatoLine.deliveredDisplayQuantity, 11.25);
+  assert.equal(potatoLine.deliveredUnitLabel, "KG");
+  assert.equal(potatoLine.deliveredDisplayWarning, null);
+  assert.equal(potatoLine.deliveredBaseQuantity, 11.25);
+
+  assert.equal(pepperLine.deliveredQuantity, 8, "Commercial units stay separate from measured weight");
+  assert.equal(pepperLine.deliveredDisplayQuantity, 8);
+  assert.equal(pepperLine.deliveredUnitLabel, "UNIDAD");
+  assert.equal(pepperLine.deliveredWeightKg, 3.40194);
+  assert.match(pepperLine.deliveredDisplayWarning, /cantidad comercial original/);
+
+  assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
+  assert.equal(quarterLine.deliveredUnitLabel, "CUARTILLA");
+  assert.match(quarterLine.deliveredDisplayWarning, /conserva la cantidad comercial original/);
+
+  const originalDisplay = buildMarketSheetModel({
+    ...displayCases,
+    lines: [{ ...displayCases.lines[0], deliveryDisplayUnitId: "original" }],
+    orders: [displayCases.orders[0]],
+  }).rows[0]?.lines[0];
+  assert.ok(originalDisplay);
+  assert.equal(originalDisplay.deliveredQuantity, potatoLine.deliveredQuantity);
+  assert.equal(originalDisplay.deliveredBaseQuantity, potatoLine.deliveredBaseQuantity);
+  assert.equal(originalDisplay.deliveredDisplayQuantity, 1);
+  assert.equal(originalDisplay.deliveredUnitLabel, "ARROBA");
+
+  const workbook = new ExcelJS.Workbook();
+  return buildMarketWorkbook(model).then(async (buffer) => {
+    await workbook.xlsx.load(buffer);
+    const sheet = workbook.getWorksheet("Provisiones");
+    assert.ok(sheet);
+    assert.match(String(sheet.getCell("D6").value), /Entregado 11,25 KG/);
+    const quarterRow = model.rows.findIndex((row) => row.productId === "potato-quarter") + 6;
+    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /CUARTILLA/);
+    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
+  });
 });
 
 test("receipt enhancements stay manual and do not alter order state", async () => {
