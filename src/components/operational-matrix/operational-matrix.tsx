@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { OperationalDateFilter } from "@/components/operational-matrix/operational-date-filter";
+import { operationalDateHref } from "@/lib/operational-matrix/date-navigation";
 import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -1215,8 +1216,7 @@ export function OperationalMatrix({
                 setStage(item);
                 if (typeof window !== "undefined") {
                   const url = new URL(window.location.href);
-                  url.searchParams.set("mode", item);
-                  router.replace(url.pathname + url.search);
+                  router.replace(operationalDateHref(url.pathname, operationalDate, url.searchParams, item));
                 }
               })}
               role="tab"
