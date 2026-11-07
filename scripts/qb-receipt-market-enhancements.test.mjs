@@ -5,6 +5,7 @@ import test from "node:test";
 import ExcelJS from "exceljs";
 
 import { baseQuantityAsRequestedUnit, buildMarketSheetModel } from "../src/lib/market-sheet/model.ts";
+import { planMarketPreparationWrite } from "../src/lib/market-sheet/preparation-write.ts";
 import { buildMarketWorkbook } from "../src/lib/market-sheet/workbook.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -364,6 +365,59 @@ test("the Excel actual measure column keeps measured weight separate and labels 
   assert.equal(sheet.getCell("K6").value, 12);
   assert.equal(sheet.getCell("K6").numFmt, '0.###" kg"');
   assert.equal(sheet.getCell("L6").value, null);
+});
+
+test("provision edits reject grouped writes and preserve a single preparation line's check, note, and version", async () => {
+  const source = line("write-order", "UNIDAD", 8, "write");
+  const writeLine = {
+    orderItemId: source.orderItemId,
+    preparationVersion: 7,
+    requestedQuantity: 8,
+    requestedBaseQuantity: 8,
+    conversionValid: true,
+    baseUnitId: "unit-kg",
+    inventoryBaseUnitId: "unit-kg",
+    preparedQuantity: 8,
+    preparationCheck: false,
+    preparationNote: "Revisar tamaño antes de salir",
+  };
+
+  for (const count of [2, 3]) {
+    const grouped = Array.from({ length: count }, (_, index) => ({
+      ...writeLine,
+      orderItemId: `${writeLine.orderItemId}-${index}`,
+    }));
+    const plan = planMarketPreparationWrite(grouped, false, 4);
+    assert.equal(plan.ok, false, `${count} lines are blocked before any RPC write`);
+    if (!plan.ok) assert.match(plan.message, /Edita cada línea desde Preparación/);
+  }
+
+  const weightPlan = planMarketPreparationWrite([writeLine], true, 2.75);
+  assert.equal(weightPlan.ok, true);
+  if (weightPlan.ok) {
+    assert.equal(weightPlan.params.p_order_item_id, writeLine.orderItemId);
+    assert.equal(weightPlan.params.p_expected_version, 7, "the database RPC can reject a stale version");
+    assert.equal(weightPlan.params.p_prepared_quantity, 8, "weight edits do not rewrite the commercial quantity");
+    assert.equal(weightPlan.params.p_preparation_check, false, "recording weight does not mark preparation checked");
+    assert.equal(weightPlan.params.p_actual_weight_kg, 2.75);
+    assert.equal(weightPlan.params.p_note, "Revisar tamaño antes de salir");
+  }
+
+  const emptyQuantityPlan = planMarketPreparationWrite([writeLine], false, null);
+  assert.equal(emptyQuantityPlan.ok, false, "blank commercial quantity is redirected to the per-line Preparation flow");
+  const [action, table] = await Promise.all([
+    read("src/lib/market-sheet/actions.ts"),
+    read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx"),
+  ]);
+  const matrixRpc = await read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql");
+  assert.match(action, /planMarketPreparationWrite\(lines \?\? \[\], controlsActualWeight, actualValue\)/);
+  assert.match(action, /save_qb_matrix_preparation_item_with_unit/);
+  const actualAction = action.slice(action.indexOf("export async function updateMarketSheetProductActualAction"));
+  assert.ok(actualAction.indexOf("planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue)") < actualAction.indexOf("supabase.rpc("), "The grouped-write policy runs before the only RPC call");
+  assert.doesNotMatch(actualAction, /for\s*\(/, "The product summary action cannot partially loop over RPC writes");
+  assert.match(table, /disabled=\{isSavingActual \|\| row\.unitReviewRequired \|\| row\.lines\.length > 1\}/);
+  assert.match(table, /Fila agrupada: edita cada pedido desde Preparación/);
+  assert.match(matrixRpc, /if v_item\.row_version <> p_expected_version then[\s\S]{0,180}QB_MATRIX_CONFLICT/);
 });
 
 test("receipt enhancements stay manual and do not alter order state", async () => {

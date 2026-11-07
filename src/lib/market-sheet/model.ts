@@ -32,6 +32,7 @@ export type MarketSheetLineRef = {
   actualWeightKg: number | null;
   preparedQuantity: number;
   preparationCheck: boolean;
+  preparationNote: string;
   provisionCostUnit: number | null;
 };
 
@@ -350,6 +351,7 @@ export function buildMarketSheetModel(
           actualWeightKg: l.preparationActualWeightKg,
           preparedQuantity: l.preparedQuantity,
           preparationCheck: l.preparationCheck,
+          preparationNote: l.preparationNote,
           provisionCostUnit: l.provisionCostUnit,
         };
       });

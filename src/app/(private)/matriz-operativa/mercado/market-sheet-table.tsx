@@ -371,7 +371,7 @@ function MarketSheetTableRow({
             onChange={(e) => setActualInput(e.target.value)}
             onBlur={handleBlurActual}
             onKeyDown={(e) => e.key === "Enter" && handleBlurActual()}
-            disabled={isSavingActual || row.unitReviewRequired}
+            disabled={isSavingActual || row.unitReviewRequired || row.lines.length > 1}
             placeholder={row.actualWeightOrQuantity !== null ? String(row.actualWeightOrQuantity) : "—"}
             aria-label={`Peso o cantidad real de ${row.productName}`}
             className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-60"
@@ -385,6 +385,11 @@ function MarketSheetTableRow({
             <Check className="size-3 text-emerald-600" />
           ) : null}
         </div>
+        {row.lines.length > 1 ? (
+          <p className="print:hidden text-[9px] leading-tight text-amber-800">
+            Fila agrupada: edita cada pedido desde Preparación.
+          </p>
+        ) : null}
         <div className="hidden print:block text-center font-medium">
           {row.actualWeightOrQuantity !== null
             ? `${formatQuantity(row.actualWeightOrQuantity)} ${row.controlsActualWeight ? "kg" : row.unit}`
