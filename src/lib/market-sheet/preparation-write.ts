@@ -9,6 +9,8 @@ type PreparationLineForWrite = Pick<
   | "conversionValid"
   | "baseUnitId"
   | "inventoryBaseUnitId"
+  | "preparationDisplayUnitId"
+  | "quantityUnits"
   | "preparedQuantity"
   | "preparationCheck"
   | "preparationNote"
@@ -20,7 +22,7 @@ export type PreparationWriteParams = {
   p_prepared_quantity: number;
   p_preparation_check: boolean;
   p_actual_weight_kg: number | null;
-  p_display_unit_id: "original";
+  p_display_unit_id: string;
   p_note: string;
 };
 
@@ -76,6 +78,11 @@ export function planMarketPreparationWrite(
     return { ok: false, message: "No se pudo convertir la cantidad real a la unidad del pedido." };
   }
 
+  const displayUnitId = line.preparationDisplayUnitId === "original" ||
+    line.quantityUnits.some((unit) => unit.id === line.preparationDisplayUnitId)
+    ? line.preparationDisplayUnitId
+    : "original";
+
   return {
     ok: true,
     params: {
@@ -89,7 +96,7 @@ export function planMarketPreparationWrite(
       // The verification flag is independent: weighing a line never checks it.
       p_preparation_check: line.preparationCheck,
       p_actual_weight_kg: controlsActualWeight ? lineActual : null,
-      p_display_unit_id: "original",
+      p_display_unit_id: displayUnitId,
       // The RPC replaces this field, so always pass the captured note unchanged.
       p_note: line.preparationNote,
     },

@@ -51,6 +51,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     requestedVersion: 1,
     preparedQuantity: 900,
     preparedBaseQuantity: 900,
+    preparationDisplayUnitId: "original",
     preparationCheck: true,
     preparationActualWeightKg: null,
     preparationNote: "",
@@ -377,6 +378,8 @@ test("provision edits reject grouped writes and preserve a single preparation li
     conversionValid: true,
     baseUnitId: "unit-kg",
     inventoryBaseUnitId: "unit-kg",
+    preparationDisplayUnitId: "original",
+    quantityUnits: [{ id: "original", label: "UNIDAD", sourceQuantity: 1 }],
     preparedQuantity: 8,
     preparationCheck: false,
     preparationNote: "Revisar tamaño antes de salir",
@@ -403,11 +406,56 @@ test("provision edits reject grouped writes and preserve a single preparation li
     assert.equal(weightPlan.params.p_note, "Revisar tamaño antes de salir");
   }
 
+  const selectedDisplayUnit = "presentation:00000000-0000-4000-8000-000000000111";
+  const selectedUnitLine = {
+    ...writeLine,
+    preparationDisplayUnitId: selectedDisplayUnit,
+    quantityUnits: [
+      ...writeLine.quantityUnits,
+      { id: selectedDisplayUnit, label: "CAJA", sourceQuantity: 4 },
+    ],
+  };
+  const selectedUnitPlan = planMarketPreparationWrite([selectedUnitLine], true, 2.75);
+  assert.equal(selectedUnitPlan.ok, true);
+  if (selectedUnitPlan.ok) {
+    assert.equal(selectedUnitPlan.params.p_display_unit_id, selectedDisplayUnit);
+
+    const reloadedModel = buildMarketSheetModel({
+      ...data,
+      orders: [order("weight-order", "customer-a", "Cliente A", 1)],
+      lines: [{
+        ...line("weight-order", "UNIDAD", 8, "weight"),
+        preparationDisplayUnitId: selectedUnitPlan.params.p_display_unit_id,
+        quantityUnits: selectedUnitLine.quantityUnits,
+        controlsActualWeight: true,
+        preparationActualWeightKg: 2.75,
+        requestedBaseQuantity: 8,
+        preparedQuantity: writeLine.preparedQuantity,
+        preparedBaseQuantity: 8,
+        preparationCheck: writeLine.preparationCheck,
+        preparationNote: writeLine.preparationNote,
+      }],
+    });
+    assert.equal(
+      reloadedModel.rows[0]?.lines[0]?.preparationDisplayUnitId,
+      selectedDisplayUnit,
+      "The selected display unit survives saving and reloading the provision model",
+    );
+  }
+
+  const invalidDisplayUnitPlan = planMarketPreparationWrite([{
+    ...writeLine,
+    preparationDisplayUnitId: "presentation:missing-from-current-options",
+  }], true, 2.75);
+  assert.equal(invalidDisplayUnitPlan.ok, true);
+  if (invalidDisplayUnitPlan.ok) assert.equal(invalidDisplayUnitPlan.params.p_display_unit_id, "original");
+
   const emptyQuantityPlan = planMarketPreparationWrite([writeLine], false, null);
   assert.equal(emptyQuantityPlan.ok, false, "blank commercial quantity is redirected to the per-line Preparation flow");
-  const [action, table] = await Promise.all([
+  const [action, table, matrixData] = await Promise.all([
     read("src/lib/market-sheet/actions.ts"),
     read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx"),
+    read("src/lib/operational-matrix/data.ts"),
   ]);
   const matrixRpc = await read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql");
   assert.match(action, /planMarketPreparationWrite\(lines \?\? \[\], controlsActualWeight, actualValue\)/);
@@ -417,6 +465,8 @@ test("provision edits reject grouped writes and preserve a single preparation li
   assert.doesNotMatch(actualAction, /for\s*\(/, "The product summary action cannot partially loop over RPC writes");
   assert.match(table, /disabled=\{isSavingActual \|\| row\.unitReviewRequired \|\| row\.lines\.length > 1\}/);
   assert.match(table, /Fila agrupada: edita cada pedido desde Preparación/);
+  assert.match(action, /\.\.\.plan\.params/);
+  assert.match(matrixData, /preparationDisplayUnitId: String\(prep\?\.display_unit_id \?\? "original"\)/);
   assert.match(matrixRpc, /if v_item\.row_version <> p_expected_version then[\s\S]{0,180}QB_MATRIX_CONFLICT/);
 });
 

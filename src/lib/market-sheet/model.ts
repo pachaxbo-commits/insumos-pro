@@ -29,6 +29,8 @@ export type MarketSheetLineRef = {
   conversionValid: boolean;
   baseUnitId: string;
   inventoryBaseUnitId: string | null;
+  preparationDisplayUnitId: string;
+  quantityUnits: MatrixLine["quantityUnits"];
   actualWeightKg: number | null;
   preparedQuantity: number;
   preparationCheck: boolean;
@@ -348,6 +350,8 @@ export function buildMarketSheetModel(
           conversionValid: l.requestedConversionValid !== false,
           baseUnitId: baseUnitKey(l),
           inventoryBaseUnitId: l.inventoryBaseUnitId ?? null,
+          preparationDisplayUnitId: l.preparationDisplayUnitId,
+          quantityUnits: l.quantityUnits,
           actualWeightKg: l.preparationActualWeightKg,
           preparedQuantity: l.preparedQuantity,
           preparationCheck: l.preparationCheck,
