@@ -53,7 +53,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   });
   sheet.properties.showGridLines = false;
 
-  const lastColumn = 9 + model.customers.length * 2;
+  const lastColumn = 10 + model.customers.length * 2;
   const lastColumnLetter = columnLetter(lastColumn);
   sheet.mergeCells(`A1:${lastColumnLetter}1`);
   sheet.getCell("A1").value = "QB INSUMOS · HOJA DE PROVISIÓN";
@@ -91,6 +91,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "PENDIENTE",
     "STOCK DISPONIBLE",
     "POR PROVISIONAR",
+    "PESO / CANT. REAL",
     "COSTO DE PROVISIÓN (Bs/UD)",
   ];
   const customerFirstColumns = model.customers.map((customer, index) => {
@@ -174,6 +175,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       item.pendingTotal ?? "Revisar conversión",
       item.stockAvailable ?? "Revisar unidad",
       item.toProvision ?? "Revisar unidad",
+      item.actualWeightOrQuantity ?? "—",
       item.provisionCostUnit ?? null,
     ];
     const longestCustomerBreakdown = Math.max(1, ...item.customerLines.map((customerLines) => customerLines.length));
@@ -191,7 +193,13 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
         vertical: "middle",
         wrapText: column === 2,
       };
-      if (column >= 4 + model.customers.length * 2) cell.numFmt = "0.###";
+      const realColumn = summaryStartColumn + 5;
+      if (column >= summaryStartColumn) cell.numFmt = "0.###";
+      if (column === realColumn && typeof cell.value === "number") {
+        const unit = item.controlsActualWeight ? "kg" : item.unit;
+        const escapedUnit = unit.replace(/"/g, '""');
+        cell.numFmt = `0.###" ${escapedUnit}"`;
+      }
       if (column >= 4 && column < 4 + model.customers.length * 2) {
         cell.alignment = { horizontal: "left", vertical: "top", wrapText: true };
       }
@@ -248,6 +256,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   for (let column = summaryStartColumn; column <= lastColumn; column += 1) {
     sheet.getColumn(column).width = column === lastColumn ? 20 : 13;
   }
+  sheet.getColumn(lastColumn - 1).width = 16;
   sheet.getColumn(lastColumn).width = 20;
   sheet.autoFilter = {
     from: { row: 5, column: 1 },

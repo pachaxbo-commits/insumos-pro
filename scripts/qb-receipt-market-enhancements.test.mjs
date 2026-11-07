@@ -122,9 +122,12 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.equal(sheet.pageSetup.fitToWidth, 0);
   assert.equal(sheet.pageSetup.fitToHeight, 0);
   assert.equal(sheet.pageSetup.printTitlesColumn, "A:C");
-  assert.match(sheet.pageSetup.printArea, /^A1:M\d+$/);
-  assert.equal(sheet.getCell("M4").value, "COSTO DE PROVISIÓN (Bs/UD)");
-  assert.equal(sheet.getCell("M6").value, null);
+  assert.match(sheet.pageSetup.printArea, /^A1:N\d+$/);
+  assert.equal(sheet.getCell("M4").value, "PESO / CANT. REAL");
+  assert.equal(sheet.getCell("N4").value, "COSTO DE PROVISIÓN (Bs/UD)");
+  assert.equal(sheet.getCell("N6").value, null);
+  assert.equal(sheet.getCell("M6").value, 3600);
+  assert.equal(sheet.getCell("M6").numFmt, '0.###" kg"');
   assert.match(String(sheet.getCell("D6").value), /Solicitado 2 kg · Entregado 0 kg · Pendiente 2 kg/);
   assert.equal(sheet.getCell("E6").value, null);
   assert.match(String(sheet.getCell("F6").value), /Solicitado 4 kg · Entregado 0 kg · Pendiente 4 kg/);
@@ -139,6 +142,10 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.ok(sheet.getCell("D6").border.right?.style);
   assert.ok(sheet.getCell("E6").border.left?.style);
   assert.equal(sheet.views[0].state, "frozen");
+  assert.equal(sheet.views[0].xSplit, 3);
+  assert.equal(sheet.views[0].ySplit, 5);
+  assert.equal(sheet.getColumn(13).width, 16, "Actual measure column remains readable");
+  assert.equal(sheet.getColumn(14).width, 20, "Cost column retains its existing width");
   const printStyles = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.module.css");
   const tableView = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx");
   assert.match(printStyles, /size:\s*landscape/);
@@ -327,7 +334,36 @@ test("delivery display units never relabel an original commercial quantity witho
     const quarterRow = model.rows.findIndex((row) => row.productId === "potato-quarter") + 6;
     assert.match(String(sheet.getCell(`H${quarterRow}`).value), /CUARTILLA/);
     assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
+    const pepperRow = model.rows.findIndex((row) => row.productId === "pepper") + 6;
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Entregado 8 UNIDAD/);
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real 3,402 kg/);
   });
+});
+
+test("the Excel actual measure column keeps measured weight separate and labels its unit", async () => {
+  const weightData = {
+    ...data,
+    orders: [order("weight-order", "customer-a", "Cliente A", 1)],
+    lines: [{
+      ...line("weight-order", "UNIDAD", 8, "weight"),
+      controlsActualWeight: true,
+      preparationActualWeightKg: 12,
+      requestedBaseQuantity: 8,
+      preparedBaseQuantity: 8,
+      deliveredQuantity: 8,
+      deliveredBaseQuantity: 8,
+      deliveryActualWeightKg: 12,
+    }],
+  };
+  const model = buildMarketSheetModel(weightData);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildMarketWorkbook(model));
+  const sheet = workbook.getWorksheet("Provisiones");
+  assert.ok(sheet);
+  assert.equal(sheet.getCell("K4").value, "PESO / CANT. REAL");
+  assert.equal(sheet.getCell("K6").value, 12);
+  assert.equal(sheet.getCell("K6").numFmt, '0.###" kg"');
+  assert.equal(sheet.getCell("L6").value, null);
 });
 
 test("receipt enhancements stay manual and do not alter order state", async () => {
