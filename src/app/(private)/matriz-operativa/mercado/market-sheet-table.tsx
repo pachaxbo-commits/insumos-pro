@@ -5,6 +5,7 @@ import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { MarketSheetModel, MarketSheetRow } from "@/lib/market-sheet/model";
+import styles from "./market-sheet-table.module.css";
 import { costPerBaseUnitFromReference, costPerReferenceUnitFromBase } from "@/lib/market-sheet/model";
 import {
   updateMarketSheetProductCostAction,
@@ -15,6 +16,10 @@ function formatQuantity(value: number) {
   return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
     value,
   );
+}
+
+function formatNullableQuantity(value: number | null) {
+  return value === null ? "Revisar" : formatQuantity(value);
 }
 
 function formatMoney(value: number | null) {
@@ -34,8 +39,14 @@ export function MarketSheetTable({
   model: MarketSheetModel;
   isAdmin: boolean;
 }) {
+  const customerPages = Array.from(
+    { length: Math.ceil(model.customers.length / 2) },
+    (_, index) => model.customers.slice(index * 2, index * 2 + 2),
+  );
+
   return (
-    <div className="mt-3 overflow-x-auto print:overflow-visible">
+    <>
+    <div className={`${styles.screenTable} mt-3 overflow-x-auto`}>
       <table className="w-full min-w-max border-collapse text-[10px]">
         <thead>
           <tr className="bg-slate-200">
@@ -45,15 +56,25 @@ export function MarketSheetTable({
             </th>
             <th className="border border-slate-500 px-2 py-2">UD</th>
             {model.customers.map((customer) => (
-              <th key={customer.key} className="min-w-32 border border-slate-500 px-2 py-2 text-center">
-                {customer.name}
+              <th key={customer.key} className="min-w-52 border border-slate-500 px-2 py-2 text-center">
+                <div>{customer.name}</div>
+                <div className="mt-1 grid grid-cols-[minmax(0,1fr)_2rem] text-[9px] font-medium">
+                  <span>Solicitado · Entregado · Pendiente</span>
+                  <span>Notas</span>
+                </div>
               </th>
             ))}
             <th className="border border-slate-500 bg-emerald-100 px-2 py-2 font-bold">
-              DEMANDA TOTAL
+              SOLICITADO
+            </th>
+            <th className="border border-slate-500 bg-emerald-50 px-2 py-2 font-bold">
+              ENTREGADO
+            </th>
+            <th className="border border-slate-500 bg-amber-50 px-2 py-2 font-bold">
+              PENDIENTE
             </th>
             <th className="border border-slate-500 bg-sky-100 px-2 py-2 font-bold">
-              STOCK DISPONIBLE
+              STOCK ACTUAL DISPONIBLE
             </th>
             <th className="border border-slate-500 bg-amber-100 px-2 py-2 font-bold">
               A PROVISIONAR
@@ -84,7 +105,7 @@ export function MarketSheetTable({
               colSpan={3}
               className="border-y-2 border-emerald-800 px-2 py-2 text-left"
             >
-              LÍNEAS PEDIDAS
+              PRODUCTOS CON PEDIDO · {model.totalLineCount} CLIENTE-PRODUCTO
             </th>
             {model.customers.map((customer, customerIndex) => (
               <th key={customer.key} className="border-y-2 border-emerald-800 p-0">
@@ -94,14 +115,67 @@ export function MarketSheetTable({
                 </div>
               </th>
             ))}
-            <th className="border-y-2 border-emerald-800 px-2 py-2 text-center">
-              {model.totalLineCount}
-            </th>
-            <th className="border-y-2 border-emerald-800" colSpan={4} />
+            <th className="border-y-2 border-emerald-800" colSpan={7} />
           </tr>
         </tfoot>
       </table>
     </div>
+    <div className={styles.printPages}>
+      {customerPages.map((customers, pageIndex) => {
+        const customerIndexes = customers.map((customer) => model.customers.indexOf(customer));
+        return (
+          <section key={pageIndex} className={styles.printPage}>
+            <h2 className="mb-1 text-center text-base font-bold">QB INSUMOS · HOJA DE PROVISIÓN</h2>
+            <p className="mb-2 text-center text-xs">Fecha operativa: {model.operationalDate} · Clientes {customers.map((customer) => customer.name).join(" · ")}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: "3%" }}>N°</th>
+                  <th style={{ width: "13%" }}>PRODUCTO</th>
+                  <th style={{ width: "5%" }}>UD</th>
+                  {customers.map((customer) => <th key={customer.key} style={{ width: "17%" }}>{customer.name}<br />Solicitado · Entregado · Pendiente</th>)}
+                  <th style={{ width: "5.5%" }}>SOLICITADO</th>
+                  <th style={{ width: "5.5%" }}>ENTREGADO</th>
+                  <th style={{ width: "5.5%" }}>PENDIENTE</th>
+                  <th style={{ width: "5.5%" }}>STOCK</th>
+                  <th style={{ width: "5.5%" }}>A PROVISIONAR</th>
+                  <th style={{ width: "6%" }}>PESO / CANT. REAL</th>
+                  <th style={{ width: "8%" }}>COSTO PROVISIÓN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {model.rows.map((row, rowIndex) => (
+                  <tr key={row.key} style={{ backgroundColor: row.productColor ?? "#fff" }}>
+                    <td>{rowIndex + 1}</td>
+                    <td>{row.productName}</td>
+                    <td>{row.unit}</td>
+                    {customerIndexes.map((customerIndex) => (
+                      <td key={customerIndex}>
+                        {row.customerLines[customerIndex]?.map((line) => (
+                          <div key={line.orderItemId}>
+                            Sol. {formatQuantity(line.requestedQuantity)} {line.requestedUnitLabel}<br />
+                            Ent. {formatQuantity(line.deliveredQuantity)} {line.deliveredUnitLabel}<br />
+                            Pend. {line.pendingBaseQuantity === null ? "Revisar conversión" : `${formatQuantity(line.pendingBaseQuantity)} ${row.unit}`}
+                          </div>
+                        ))}
+                      </td>
+                    ))}
+                    <td>{formatNullableQuantity(row.requestedTotal)} {row.unit}</td>
+                    <td>{formatNullableQuantity(row.deliveredTotal)} {row.unit}</td>
+                    <td>{formatNullableQuantity(row.pendingTotal)} {row.unit}</td>
+                    <td>{formatNullableQuantity(row.stockAvailable)} {row.stockAvailable === null ? "" : row.unit}</td>
+                    <td>{row.toProvision === null ? "Revisar unidad" : row.pendingTotal === 0 ? "Sin pendiente" : `${formatQuantity(row.toProvision)} ${row.unit}`}</td>
+                    <td>{row.actualWeightOrQuantity === null ? "—" : `${formatQuantity(row.actualWeightOrQuantity)} ${row.controlsActualWeight ? "kg" : row.unit}`}</td>
+                    <td>{isAdmin && row.provisionCostUnit !== null ? `${formatMoney(row.provisionCostUnit)} / ${row.unit}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        );
+      })}
+    </div>
+    </>
   );
 }
 
@@ -131,6 +205,10 @@ function MarketSheetTableRow({
   const [savedCost, setSavedCost] = useState(false);
 
   const handleBlurActual = () => {
+    if (row.unitReviewRequired) {
+      toast.error("Resuelve la unidad base de este producto antes de distribuir cantidades.");
+      return;
+    }
     const raw = actualInput.trim();
     const parsed = raw === "" ? null : Number(raw.replace(",", "."));
     if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) {
@@ -157,7 +235,7 @@ function MarketSheetTableRow({
   };
 
   const handleBlurCost = () => {
-    if (!isAdmin) return;
+    if (!isAdmin || row.unitReviewRequired) return;
     const raw = costInput.trim();
     const parsed = raw === "" ? null : Number(raw.replace(",", "."));
     if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) {
@@ -215,39 +293,58 @@ function MarketSheetTableRow({
       </td>
 
       {/* Customer order quantities */}
-      {row.quantities.map((value, customerIndex) => (
+      {row.customerLines.map((lines, customerIndex) => (
         <td
           key={customers[customerIndex]?.key}
-          aria-label={`${row.productName} para ${customers[customerIndex]?.name}: cantidad solicitada ${value > 0 ? formatQuantity(value) : "vacía"}; espacio contiguo para anotación manual`}
+          aria-label={`${row.productName} para ${customers[customerIndex]?.name}: ${lines.length} línea(s), solicitado, entregado y pendiente detallados`}
           className="border-r border-slate-500 p-0"
         >
-          <div className="grid min-w-32 grid-cols-2">
-            <span className="px-2 py-1 text-center">{value > 0 ? formatQuantity(value) : ""}</span>
-            <span aria-hidden="true" className="min-h-6 border-l border-slate-500 px-2 py-1">&nbsp;</span>
+          <div className="min-w-52 divide-y divide-slate-200">
+            {lines.length ? lines.map((line) => (
+              <div key={line.orderItemId} className="px-2 py-1 text-[9px] leading-4">
+                <div><b>Solicitado:</b> {formatQuantity(line.requestedQuantity)} {line.requestedUnitLabel}</div>
+                <div><b>Entregado:</b> {formatQuantity(line.deliveredQuantity)} {line.deliveredUnitLabel}</div>
+                <div className={line.pendingBaseQuantity === null ? "font-semibold text-amber-800" : "text-slate-600"}>
+                  <b>Pendiente:</b> {line.pendingBaseQuantity === null ? "Revisar conversión" : `${formatQuantity(line.pendingBaseQuantity)} ${row.unit}`}
+                </div>
+              </div>
+            )) : <span aria-hidden="true" className="block min-h-6 px-2 py-1">&nbsp;</span>}
           </div>
         </td>
       ))}
 
-      {/* Total demand */}
+      {/* Physical quantities are reported only in the product's base unit. */}
       <td className="border-r border-slate-400 bg-emerald-50 px-2 py-1 text-center font-bold text-slate-900">
-        {formatQuantity(row.total)}
+        {formatNullableQuantity(row.requestedTotal)}
+      </td>
+      <td className="border-r border-slate-300 bg-emerald-50 px-2 py-1 text-center font-medium text-slate-900">
+        {formatNullableQuantity(row.deliveredTotal)}
+      </td>
+      <td className="border-r border-slate-300 bg-amber-50 px-2 py-1 text-center font-medium text-slate-900">
+        {formatNullableQuantity(row.pendingTotal)}
       </td>
 
       {/* Available stock */}
       <td className="border-r border-slate-300 bg-sky-50 px-2 py-1 text-center font-medium text-slate-900">
-        {formatQuantity(row.stockAvailable)}
+        {formatNullableQuantity(row.stockAvailable)}
       </td>
 
       {/* To provision */}
       <td
         className={`border-r border-slate-300 px-2 py-1 text-center font-bold ${
-          row.isCoveredByStock
+          row.isCoveredByStock === true
             ? "bg-emerald-100 text-emerald-900"
-            : "bg-rose-50 text-rose-700"
+            : row.isCoveredByStock === false ? "bg-rose-50 text-rose-700" : "bg-amber-100 text-amber-900"
         }`}
       >
-        {row.toProvision > 0 ? (
+        {row.toProvision === null ? (
+          <span className="font-semibold">Revisar unidad</span>
+        ) : row.toProvision > 0 ? (
           formatQuantity(row.toProvision)
+        ) : row.pendingTotal === 0 ? (
+          <span className="inline-block rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold text-slate-700">
+            Sin pendiente
+          </span>
         ) : (
           <span className="inline-block rounded bg-emerald-200 px-1 py-0.5 text-[9px] font-semibold text-emerald-800">
             Cubierto por stock
@@ -257,6 +354,9 @@ function MarketSheetTableRow({
 
       {/* Real weight / quantity editable */}
       <td className="border-r border-slate-300 bg-slate-50/70 px-1.5 py-1 text-center">
+        {row.unitReviewRequired ? (
+          <span className="text-[9px] font-semibold text-amber-800">Revisar unidad base</span>
+        ) : null}
         <div className="flex items-center justify-center gap-1 print:hidden">
           <input
             type="text"
@@ -265,7 +365,7 @@ function MarketSheetTableRow({
             onChange={(e) => setActualInput(e.target.value)}
             onBlur={handleBlurActual}
             onKeyDown={(e) => e.key === "Enter" && handleBlurActual()}
-            disabled={isSavingActual}
+            disabled={isSavingActual || row.unitReviewRequired}
             placeholder={row.actualWeightOrQuantity !== null ? String(row.actualWeightOrQuantity) : "—"}
             aria-label={`Peso o cantidad real de ${row.productName}`}
             className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-60"
@@ -298,6 +398,7 @@ function MarketSheetTableRow({
                 aria-label={`Unidad de referencia del costo de ${row.productName}`}
                 className="h-6 max-w-28 rounded border border-slate-300 bg-white px-1 text-[9px]"
                 value={costReferenceUnitId}
+                disabled={row.unitReviewRequired}
                 onChange={(event) => {
                   const nextId = event.target.value;
                   const oldFactor = costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.kilograms ?? row.baseUnitKgFactor!;
@@ -322,7 +423,7 @@ function MarketSheetTableRow({
               onChange={(e) => setCostInput(e.target.value)}
               onBlur={handleBlurCost}
               onKeyDown={(e) => e.key === "Enter" && handleBlurCost()}
-              disabled={isSavingCost}
+              disabled={isSavingCost || row.unitReviewRequired}
               placeholder={row.provisionCostUnit !== null ? String(row.provisionCostUnit) : "—"}
               aria-label={`Costo de provisión en bolivianos por ${costReferenceUnits.find((unit) => unit.id === costReferenceUnitId)?.symbol || row.unit} para ${row.productName}`}
               className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600 disabled:opacity-60"

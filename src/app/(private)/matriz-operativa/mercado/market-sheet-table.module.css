@@ -1,0 +1,51 @@
+.screenTable {
+  display: block;
+}
+
+.printPages {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  .screenTable {
+    display: none !important;
+  }
+
+  .printPages {
+    display: block !important;
+  }
+
+  .printPage + .printPage {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .printPage table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 8pt;
+  }
+
+  .printPage thead {
+    display: table-header-group;
+  }
+
+  .printPage tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .printPage th,
+  .printPage td {
+    border: 1px solid #475569;
+    padding: 3px 4px;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+}

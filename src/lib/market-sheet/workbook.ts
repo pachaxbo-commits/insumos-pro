@@ -20,6 +20,10 @@ function columnLetter(column: number) {
   return result;
 }
 
+function quantityText(value: number) {
+  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(value);
+}
+
 export async function buildMarketWorkbook(model: MarketSheetModel) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "QB Insumos";
@@ -32,7 +36,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       paperSize: 9,
       orientation: "landscape",
       fitToPage: true,
-      fitToWidth: 1,
+      fitToWidth: 0,
       fitToHeight: 0,
       margins: {
         left: 0.2,
@@ -43,6 +47,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
         footer: 0.15,
       },
       printTitlesRow: "1:5",
+      printTitlesColumn: "A:C",
     },
     properties: { defaultRowHeight: 18 },
   });
@@ -66,13 +71,13 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   sheet.getRow(1).height = 28;
 
   sheet.mergeCells(`A2:${lastColumnLetter}2`);
-  sheet.getCell("A2").value = `Fecha operativa: ${model.operationalDate} · Pendiente por producto en unidad base`;
+  sheet.getCell("A2").value = `Fecha operativa: ${model.operationalDate} · Cantidades físicas en la unidad base del producto`;
   sheet.getCell("A2").font = { italic: true, color: { argb: "FF475569" } };
   sheet.getCell("A2").alignment = { horizontal: "center" };
 
   sheet.mergeCells(`A3:${lastColumnLetter}3`);
   sheet.getCell("A3").value =
-    "Las presentaciones se convierten a la unidad base y se consolidan por producto.";
+    "Cada cliente muestra solicitado, entregado y pendiente. Solo se compara stock cuando la unidad base es inequívoca.";
   sheet.getCell("A3").font = { size: 9, color: { argb: "FF64748B" } };
   sheet.getCell("A3").alignment = { horizontal: "center" };
 
@@ -80,24 +85,46 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
     "CÓDIGO",
     "DESCRIPCIÓN",
     "UD",
-    ...model.customers.flatMap(() => ["", ""]),
-    "TOTAL",
-    "STOCK FÍSICO",
-    "RESERVADO",
-    "DISPONIBLE",
-    "FALTANTE / COMPRAR",
+    ...model.customers.flatMap(() => ["SOLICITADO · ENTREGADO · PENDIENTE", "NOTAS"]),
+    "SOLICITADO",
+    "ENTREGADO",
+    "PENDIENTE",
+    "STOCK DISPONIBLE",
+    "POR PROVISIONAR",
     "COSTO DE PROVISIÓN (Bs/UD)",
   ];
   const customerFirstColumns = model.customers.map((customer, index) => {
     const firstColumn = 4 + index * 2;
     return { customer, firstColumn };
   });
+  customerFirstColumns.forEach(({ customer, firstColumn }) => {
+    sheet.mergeCells(4, firstColumn, 4, firstColumn + 1);
+    sheet.getCell(4, firstColumn).value = customer.name.toUpperCase();
+  });
+  const customerHeaderRow = sheet.getRow(4);
+  customerHeaderRow.height = 22;
+  customerHeaderRow.eachCell({ includeEmpty: true }, (cell) => {
+    cell.font = { bold: true, color: { argb: "FF0F172A" }, size: 9 };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFCBD5E1" } };
+    cell.border = {
+      top: { style: "medium", color: { argb: "FF334155" } },
+      bottom: { style: "thin", color: { argb: "FF64748B" } },
+      left: { style: "thin", color: { argb: "FF94A3B8" } },
+      right: { style: "thin", color: { argb: "FF94A3B8" } },
+    };
+  });
   const headerRow = sheet.getRow(5);
   headerRow.values = headers;
-  customerFirstColumns.forEach(({ customer, firstColumn }) => {
-    sheet.mergeCells(5, firstColumn, 5, firstColumn + 1);
-    sheet.getCell(5, firstColumn).value = customer.name.toUpperCase();
-  });
+  const summaryStartColumn = 4 + model.customers.length * 2;
+  for (const column of [1, 2, 3]) {
+    sheet.mergeCells(4, column, 5, column);
+    sheet.getCell(4, column).value = headers[column - 1];
+  }
+  for (let column = summaryStartColumn; column <= lastColumn; column += 1) {
+    sheet.mergeCells(4, column, 5, column);
+    sheet.getCell(4, column).value = headers[column - 1];
+  }
   headerRow.height = 34;
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FF0F172A" }, size: 9 };
@@ -126,15 +153,24 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       index + 1,
       item.productName,
       item.unit,
-      ...item.quantities.flatMap((quantity) => [quantity > 0 ? quantity : null, null]),
-      item.total,
-      item.stockAvailable,
-      item.reserved,
-      Math.max(item.stockAvailable - item.reserved, 0),
-      item.toProvision,
+      ...item.customerLines.flatMap((customerLines) => [
+        customerLines.map((line) => {
+          const pending = line.pendingBaseQuantity === null
+            ? "Revisar conversión"
+            : `${quantityText(line.pendingBaseQuantity)} ${item.unit}`;
+          return `Solicitado ${quantityText(line.requestedQuantity)} ${line.requestedUnitLabel} · Entregado ${quantityText(line.deliveredQuantity)} ${line.deliveredUnitLabel} · Pendiente ${pending}`;
+        }).join("\n"),
+        null,
+      ]),
+      item.requestedTotal ?? "Revisar conversión",
+      item.deliveredTotal ?? "Revisar conversión",
+      item.pendingTotal ?? "Revisar conversión",
+      item.stockAvailable ?? "Revisar unidad",
+      item.toProvision ?? "Revisar unidad",
       item.provisionCostUnit ?? null,
     ];
-    row.height = 21;
+    const longestCustomerBreakdown = Math.max(1, ...item.customerLines.map((customerLines) => customerLines.length));
+    row.height = Math.max(24, longestCustomerBreakdown * 42);
     row.getCell(lastColumn).value = item.provisionCostUnit ?? null;
     row.eachCell({ includeEmpty: true }, (cell, column) => {
       cell.fill = {
@@ -148,7 +184,10 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
         vertical: "middle",
         wrapText: column === 2,
       };
-      if (column >= 4) cell.numFmt = "0.###";
+      if (column >= 4 + model.customers.length * 2) cell.numFmt = "0.###";
+      if (column >= 4 && column < 4 + model.customers.length * 2) {
+        cell.alignment = { horizontal: "left", vertical: "top", wrapText: true };
+      }
       cell.border = {
         bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
         right: { style: "thin", color: { argb: "FFE2E8F0" } },
@@ -165,12 +204,11 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   const totalRowNumber = model.rows.length + 6;
   const totalRow = sheet.getRow(totalRowNumber);
   totalRow.getCell(1).value = "";
-  totalRow.getCell(2).value = "LÍNEAS PEDIDAS";
+  totalRow.getCell(2).value = `CONTEO DE PRODUCTOS SOLICITADOS POR CLIENTE · ${model.totalLineCount} CLIENTE-PRODUCTO (NO ES CANTIDAD FÍSICA)`;
   totalRow.getCell(3).value = "";
   model.customerLineCounts.forEach((count, index) => {
     totalRow.getCell(4 + index * 2).value = count;
   });
-  totalRow.getCell(lastColumn - 5).value = model.totalLineCount;
   totalRow.getCell(lastColumn).value = null;
   totalRow.eachCell({ includeEmpty: true }, (cell) => {
     cell.font = { bold: true, color: { argb: "FF064E3B" } };
@@ -194,13 +232,12 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
   totalRow.height = 24;
 
   sheet.getColumn(1).width = 6;
-  sheet.getColumn(2).width = 32;
+  sheet.getColumn(2).width = 28;
   sheet.getColumn(3).width = 12;
   for (let index = 0; index < model.customers.length; index += 1) {
-    sheet.getColumn(4 + index * 2).width = 8;
+    sheet.getColumn(4 + index * 2).width = 36;
     sheet.getColumn(5 + index * 2).width = 12;
   }
-  const summaryStartColumn = 4 + model.customers.length * 2;
   for (let column = summaryStartColumn; column <= lastColumn; column += 1) {
     sheet.getColumn(column).width = column === lastColumn ? 20 : 13;
   }

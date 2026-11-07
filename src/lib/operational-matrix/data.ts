@@ -172,7 +172,7 @@ export async function getOperationalMatrixData(
   ]);
   const productSettingsResult = role === "administrador" && productIds.length
     ? await supabase.from("qb_product_unit_settings")
-        .select("product_id, base_price_unit_id, base_sale_price")
+        .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price")
         .in("product_id", productIds)
     : { data: [], error: null };
   const preparationCostsResult = await supabase.from("qb_operational_preparation_costs")
@@ -434,6 +434,10 @@ export async function getOperationalMatrixData(
           .filter((dimension) => dimension.is_active && dimension.code !== "legacy_dump")
           .map((dimension) => String(dimension.id)),
       ),
+      baseUnitId: String(item.base_unit_id),
+      inventoryBaseUnitId: productSetting
+        ? String(productSetting.base_inventory_unit_id ?? productSetting.inventory_unit_id ?? productSetting.base_unit_id ?? "") || null
+        : null,
       baseUnitSymbol: String(item.base_unit_symbol),
       priceUnitSymbol,
       baseSalePrice:

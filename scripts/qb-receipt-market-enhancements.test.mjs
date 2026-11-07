@@ -4,7 +4,7 @@ import test from "node:test";
 
 import ExcelJS from "exceljs";
 
-import { buildMarketSheetModel } from "../src/lib/market-sheet/model.ts";
+import { baseQuantityAsRequestedUnit, buildMarketSheetModel } from "../src/lib/market-sheet/model.ts";
 import { buildMarketWorkbook } from "../src/lib/market-sheet/workbook.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -37,11 +37,14 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     controlsActualWeight: false,
     categoryName: "Verduras",
     sourceLabel,
+    baseUnitId: "unit-kg",
+    inventoryBaseUnitId: "unit-kg",
     baseUnitSymbol: "kg",
     priceUnitSymbol: "kg",
     hasWeightBasedPrice: true,
     requestedQuantity,
     requestedBaseQuantity: requestedQuantity * (sourceLabel === "arroba" ? 11.25 : 1),
+    requestedConversionValid: true,
     requestedNote: "",
     requestedVersion: 1,
     preparedQuantity: 900,
@@ -55,6 +58,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     externalQuantity: 800,
     deliveredQuantity: 0,
     deliveredBaseQuantity: 0,
+    deliveryDisplayUnitId: "original",
     deliveryCheck: true,
     deliveryActualWeightKg: null,
     deliveryNote: "",
@@ -92,8 +96,10 @@ test("the provision sheet consolidates presentations in base units", () => {
   );
   assert.equal(model.rows.length, 1);
   assert.equal(model.rows[0]?.unit, "kg");
-  assert.deepEqual(model.rows[0]?.quantities, [16.25, 4]);
+  assert.deepEqual(model.rows[0]?.quantities, [6, 4], "Customer cells preserve their original commercial quantities");
   assert.equal(model.rows[0]?.total, 20.25);
+  assert.equal(model.rows[0]?.pendingTotal, 20.25);
+  assert.equal(model.rows[0]?.requestedTotal, 20.25);
   assert.equal(model.rows[0]?.stockCurrent, 10);
   assert.equal(model.rows[0]?.reserved, 20.25);
   assert.deepEqual(model.customerLineCounts, [1, 1]);
@@ -109,26 +115,106 @@ test("the generated file is a real printable Excel workbook", async () => {
   const sheet = workbook.getWorksheet("Provisiones");
   assert.ok(sheet);
   assert.equal(sheet.getCell("A1").value, "QB INSUMOS · HOJA DE PROVISIÓN");
-  assert.equal(sheet.getCell("D5").value, "RESTAURANTE A");
-  assert.equal(sheet.getCell("F5").value, "RESTAURANTE B");
+  assert.equal(sheet.getCell("D4").value, "RESTAURANTE A");
+  assert.equal(sheet.getCell("F4").value, "RESTAURANTE B");
   assert.equal(sheet.pageSetup.orientation, "landscape");
-  assert.equal(sheet.pageSetup.fitToWidth, 1);
+  assert.equal(sheet.pageSetup.fitToWidth, 0);
+  assert.equal(sheet.pageSetup.fitToHeight, 0);
+  assert.equal(sheet.pageSetup.printTitlesColumn, "A:C");
   assert.match(sheet.pageSetup.printArea, /^A1:M\d+$/);
-  assert.equal(sheet.getCell("M5").value, "COSTO DE PROVISIÓN (Bs/UD)");
+  assert.equal(sheet.getCell("M4").value, "COSTO DE PROVISIÓN (Bs/UD)");
   assert.equal(sheet.getCell("M6").value, null);
-  assert.equal(sheet.getCell("D6").value, 16.25);
+  assert.match(String(sheet.getCell("D6").value), /Solicitado 2 kg · Entregado 0 kg · Pendiente 2 kg/);
   assert.equal(sheet.getCell("E6").value, null);
-  assert.equal(sheet.getCell("F6").value, 4);
+  assert.match(String(sheet.getCell("F6").value), /Solicitado 4 kg · Entregado 0 kg · Pendiente 4 kg/);
   assert.equal(sheet.getCell("G6").value, null);
   assert.equal(sheet.getCell("D7").value, 1);
   assert.equal(sheet.getCell("E7").value, null);
   assert.equal(sheet.getCell("F7").value, 1);
   assert.equal(sheet.getCell("G7").value, null);
-  assert.equal(sheet.getCell("H7").value, 2);
+  assert.equal(sheet.getCell("D7").value, 1);
+  assert.equal(sheet.getCell("F7").value, 1);
   assert.equal(sheet.getCell("L6").value, 10.25);
   assert.ok(sheet.getCell("D6").border.right?.style);
   assert.ok(sheet.getCell("E6").border.left?.style);
   assert.equal(sheet.views[0].state, "frozen");
+  const printStyles = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.module.css");
+  const tableView = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx");
+  assert.match(printStyles, /size:\s*landscape/);
+  assert.match(printStyles, /break-before:\s*page/);
+  assert.match(tableView, /slice\(index \* 2, index \* 2 \+ 2\)/, "Browser print divides customers into readable horizontal pages");
+});
+
+test("the provision sheet keeps fully delivered, partial, and pending lines for all customers", async () => {
+  const multiCustomer = {
+    ...data,
+    orders: [
+      order("day-a", "customer-a", "Cliente A", 1),
+      order("day-b", "customer-b", "Cliente B", 2),
+      order("day-c", "customer-c", "Cliente C", 3),
+    ],
+    lines: [
+      { ...line("day-a", "UNIDAD", 10, "a"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 10, deliveredQuantity: 10, deliveredBaseQuantity: 10 },
+      { ...line("day-b", "CAJA", 2, "b"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 20, deliveredQuantity: 0.8, deliveredBaseQuantity: 8, deliveryDisplayUnitId: "original" },
+      { ...line("day-c", "KG", 5, "c"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 5, deliveredQuantity: 0, deliveredBaseQuantity: 0 },
+      { ...line("day-a", "KG", 4, "d"), productId: "cebolla", productName: "Cebolla", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 0, requestedBaseQuantity: 4, deliveredQuantity: 4, deliveredBaseQuantity: 4 },
+    ],
+  };
+
+  const model = buildMarketSheetModel(multiCustomer);
+  const tomato = model.rows.find((row) => row.productId === "tomate");
+  const onion = model.rows.find((row) => row.productId === "cebolla");
+  assert.ok(tomato, "Tomate row remains visible");
+  assert.equal(tomato.requestedTotal, 35);
+  assert.equal(tomato.deliveredTotal, 18);
+  assert.equal(tomato.pendingTotal, 17);
+  assert.equal(tomato.toProvision, 13, "Only 17 pending minus 4 stock is provisioned");
+  assert.match(tomato.customerLines[0][0].pendingBaseQuantity.toString(), /^0$/);
+  assert.equal(tomato.customerLines[1][0].pendingBaseQuantity, 12);
+  assert.equal(tomato.customerLines[2][0].pendingBaseQuantity, 5);
+  assert.ok(onion, "Fully delivered product is not dropped");
+  assert.equal(onion.requestedTotal, 4);
+  assert.equal(onion.deliveredTotal, 4);
+  assert.equal(onion.pendingTotal, 0);
+  assert.equal(onion.toProvision, 0);
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildMarketWorkbook(model));
+  const sheet = workbook.getWorksheet("Provisiones");
+  assert.ok(sheet);
+  const onionRow = model.rows.findIndex((row) => row.productId === "cebolla") + 6;
+  const summaryStart = 4 + model.customers.length * 2;
+  assert.equal(sheet.getCell(onionRow, summaryStart).value, 4);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 1).value, 4);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 2).value, 0);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 4).value, 0);
+  assert.match(String(sheet.getCell(`D${onionRow}`).value), /Pendiente 0 kg/);
+});
+
+test("different base-unit snapshots remain separate and never reuse the same stock balance", () => {
+  const conflict = {
+    ...data,
+    orders: [
+      order("legacy-a", "customer-a", "Cliente A", 1),
+      order("legacy-b", "customer-b", "Cliente B", 2),
+    ],
+    lines: [
+      { ...line("legacy-a", "KG", 10, "a"), productId: "mixed", productName: "Producto mixto", baseUnitId: "unit-kg", stockCurrent: 7, requestedBaseQuantity: 10 },
+      { ...line("legacy-b", "CUARTILLA", 2, "b"), productId: "mixed", productName: "Producto mixto", baseUnitId: "unit-cuarter", inventoryBaseUnitId: "unit-kg", baseUnitSymbol: "CUARTILLA", stockCurrent: 7, requestedBaseQuantity: 2 },
+    ],
+  };
+  const model = buildMarketSheetModel(conflict);
+  const rows = model.rows.filter((row) => row.productId === "mixed");
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.unitReviewRequired));
+  assert.ok(rows.every((row) => row.stockAvailable === null && row.toProvision === null));
+  assert.deepEqual(rows.map((row) => row.requestedTotal), [2, 10]);
+});
+
+test("base-unit edits are converted back to each line's captured request unit", () => {
+  assert.equal(baseQuantityAsRequestedUnit(1, 0.5, 2), 0.25);
+  assert.equal(baseQuantityAsRequestedUnit(2, 1, 2), 1);
+  assert.equal(baseQuantityAsRequestedUnit(1, 1, 0), null);
 });
 
 test("receipt enhancements stay manual and do not alter order state", async () => {

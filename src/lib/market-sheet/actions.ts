@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { requireRoleAccess } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { MarketSheetLineRef } from "@/lib/market-sheet/model";
+import { baseQuantityAsRequestedUnit, type MarketSheetLineRef } from "@/lib/market-sheet/model";
 
 export type MarketSheetActionResult = {
   success: boolean;
@@ -167,23 +167,37 @@ export async function updateMarketSheetProductActualAction(
   }
 
   const totalRequested = lines.reduce(
-    (sum, line) => sum + (line.requestedQuantity || 0),
+    (sum, line) => sum + (line.requestedBaseQuantity || 0),
     0,
   );
+
+  if (
+    !Number.isFinite(totalRequested) || totalRequested <= 0 ||
+    lines.some((line) => !line.conversionValid || line.baseUnitId !== lines[0]?.baseUnitId ||
+      !line.inventoryBaseUnitId || line.inventoryBaseUnitId !== line.baseUnitId ||
+      !Number.isFinite(line.requestedBaseQuantity) || line.requestedBaseQuantity <= 0 ||
+      !Number.isFinite(line.requestedQuantity) || line.requestedQuantity <= 0)
+  ) {
+    return {
+      success: false,
+      message: "No se puede distribuir la cantidad: revisa la conversión y unidad base de las líneas.",
+    };
+  }
 
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index];
     let lineActual: number | null = null;
 
     if (actualValue !== null && actualValue >= 0) {
-      if (lines.length === 1) {
-        lineActual = actualValue;
-      } else if (totalRequested > 0) {
-        const ratio = line.requestedQuantity / totalRequested;
-        lineActual = Number((actualValue * ratio).toFixed(4));
-      } else {
-        lineActual = Number((actualValue / lines.length).toFixed(4));
-      }
+      const ratio = line.requestedBaseQuantity / totalRequested;
+      const lineBaseActual = actualValue * ratio;
+      lineActual = controlsActualWeight
+        ? Number(lineBaseActual.toFixed(4))
+        : baseQuantityAsRequestedUnit(
+            lineBaseActual,
+            line.requestedQuantity,
+            line.requestedBaseQuantity,
+          );
     }
 
     const { error } = await supabase.rpc(
