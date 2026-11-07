@@ -43,6 +43,10 @@ export type MatrixLine = {
   categoryName: string;
   sourceLabel: string;
   quantityUnits: MatrixQuantityUnit[];
+  /** Canonical unit captured for the requested base quantity. */
+  baseUnitId: string;
+  /** Current unit that stock_current is stored in. Null means it is unknown. */
+  inventoryBaseUnitId: string | null;
   baseUnitSymbol: string;
   priceUnitSymbol: string | null;
   baseSalePrice: number | null;

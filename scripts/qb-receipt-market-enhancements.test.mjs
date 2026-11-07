@@ -4,7 +4,8 @@ import test from "node:test";
 
 import ExcelJS from "exceljs";
 
-import { buildMarketSheetModel } from "../src/lib/market-sheet/model.ts";
+import { baseQuantityAsRequestedUnit, buildMarketSheetModel } from "../src/lib/market-sheet/model.ts";
+import { planMarketPreparationWrite } from "../src/lib/market-sheet/preparation-write.ts";
 import { buildMarketWorkbook } from "../src/lib/market-sheet/workbook.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -37,15 +38,20 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     controlsActualWeight: false,
     categoryName: "Verduras",
     sourceLabel,
+    quantityUnits: [{ id: "original", label: sourceLabel, sourceQuantity: 1 }],
+    baseUnitId: "unit-kg",
+    inventoryBaseUnitId: "unit-kg",
     baseUnitSymbol: "kg",
     priceUnitSymbol: "kg",
     hasWeightBasedPrice: true,
     requestedQuantity,
     requestedBaseQuantity: requestedQuantity * (sourceLabel === "arroba" ? 11.25 : 1),
+    requestedConversionValid: true,
     requestedNote: "",
     requestedVersion: 1,
     preparedQuantity: 900,
     preparedBaseQuantity: 900,
+    preparationDisplayUnitId: "original",
     preparationCheck: true,
     preparationActualWeightKg: null,
     preparationNote: "",
@@ -55,6 +61,7 @@ function line(orderId, sourceLabel, requestedQuantity, suffix) {
     externalQuantity: 800,
     deliveredQuantity: 0,
     deliveredBaseQuantity: 0,
+    deliveryDisplayUnitId: "original",
     deliveryCheck: true,
     deliveryActualWeightKg: null,
     deliveryNote: "",
@@ -92,8 +99,10 @@ test("the provision sheet consolidates presentations in base units", () => {
   );
   assert.equal(model.rows.length, 1);
   assert.equal(model.rows[0]?.unit, "kg");
-  assert.deepEqual(model.rows[0]?.quantities, [16.25, 4]);
+  assert.deepEqual(model.rows[0]?.quantities, [6, 4], "Customer cells preserve their original commercial quantities");
   assert.equal(model.rows[0]?.total, 20.25);
+  assert.equal(model.rows[0]?.pendingTotal, 20.25);
+  assert.equal(model.rows[0]?.requestedTotal, 20.25);
   assert.equal(model.rows[0]?.stockCurrent, 10);
   assert.equal(model.rows[0]?.reserved, 20.25);
   assert.deepEqual(model.customerLineCounts, [1, 1]);
@@ -109,26 +118,356 @@ test("the generated file is a real printable Excel workbook", async () => {
   const sheet = workbook.getWorksheet("Provisiones");
   assert.ok(sheet);
   assert.equal(sheet.getCell("A1").value, "QB INSUMOS · HOJA DE PROVISIÓN");
-  assert.equal(sheet.getCell("D5").value, "RESTAURANTE A");
-  assert.equal(sheet.getCell("F5").value, "RESTAURANTE B");
+  assert.equal(sheet.getCell("D4").value, "RESTAURANTE A");
+  assert.equal(sheet.getCell("F4").value, "RESTAURANTE B");
   assert.equal(sheet.pageSetup.orientation, "landscape");
-  assert.equal(sheet.pageSetup.fitToWidth, 1);
-  assert.match(sheet.pageSetup.printArea, /^A1:M\d+$/);
-  assert.equal(sheet.getCell("M5").value, "COSTO DE PROVISIÓN (Bs/UD)");
-  assert.equal(sheet.getCell("M6").value, null);
-  assert.equal(sheet.getCell("D6").value, 16.25);
+  assert.equal(sheet.pageSetup.fitToWidth, 0);
+  assert.equal(sheet.pageSetup.fitToHeight, 0);
+  assert.equal(sheet.pageSetup.printTitlesColumn, "A:C");
+  assert.match(sheet.pageSetup.printArea, /^A1:N\d+$/);
+  assert.equal(sheet.getCell("M4").value, "PESO / CANT. REAL");
+  assert.equal(sheet.getCell("N4").value, "COSTO DE PROVISIÓN (Bs/UD)");
+  assert.equal(sheet.getCell("N6").value, null);
+  assert.equal(sheet.getCell("M6").value, 3600);
+  assert.equal(sheet.getCell("M6").numFmt, '0.###" kg"');
+  assert.match(String(sheet.getCell("D6").value), /Solicitado 2 kg · Entregado 0 kg · Pendiente 2 kg/);
   assert.equal(sheet.getCell("E6").value, null);
-  assert.equal(sheet.getCell("F6").value, 4);
+  assert.match(String(sheet.getCell("F6").value), /Solicitado 4 kg · Entregado 0 kg · Pendiente 4 kg/);
   assert.equal(sheet.getCell("G6").value, null);
   assert.equal(sheet.getCell("D7").value, 1);
   assert.equal(sheet.getCell("E7").value, null);
   assert.equal(sheet.getCell("F7").value, 1);
   assert.equal(sheet.getCell("G7").value, null);
-  assert.equal(sheet.getCell("H7").value, 2);
+  assert.equal(sheet.getCell("D7").value, 1);
+  assert.equal(sheet.getCell("F7").value, 1);
   assert.equal(sheet.getCell("L6").value, 10.25);
   assert.ok(sheet.getCell("D6").border.right?.style);
   assert.ok(sheet.getCell("E6").border.left?.style);
   assert.equal(sheet.views[0].state, "frozen");
+  assert.equal(sheet.views[0].xSplit, 3);
+  assert.equal(sheet.views[0].ySplit, 5);
+  assert.equal(sheet.getColumn(13).width, 16, "Actual measure column remains readable");
+  assert.equal(sheet.getColumn(14).width, 20, "Cost column retains its existing width");
+  const printStyles = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.module.css");
+  const tableView = await read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx");
+  assert.match(printStyles, /size:\s*landscape/);
+  assert.match(printStyles, /break-before:\s*page/);
+  assert.match(tableView, /slice\(index \* 2, index \* 2 \+ 2\)/, "Browser print divides customers into readable horizontal pages");
+});
+
+test("the provision sheet keeps fully delivered, partial, and pending lines for all customers", async () => {
+  const multiCustomer = {
+    ...data,
+    orders: [
+      order("day-a", "customer-a", "Cliente A", 1),
+      order("day-b", "customer-b", "Cliente B", 2),
+      order("day-c", "customer-c", "Cliente C", 3),
+    ],
+    lines: [
+      { ...line("day-a", "UNIDAD", 10, "a"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 10, deliveredQuantity: 10, deliveredBaseQuantity: 10 },
+      { ...line("day-b", "CAJA", 2, "b"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 20, deliveredQuantity: 0.8, deliveredBaseQuantity: 8, deliveryDisplayUnitId: "original" },
+      { ...line("day-c", "KG", 5, "c"), productId: "tomate", productName: "Tomate", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 4, requestedBaseQuantity: 5, deliveredQuantity: 0, deliveredBaseQuantity: 0 },
+      { ...line("day-a", "KG", 4, "d"), productId: "cebolla", productName: "Cebolla", baseUnitId: "kg", inventoryBaseUnitId: "kg", stockCurrent: 0, requestedBaseQuantity: 4, deliveredQuantity: 4, deliveredBaseQuantity: 4 },
+    ],
+  };
+
+  const model = buildMarketSheetModel(multiCustomer);
+  const tomato = model.rows.find((row) => row.productId === "tomate");
+  const onion = model.rows.find((row) => row.productId === "cebolla");
+  assert.ok(tomato, "Tomate row remains visible");
+  assert.equal(tomato.requestedTotal, 35);
+  assert.equal(tomato.deliveredTotal, 18);
+  assert.equal(tomato.pendingTotal, 17);
+  assert.equal(tomato.toProvision, 13, "Only 17 pending minus 4 stock is provisioned");
+  assert.match(tomato.customerLines[0][0].pendingBaseQuantity.toString(), /^0$/);
+  assert.equal(tomato.customerLines[1][0].pendingBaseQuantity, 12);
+  assert.equal(tomato.customerLines[2][0].pendingBaseQuantity, 5);
+  assert.ok(onion, "Fully delivered product is not dropped");
+  assert.equal(onion.requestedTotal, 4);
+  assert.equal(onion.deliveredTotal, 4);
+  assert.equal(onion.pendingTotal, 0);
+  assert.equal(onion.toProvision, 0);
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildMarketWorkbook(model));
+  const sheet = workbook.getWorksheet("Provisiones");
+  assert.ok(sheet);
+  const onionRow = model.rows.findIndex((row) => row.productId === "cebolla") + 6;
+  const summaryStart = 4 + model.customers.length * 2;
+  assert.equal(sheet.getCell(onionRow, summaryStart).value, 4);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 1).value, 4);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 2).value, 0);
+  assert.equal(sheet.getCell(onionRow, summaryStart + 4).value, 0);
+  assert.match(String(sheet.getCell(`D${onionRow}`).value), /Pendiente 0 kg/);
+});
+
+test("different base-unit snapshots remain separate and never reuse the same stock balance", () => {
+  const conflict = {
+    ...data,
+    orders: [
+      order("legacy-a", "customer-a", "Cliente A", 1),
+      order("legacy-b", "customer-b", "Cliente B", 2),
+    ],
+    lines: [
+      { ...line("legacy-a", "KG", 10, "a"), productId: "mixed", productName: "Producto mixto", baseUnitId: "unit-kg", stockCurrent: 7, requestedBaseQuantity: 10 },
+      { ...line("legacy-b", "CUARTILLA", 2, "b"), productId: "mixed", productName: "Producto mixto", baseUnitId: "unit-cuarter", inventoryBaseUnitId: "unit-kg", baseUnitSymbol: "CUARTILLA", stockCurrent: 7, requestedBaseQuantity: 2 },
+    ],
+  };
+  const model = buildMarketSheetModel(conflict);
+  const rows = model.rows.filter((row) => row.productId === "mixed");
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.unitReviewRequired));
+  assert.ok(rows.every((row) => row.stockAvailable === null && row.toProvision === null));
+  assert.deepEqual(rows.map((row) => row.requestedTotal), [2, 10]);
+});
+
+test("base-unit edits are converted back to each line's captured request unit", () => {
+  assert.equal(baseQuantityAsRequestedUnit(1, 0.5, 2), 0.25);
+  assert.equal(baseQuantityAsRequestedUnit(2, 1, 2), 1);
+  assert.equal(baseQuantityAsRequestedUnit(1, 1, 0), null);
+});
+
+test("delivery display units never relabel an original commercial quantity without a verified conversion", () => {
+  const displayCases = {
+    ...data,
+    orders: [
+      order("arroba-order", "customer-a", "Cliente A", 1),
+      order("pepper-order", "customer-b", "Cliente B", 2),
+      order("cuartilla-order", "customer-c", "Cliente C", 3),
+    ],
+    lines: [
+      {
+        ...line("arroba-order", "ARROBA", 2, "arroba"),
+        productId: "papa",
+        productName: "Papa",
+        requestedBaseQuantity: 22.5,
+        deliveredQuantity: 1,
+        deliveredBaseQuantity: 11.25,
+        deliveryDisplayUnitId: "unit:unit-kg",
+        quantityUnits: [
+          { id: "original", label: "ARROBA", sourceQuantity: 1 },
+          { id: "unit:unit-kg", label: "KG", sourceQuantity: 1 / 11.25 },
+        ],
+      },
+      {
+        ...line("pepper-order", "UNIDAD", 8, "pepper"),
+        productId: "pepper",
+        productName: "Pimentón",
+        controlsActualWeight: true,
+        requestedBaseQuantity: 8,
+        deliveredQuantity: 8,
+        deliveredBaseQuantity: 3.40194,
+        deliveryActualWeightKg: 3.40194,
+        deliveryDisplayUnitId: "unit:kg",
+        quantityUnits: [
+          { id: "original", label: "UNIDAD", sourceQuantity: 1 },
+          { id: "unit:kg", label: "KG", sourceQuantity: 1 },
+        ],
+      },
+      {
+        ...line("cuartilla-order", "CUARTILLA", 1, "cuartilla"),
+        productId: "potato-quarter",
+        productName: "Papa por cuartilla",
+        requestedBaseQuantity: 0,
+        requestedConversionValid: false,
+        deliveredQuantity: 0.5,
+        deliveredBaseQuantity: 0,
+        deliveryDisplayUnitId: "unit:kg-unverified",
+      },
+      {
+        ...line("arroba-order", "ARROBA", 1, "stale-factor"),
+        productId: "papa-stale",
+        productName: "Papa equivalencia cambiada",
+        requestedBaseQuantity: 11.25,
+        deliveredQuantity: 1,
+        deliveredBaseQuantity: 11.25,
+        deliveryDisplayUnitId: "unit:unit-kg",
+        quantityUnits: [
+          { id: "original", label: "ARROBA", sourceQuantity: 1 },
+          { id: "unit:unit-kg", label: "KG", sourceQuantity: 1 / 10 },
+        ],
+      },
+    ],
+  };
+
+  const model = buildMarketSheetModel(displayCases);
+  const potatoLine = model.rows.find((row) => row.productId === "papa")?.lines[0];
+  const pepperLine = model.rows.find((row) => row.productId === "pepper")?.lines[0];
+  const quarterLine = model.rows.find((row) => row.productId === "potato-quarter")?.lines[0];
+  const staleFactorLine = model.rows.find((row) => row.productId === "papa-stale")?.lines[0];
+  assert.ok(potatoLine && pepperLine && quarterLine && staleFactorLine);
+
+  assert.equal(potatoLine.deliveredQuantity, 1, "Stored commercial quantity remains one arroba");
+  assert.equal(potatoLine.deliveredDisplayQuantity, 11.25);
+  assert.equal(potatoLine.deliveredUnitLabel, "KG");
+  assert.equal(potatoLine.deliveredDisplayWarning, null);
+  assert.equal(potatoLine.deliveredBaseQuantity, 11.25);
+
+  assert.equal(pepperLine.deliveredQuantity, 8, "Commercial units stay separate from measured weight");
+  assert.equal(pepperLine.deliveredDisplayQuantity, 8);
+  assert.equal(pepperLine.deliveredUnitLabel, "UNIDAD");
+  assert.equal(pepperLine.deliveredWeightKg, 3.40194);
+  assert.match(pepperLine.deliveredDisplayWarning, /cantidad comercial original/);
+
+  assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
+  assert.equal(quarterLine.deliveredUnitLabel, "CUARTILLA");
+  assert.match(quarterLine.deliveredDisplayWarning, /conserva la cantidad comercial original/);
+  assert.equal(staleFactorLine.deliveredDisplayQuantity, 1);
+  assert.equal(staleFactorLine.deliveredUnitLabel, "ARROBA");
+  assert.match(staleFactorLine.deliveredDisplayWarning, /snapshot físico/);
+
+  const originalDisplay = buildMarketSheetModel({
+    ...displayCases,
+    lines: [{ ...displayCases.lines[0], deliveryDisplayUnitId: "original" }],
+    orders: [displayCases.orders[0]],
+  }).rows[0]?.lines[0];
+  assert.ok(originalDisplay);
+  assert.equal(originalDisplay.deliveredQuantity, potatoLine.deliveredQuantity);
+  assert.equal(originalDisplay.deliveredBaseQuantity, potatoLine.deliveredBaseQuantity);
+  assert.equal(originalDisplay.deliveredDisplayQuantity, 1);
+  assert.equal(originalDisplay.deliveredUnitLabel, "ARROBA");
+
+  const workbook = new ExcelJS.Workbook();
+  return buildMarketWorkbook(model).then(async (buffer) => {
+    await workbook.xlsx.load(buffer);
+    const sheet = workbook.getWorksheet("Provisiones");
+    assert.ok(sheet);
+    assert.match(String(sheet.getCell("D6").value), /Entregado 11,25 KG/);
+    const quarterRow = model.rows.findIndex((row) => row.productId === "potato-quarter") + 6;
+    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /CUARTILLA/);
+    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
+    const pepperRow = model.rows.findIndex((row) => row.productId === "pepper") + 6;
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Entregado 8 UNIDAD/);
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real 3,402 kg/);
+  });
+});
+
+test("the Excel actual measure column keeps measured weight separate and labels its unit", async () => {
+  const weightData = {
+    ...data,
+    orders: [order("weight-order", "customer-a", "Cliente A", 1)],
+    lines: [{
+      ...line("weight-order", "UNIDAD", 8, "weight"),
+      controlsActualWeight: true,
+      preparationActualWeightKg: 12,
+      requestedBaseQuantity: 8,
+      preparedBaseQuantity: 8,
+      deliveredQuantity: 8,
+      deliveredBaseQuantity: 8,
+      deliveryActualWeightKg: 12,
+    }],
+  };
+  const model = buildMarketSheetModel(weightData);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await buildMarketWorkbook(model));
+  const sheet = workbook.getWorksheet("Provisiones");
+  assert.ok(sheet);
+  assert.equal(sheet.getCell("K4").value, "PESO / CANT. REAL");
+  assert.equal(sheet.getCell("K6").value, 12);
+  assert.equal(sheet.getCell("K6").numFmt, '0.###" kg"');
+  assert.equal(sheet.getCell("L6").value, null);
+});
+
+test("provision edits reject grouped writes and preserve a single preparation line's check, note, and version", async () => {
+  const source = line("write-order", "UNIDAD", 8, "write");
+  const writeLine = {
+    orderItemId: source.orderItemId,
+    preparationVersion: 7,
+    requestedQuantity: 8,
+    requestedBaseQuantity: 8,
+    conversionValid: true,
+    baseUnitId: "unit-kg",
+    inventoryBaseUnitId: "unit-kg",
+    preparationDisplayUnitId: "original",
+    quantityUnits: [{ id: "original", label: "UNIDAD", sourceQuantity: 1 }],
+    preparedQuantity: 8,
+    preparationCheck: false,
+    preparationNote: "Revisar tamaño antes de salir",
+  };
+
+  for (const count of [2, 3]) {
+    const grouped = Array.from({ length: count }, (_, index) => ({
+      ...writeLine,
+      orderItemId: `${writeLine.orderItemId}-${index}`,
+    }));
+    const plan = planMarketPreparationWrite(grouped, false, 4);
+    assert.equal(plan.ok, false, `${count} lines are blocked before any RPC write`);
+    if (!plan.ok) assert.match(plan.message, /Edita cada línea desde Preparación/);
+  }
+
+  const weightPlan = planMarketPreparationWrite([writeLine], true, 2.75);
+  assert.equal(weightPlan.ok, true);
+  if (weightPlan.ok) {
+    assert.equal(weightPlan.params.p_order_item_id, writeLine.orderItemId);
+    assert.equal(weightPlan.params.p_expected_version, 7, "the database RPC can reject a stale version");
+    assert.equal(weightPlan.params.p_prepared_quantity, 8, "weight edits do not rewrite the commercial quantity");
+    assert.equal(weightPlan.params.p_preparation_check, false, "recording weight does not mark preparation checked");
+    assert.equal(weightPlan.params.p_actual_weight_kg, 2.75);
+    assert.equal(weightPlan.params.p_note, "Revisar tamaño antes de salir");
+  }
+
+  const selectedDisplayUnit = "presentation:00000000-0000-4000-8000-000000000111";
+  const selectedUnitLine = {
+    ...writeLine,
+    preparationDisplayUnitId: selectedDisplayUnit,
+    quantityUnits: [
+      ...writeLine.quantityUnits,
+      { id: selectedDisplayUnit, label: "CAJA", sourceQuantity: 4 },
+    ],
+  };
+  const selectedUnitPlan = planMarketPreparationWrite([selectedUnitLine], true, 2.75);
+  assert.equal(selectedUnitPlan.ok, true);
+  if (selectedUnitPlan.ok) {
+    assert.equal(selectedUnitPlan.params.p_display_unit_id, selectedDisplayUnit);
+
+    const reloadedModel = buildMarketSheetModel({
+      ...data,
+      orders: [order("weight-order", "customer-a", "Cliente A", 1)],
+      lines: [{
+        ...line("weight-order", "UNIDAD", 8, "weight"),
+        preparationDisplayUnitId: selectedUnitPlan.params.p_display_unit_id,
+        quantityUnits: selectedUnitLine.quantityUnits,
+        controlsActualWeight: true,
+        preparationActualWeightKg: 2.75,
+        requestedBaseQuantity: 8,
+        preparedQuantity: writeLine.preparedQuantity,
+        preparedBaseQuantity: 8,
+        preparationCheck: writeLine.preparationCheck,
+        preparationNote: writeLine.preparationNote,
+      }],
+    });
+    assert.equal(
+      reloadedModel.rows[0]?.lines[0]?.preparationDisplayUnitId,
+      selectedDisplayUnit,
+      "The selected display unit survives saving and reloading the provision model",
+    );
+  }
+
+  const invalidDisplayUnitPlan = planMarketPreparationWrite([{
+    ...writeLine,
+    preparationDisplayUnitId: "presentation:missing-from-current-options",
+  }], true, 2.75);
+  assert.equal(invalidDisplayUnitPlan.ok, true);
+  if (invalidDisplayUnitPlan.ok) assert.equal(invalidDisplayUnitPlan.params.p_display_unit_id, "original");
+
+  const emptyQuantityPlan = planMarketPreparationWrite([writeLine], false, null);
+  assert.equal(emptyQuantityPlan.ok, false, "blank commercial quantity is redirected to the per-line Preparation flow");
+  const [action, table, matrixData] = await Promise.all([
+    read("src/lib/market-sheet/actions.ts"),
+    read("src/app/(private)/matriz-operativa/mercado/market-sheet-table.tsx"),
+    read("src/lib/operational-matrix/data.ts"),
+  ]);
+  const matrixRpc = await read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql");
+  assert.match(action, /planMarketPreparationWrite\(lines \?\? \[\], controlsActualWeight, actualValue\)/);
+  assert.match(action, /save_qb_matrix_preparation_item_with_unit/);
+  const actualAction = action.slice(action.indexOf("export async function updateMarketSheetProductActualAction"));
+  assert.ok(actualAction.indexOf("planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue)") < actualAction.indexOf("supabase.rpc("), "The grouped-write policy runs before the only RPC call");
+  assert.doesNotMatch(actualAction, /for\s*\(/, "The product summary action cannot partially loop over RPC writes");
+  assert.match(table, /disabled=\{isSavingActual \|\| row\.unitReviewRequired \|\| row\.lines\.length > 1\}/);
+  assert.match(table, /Fila agrupada: edita cada pedido desde Preparación/);
+  assert.match(action, /\.\.\.plan\.params/);
+  assert.match(matrixData, /preparationDisplayUnitId: String\(prep\?\.display_unit_id \?\? "original"\)/);
+  assert.match(matrixRpc, /if v_item\.row_version <> p_expected_version then[\s\S]{0,180}QB_MATRIX_CONFLICT/);
 });
 
 test("receipt enhancements stay manual and do not alter order state", async () => {

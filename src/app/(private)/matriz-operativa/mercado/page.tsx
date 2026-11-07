@@ -107,7 +107,7 @@ export default async function MarketPrintPage({
             <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE PROVISIÓN</h2>
             <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
             <p className="text-xs text-slate-600">
-              Necesidades consolidadas considerando existencias disponibles en almacén.
+              Incluye todos los productos solicitados: entregado, pendiente y por provisionar (pendiente menos stock disponible).
             </p>
           </div>
 

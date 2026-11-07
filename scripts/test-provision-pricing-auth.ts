@@ -428,6 +428,8 @@ console.log("\n--- PREVIOUS SUITE REGRESSION CHECKS ---");
         categoryName: "VERDURAS",
         sourceLabel: "kg",
         quantityUnits: [],
+        baseUnitId: "unit-kg",
+        inventoryBaseUnitId: "unit-kg",
         baseUnitSymbol: "kg",
         priceUnitSymbol: "kg",
         baseSalePrice: 10,

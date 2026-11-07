@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { MarketSheetLineRef } from "@/lib/market-sheet/model";
+import { planMarketPreparationWrite } from "@/lib/market-sheet/preparation-write";
 
 export type MarketSheetActionResult = {
   success: boolean;
@@ -154,62 +155,29 @@ export async function updateMarketSheetProductActualAction(
     };
   }
 
-  if (!lines || lines.length === 0) {
-    return {
-      success: false,
-      message: "No hay pedidos asociados para actualizar.",
-    };
-  }
+  const plan = planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue);
+  if (!plan.ok) return { success: false, message: plan.message };
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
     return { success: false, message: "Error al conectar con la base de datos." };
   }
 
-  const totalRequested = lines.reduce(
-    (sum, line) => sum + (line.requestedQuantity || 0),
-    0,
+  const { error } = await supabase.rpc(
+    "save_qb_matrix_preparation_item_with_unit",
+    {
+      ...plan.params,
+      p_idempotency_key: `market-sheet-${plan.params.p_order_item_id}-${Date.now()}`,
+    },
   );
 
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    let lineActual: number | null = null;
-
-    if (actualValue !== null && actualValue >= 0) {
-      if (lines.length === 1) {
-        lineActual = actualValue;
-      } else if (totalRequested > 0) {
-        const ratio = line.requestedQuantity / totalRequested;
-        lineActual = Number((actualValue * ratio).toFixed(4));
-      } else {
-        lineActual = Number((actualValue / lines.length).toFixed(4));
-      }
-    }
-
-    const { error } = await supabase.rpc(
-      "save_qb_matrix_preparation_item_with_unit",
-      {
-        p_order_item_id: line.orderItemId,
-        p_expected_version: line.preparationVersion,
-        p_prepared_quantity: controlsActualWeight
-          ? line.requestedQuantity
-          : (lineActual ?? line.requestedQuantity),
-        p_preparation_check: lineActual !== null && lineActual > 0,
-        p_actual_weight_kg: controlsActualWeight ? lineActual : null,
-        p_display_unit_id: "original",
-        p_note: "",
-        p_idempotency_key: `market-sheet-${line.orderItemId}-${Date.now()}-${index}`,
-      },
-    );
-
-    if (error) {
-      return {
-        success: false,
-        message:
-          error.message ||
-          "No se pudo guardar la cantidad real en la preparación.",
-      };
-    }
+  if (error) {
+    return {
+      success: false,
+      message:
+        error.message ||
+        "No se pudo guardar la cantidad real en la preparación.",
+    };
   }
 
   revalidatePath("/matriz-operativa/mercado");

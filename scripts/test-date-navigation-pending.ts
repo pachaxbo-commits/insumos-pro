@@ -143,6 +143,7 @@ console.log("=================================================================="
         stockCurrent: 50, // 50 in stock
         requestedQuantity: 10, // 10 requested
         requestedBaseQuantity: 10,
+        inventoryBaseUnitId: "symbol:kg",
         deliveredBaseQuantity: 0,
         preparedQuantity: 0,
         preparationCheck: false,
@@ -163,6 +164,7 @@ console.log("=================================================================="
         stockCurrent: 20, // 20 in stock
         requestedQuantity: 5, // 5 requested
         requestedBaseQuantity: 5,
+        inventoryBaseUnitId: "symbol:ud",
         deliveredBaseQuantity: 0,
         preparedQuantity: 0,
         preparationCheck: false,
@@ -176,7 +178,7 @@ console.log("=================================================================="
   } as unknown as OperationalMatrixData;
 
   const modelCovered = buildMarketSheetModel(mockMatrixCovered);
-  const pendingItemsCovered = modelCovered.rows.filter((r) => r.toProvision > 0);
+  const pendingItemsCovered = modelCovered.rows.filter((r) => r.toProvision !== null && r.toProvision > 0);
   assert.equal(pendingItemsCovered.length, 0, "All items covered by stock must have toProvision = 0");
   console.log("✔ Pedido con productos completamente cubiertos por stock produce 0 productos pendientes de provisión: PASS");
 
@@ -213,6 +215,7 @@ console.log("=================================================================="
         stockCurrent: 2, // 2 in stock
         requestedQuantity: 15, // 15 requested -> deficit 13
         requestedBaseQuantity: 15,
+        inventoryBaseUnitId: "symbol:kg",
         deliveredBaseQuantity: 0,
         preparedQuantity: 0,
         preparationCheck: false,
@@ -233,6 +236,7 @@ console.log("=================================================================="
         stockCurrent: 20, // 20 in stock
         requestedQuantity: 5, // 5 requested -> deficit 0
         requestedBaseQuantity: 5,
+        inventoryBaseUnitId: "symbol:kg",
         deliveredBaseQuantity: 0,
         preparedQuantity: 0,
         preparationCheck: false,
@@ -246,7 +250,7 @@ console.log("=================================================================="
   } as unknown as OperationalMatrixData;
 
   const modelDeficit = buildMarketSheetModel(mockMatrixDeficit);
-  const pendingItemsDeficit = modelDeficit.rows.filter((r) => r.toProvision > 0);
+  const pendingItemsDeficit = modelDeficit.rows.filter((r) => r.toProvision !== null && r.toProvision > 0);
   assert.equal(pendingItemsDeficit.length, 1, "Only Tomate has deficit and must be in pending items");
   assert.equal(pendingItemsDeficit[0].productId, "prod-3");
   assert.equal(pendingItemsDeficit[0].toProvision, 13);

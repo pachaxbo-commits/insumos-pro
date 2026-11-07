@@ -229,7 +229,9 @@ export async function getPendingProvisionWork(): Promise<PendingStageSummary> {
         const matrixData = await getOperationalMatrixData(date, "administrador");
         const model = buildMarketSheetModel(matrixData);
         // Products that actually have deficit to provision from market (toProvision > 0):
-        const itemsToProvision = model.rows.filter((r) => r.toProvision > 0);
+        // An ambiguous base-unit snapshot also needs attention; never hide it
+        // as if stock covered the order or count it as a known zero deficit.
+        const itemsToProvision = model.rows.filter((r) => r.toProvision === null || r.toProvision > 0);
         return {
           date,
           productCount: itemsToProvision.length,
