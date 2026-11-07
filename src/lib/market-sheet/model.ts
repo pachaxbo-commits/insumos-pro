@@ -178,16 +178,22 @@ function resolveDeliveredDisplay(line: MatrixLine) {
     };
   }
 
-  const displayQuantity = Number((line.deliveredQuantity / selectedUnit.sourceQuantity).toFixed(6));
-  const expectedBaseQuantity = displayQuantity * selectedUnit.sourceQuantity * basePerSource;
   const tolerance = Math.max(0.00001, Math.abs(line.deliveredBaseQuantity) * 0.000001);
-  if (!Number.isFinite(displayQuantity) ||
-    Math.abs(expectedBaseQuantity - line.deliveredBaseQuantity) > tolerance) {
+  const sourceBaseQuantity = line.deliveredQuantity * basePerSource;
+  const selectedBasePerUnit = selectedUnit.sourceQuantity * basePerSource;
+  const isSelectedBaseUnit = selectedUnitId === `unit:${line.baseUnitId}`;
+  if (!Number.isFinite(sourceBaseQuantity) ||
+    Math.abs(sourceBaseQuantity - line.deliveredBaseQuantity) > tolerance ||
+    !Number.isFinite(selectedBasePerUnit) || selectedBasePerUnit <= 0 ||
+    (isSelectedBaseUnit && Math.abs(selectedBasePerUnit - 1) > 0.000001)) {
     return {
       ...original,
       warning: `La equivalencia a ${selectedUnit.label} no coincide con el snapshot físico; se conserva la cantidad comercial original.`,
     };
   }
+
+  const displayQuantity = Number((line.deliveredBaseQuantity / selectedBasePerUnit).toFixed(6));
+  if (!Number.isFinite(displayQuantity)) return original;
 
   return {
     quantity: displayQuantity,

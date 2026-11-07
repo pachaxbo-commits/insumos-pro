@@ -234,10 +234,10 @@ test("delivery display units never relabel an original commercial quantity witho
         requestedBaseQuantity: 22.5,
         deliveredQuantity: 1,
         deliveredBaseQuantity: 11.25,
-        deliveryDisplayUnitId: "unit:kg",
+        deliveryDisplayUnitId: "unit:unit-kg",
         quantityUnits: [
           { id: "original", label: "ARROBA", sourceQuantity: 1 },
-          { id: "unit:kg", label: "KG", sourceQuantity: 1 / 11.25 },
+          { id: "unit:unit-kg", label: "KG", sourceQuantity: 1 / 11.25 },
         ],
       },
       {
@@ -265,6 +265,19 @@ test("delivery display units never relabel an original commercial quantity witho
         deliveredBaseQuantity: 0,
         deliveryDisplayUnitId: "unit:kg-unverified",
       },
+      {
+        ...line("arroba-order", "ARROBA", 1, "stale-factor"),
+        productId: "papa-stale",
+        productName: "Papa equivalencia cambiada",
+        requestedBaseQuantity: 11.25,
+        deliveredQuantity: 1,
+        deliveredBaseQuantity: 11.25,
+        deliveryDisplayUnitId: "unit:unit-kg",
+        quantityUnits: [
+          { id: "original", label: "ARROBA", sourceQuantity: 1 },
+          { id: "unit:unit-kg", label: "KG", sourceQuantity: 1 / 10 },
+        ],
+      },
     ],
   };
 
@@ -272,7 +285,8 @@ test("delivery display units never relabel an original commercial quantity witho
   const potatoLine = model.rows.find((row) => row.productId === "papa")?.lines[0];
   const pepperLine = model.rows.find((row) => row.productId === "pepper")?.lines[0];
   const quarterLine = model.rows.find((row) => row.productId === "potato-quarter")?.lines[0];
-  assert.ok(potatoLine && pepperLine && quarterLine);
+  const staleFactorLine = model.rows.find((row) => row.productId === "papa-stale")?.lines[0];
+  assert.ok(potatoLine && pepperLine && quarterLine && staleFactorLine);
 
   assert.equal(potatoLine.deliveredQuantity, 1, "Stored commercial quantity remains one arroba");
   assert.equal(potatoLine.deliveredDisplayQuantity, 11.25);
@@ -289,6 +303,9 @@ test("delivery display units never relabel an original commercial quantity witho
   assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
   assert.equal(quarterLine.deliveredUnitLabel, "CUARTILLA");
   assert.match(quarterLine.deliveredDisplayWarning, /conserva la cantidad comercial original/);
+  assert.equal(staleFactorLine.deliveredDisplayQuantity, 1);
+  assert.equal(staleFactorLine.deliveredUnitLabel, "ARROBA");
+  assert.match(staleFactorLine.deliveredDisplayWarning, /snapshot físico/);
 
   const originalDisplay = buildMarketSheetModel({
     ...displayCases,
