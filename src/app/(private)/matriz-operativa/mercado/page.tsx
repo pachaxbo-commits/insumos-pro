@@ -32,10 +32,7 @@ export default async function MarketPrintPage({
   const pendingSummary = await getPendingProvisionWork();
 
   const explicitDate = params.date ?? params.fecha;
-  const date = validDate(
-    explicitDate,
-    pendingSummary.oldestPendingDate ?? todayInBolivia(),
-  );
+  const date = validDate(explicitDate, todayInBolivia());
 
   let data: Awaited<ReturnType<typeof getOperationalMatrixData>> | null = null;
   let dataError = false;
