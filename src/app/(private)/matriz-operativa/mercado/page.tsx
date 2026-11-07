@@ -8,6 +8,7 @@ import { AllPendingSummaryView } from "@/components/operational-matrix/all-pendi
 import { OperationalDateFilter } from "@/components/operational-matrix/operational-date-filter";
 import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
 import { requireRoleAccess } from "@/lib/auth/session";
+import { operationalDateHref, operationalPath, provisionExcelPath } from "@/lib/operational-matrix/date-navigation";
 import { todayInBolivia } from "@/lib/date-time";
 import { buildMarketSheetModel } from "@/lib/market-sheet/model";
 import { getOperationalMatrixData } from "@/lib/operational-matrix/data";
@@ -32,10 +33,7 @@ export default async function MarketPrintPage({
   const pendingSummary = await getPendingProvisionWork();
 
   const explicitDate = params.date ?? params.fecha;
-  const date = validDate(
-    explicitDate,
-    pendingSummary.oldestPendingDate ?? todayInBolivia(),
-  );
+  const date = validDate(explicitDate, todayInBolivia());
 
   let data: Awaited<ReturnType<typeof getOperationalMatrixData>> | null = null;
   let dataError = false;
@@ -54,7 +52,7 @@ export default async function MarketPrintPage({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold">Hoja de Provisión</h1>
           <Button asChild variant="outline">
-            <Link href={`/matriz-operativa?date=${encodeURIComponent(date)}`}>
+            <Link href={operationalDateHref(operationalPath, date)}>
               <ArrowLeft className="size-4" />
               Preparación y entregas
             </Link>
@@ -63,7 +61,7 @@ export default async function MarketPrintPage({
         <div className="flex flex-wrap gap-2">
           {!isAllPending ? (
             <Button asChild variant="outline">
-              <a href={`/api/matriz-operativa/mercado.xlsx?date=${encodeURIComponent(date)}`}>
+              <a href={operationalDateHref(provisionExcelPath, date)}>
                 Descargar Excel
               </a>
             </Button>

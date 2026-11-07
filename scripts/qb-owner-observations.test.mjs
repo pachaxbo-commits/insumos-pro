@@ -54,7 +54,7 @@ test("provision link opens the date-specific sheet and route reports data failur
   const matrixPage = read("../src/app/(private)/matriz-operativa/page.tsx");
   const marketButton = read("../src/components/operational-matrix/market-sheet-actions.tsx");
   assert.match(matrixPage, /MarketSheetActions date=\{date\}/);
-  assert.match(marketButton, /matriz-operativa\/mercado\?date=/);
+  assert.match(marketButton, /operationalDateHref\(provisionPath, date\)/);
   assert.match(provisionPage, /getOperationalMatrixData\(date, auth\.user\.role\)/);
   assert.match(provisionPage, /No se pudo cargar la Hoja de Provisión/);
   assert.match(provisionPage, /No hay pedidos solicitados para esta fecha/);

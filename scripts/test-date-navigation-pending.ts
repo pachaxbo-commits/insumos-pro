@@ -89,7 +89,7 @@ console.log("=================================================================="
   console.log("✔ Botón redundante 'Ver fecha' eliminado; actualización instantánea en onChange: PASS");
 }
 
-// --- SCENARIO E: Hoja de Provisión date isolation and oldest pending priority ---
+// --- SCENARIO E: Hoja de Provisión date isolation and Bolivia today ---
 {
   console.log("\n--- SCENARIO E: Hoja de Provisión multi-date discovery and isolation ---");
   const marketPage = read("src/app/(private)/matriz-operativa/mercado/page.tsx");
@@ -97,10 +97,14 @@ console.log("=================================================================="
 
   // Verify that it no longer uses order DESC limit 1
   assert.doesNotMatch(marketPage, /\.order\("operational_date", \{ ascending: false \}\)/, "Market page must not pick latest date with DESC limit 1");
-  assert.match(marketPage, /pendingSummary\.oldestPendingDate \?\? todayInBolivia\(\)/, "Defaults to oldest pending date");
+  for (const path of ["src/app/(private)/matriz-operativa/page.tsx", "src/app/(private)/matriz-operativa/mercado/page.tsx"]) {
+    const page = read(path);
+    assert.match(page, /validDate\(explicitDate, todayInBolivia\(\)\)/, "Defaults to today in Bolivia");
+    assert.doesNotMatch(page, /oldestPendingDate/, "Pending work must not choose the date");
+  }
   assert.match(marketPage, /<PendingWorkBar/, "Renders pending work bar");
   assert.match(pendingWork, /order\("operational_date", \{ ascending: true \}\)/, "Pending work queries ordered ascending");
-  console.log("✔ Hoja de Provisión prioriza pendiente más antiguo y mantiene fechas aisladas: PASS");
+  console.log("✔ Hoja de Provisión usa hoy y mantiene fechas aisladas: PASS");
 }
 
 // --- SCENARIO E.2: toProvision evaluation (Observation 1) ---
@@ -310,10 +314,11 @@ console.log("=================================================================="
   // Must only render PendingWorkBar when hasPendingSupport
   assert.match(
     matrixPage,
-    /\{hasPendingSupport && isAllPending && pendingSummary \? \([\s\S]*?<PendingWorkBar/,
+    /\{hasPendingSupport && isAllPending && pendingSummary \? \(\s*<>\s*<PendingWorkBar/,
     "PendingWorkBar only renders if hasPendingSupport is true",
   );
 
+  assert.match(matrixPage, /pendingSummary=\{hasPendingSupport \? pendingSummary : null\}/);
   // Must not call getPendingPreparationWork when activeStage is resumen
   assert.match(
     matrixPage,

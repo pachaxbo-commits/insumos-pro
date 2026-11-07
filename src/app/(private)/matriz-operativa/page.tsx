@@ -56,14 +56,8 @@ export default async function MatrizOperativaPage({
         ? await getPendingPreparationWork()
         : null;
 
-  // If no date was explicitly provided, default to oldest pending date (if any and supported), otherwise today
   const explicitDate = params.date ?? params.fecha;
-  const date = validDate(
-    explicitDate,
-    hasPendingSupport && pendingSummary?.oldestPendingDate
-      ? pendingSummary.oldestPendingDate
-      : todayInBolivia(),
-  );
+  const date = validDate(explicitDate, todayInBolivia());
 
   const data = !(hasPendingSupport && isAllPending)
     ? await getOperationalMatrixData(date, auth.user.role!)
