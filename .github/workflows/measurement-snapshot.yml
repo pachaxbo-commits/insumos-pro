@@ -14,6 +14,7 @@ on:
       - "supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql"
       - "scripts/qb-measurement-snapshot-*.sql"
       - "scripts/production-close/qb-measurement-snapshot-preflight.sql"
+      - "scripts/qb-measurement-preflight-contract.test.mjs"
       - "scripts/qb-weight-measurement.test.mjs"
       - "scripts/install-qb-measurement-predecessor-rpcs.mjs"
       - ".github/workflows/measurement-snapshot.yml"
@@ -39,11 +40,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-      - name: Install application dependencies
-        run: npm ci
-      - name: Verify weight snapshot and Production preflight contracts
-        run: npm run test:weight-measurement
+      - name: Verify Production preflight delivery chain
+        run: node scripts/qb-measurement-preflight-contract.test.mjs
       - name: Build isolated predecessor schema
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-fixture.sql
         env:
