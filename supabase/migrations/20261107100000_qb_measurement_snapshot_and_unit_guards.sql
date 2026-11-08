@@ -427,6 +427,6 @@ drop trigger if exists guard_qb_order_item_presentation_snapshot on public.qb_or
 drop function if exists public.guard_qb_order_item_presentation_dimension();
 create trigger guard_qb_order_item_presentation_snapshot
 before insert on public.qb_order_items
-for each row execute function public.guard_qb_order_item_presentation_dimension();
+for each row execute function public.guard_qb_order_item_presentation_snapshot();
 
 commit;
