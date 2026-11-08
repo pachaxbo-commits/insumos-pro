@@ -112,7 +112,8 @@ insert into public.profiles(id,role,is_active,full_name)
 values
  ('30000000-0000-0000-0000-000000000001','administrador',true,'Fixture Admin'),
  ('30000000-0000-0000-0000-000000000002','inventario',true,'Fixture Inventory'),
- ('30000000-0000-0000-0000-000000000003','entregador',true,'Fixture Delivery');
+ ('30000000-0000-0000-0000-000000000003','entregador',true,'Fixture Delivery'),
+ ('30000000-0000-0000-0000-000000000004','cliente',true,'Fixture Customer');
 select set_config('test.user_id','30000000-0000-0000-0000-000000000001',true);
 insert into public.qb_orders(id,customer_account_id,public_reference)
 values('40000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','FIXTURE-ORDER');
@@ -157,6 +158,7 @@ do $$ begin
 end $$;
 -- Edit 12 LB to 10 LB, then change its selected source unit to KG. Each write
 -- executes the actual snapshot RPC and must satisfy the immediate CHECK.
+select set_config('test.user_id','30000000-0000-0000-0000-000000000002',true);
 select public.save_qb_matrix_preparation_origin_with_weight_snapshot(
  '60000000-0000-0000-0000-000000000001',1,8,true,10,
  '20000000-0000-0000-0000-000000000002',0.45359237,false,'original','prep edited note',0,0,0,true,'prep-weight-10lb-key'
@@ -213,6 +215,24 @@ do $$ begin
     and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
     and preparation_check and notes='note changed only' and origin_plan_confirmed and row_version=6) then
     raise exception 'FAIL: stale preparation request partially changed the measurement tuple';
+  end if;
+end $$;
+select set_config('test.user_id','30000000-0000-0000-0000-000000000004',true);
+do $$ begin
+  begin
+    perform public.save_qb_matrix_preparation_origin_with_weight_snapshot(
+      '60000000-0000-0000-0000-000000000001',6,8,true,9,
+      '20000000-0000-0000-0000-000000000002',0.45359237,false,'original','unauthorized prep',0,0,0,true,'customer-prep-denied-key'
+    );
+    raise exception 'FAIL: a customer profile wrote preparation data';
+  exception when others then
+    if sqlerrm like 'FAIL:%' or sqlerrm not like '%No tienes permiso para definir el origen durante la preparación%' then raise; end if;
+  end;
+  if not exists(select 1 from public.qb_order_preparation_items where order_item_id='60000000-0000-0000-0000-000000000001'
+    and actual_weight_value=12 and actual_weight_unit_id='20000000-0000-0000-0000-000000000002'
+    and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
+    and preparation_check and notes='note changed only' and row_version=6) then
+    raise exception 'FAIL: denied preparation attempt changed its row';
   end if;
 end $$;
 
@@ -287,6 +307,25 @@ do $$ begin
     and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
     and delivery_check and delivery_note='delivery note only' and source_origin_confirmed and row_version=6) then
     raise exception 'FAIL: stale delivery request partially changed the measurement tuple';
+  end if;
+end $$;
+select set_config('test.user_id','30000000-0000-0000-0000-000000000004',true);
+do $$ begin
+  begin
+    perform public.save_qb_matrix_delivery_origin_with_weight_snapshot(
+      '60000000-0000-0000-0000-000000000001',6,0,8,true,9,
+      '20000000-0000-0000-0000-000000000002',0.45359237,false,'original','unauthorized delivery',
+      0,0,8,0,true,'customer-delivery-denied-key'
+    );
+    raise exception 'FAIL: a customer profile wrote delivery data';
+  exception when others then
+    if sqlerrm like 'FAIL:%' or sqlerrm not like '%No tienes permiso para confirmar el origen de entrega%' then raise; end if;
+  end;
+  if not exists(select 1 from public.qb_order_delivery_items where order_item_id='60000000-0000-0000-0000-000000000001'
+    and actual_weight_value=12 and actual_weight_unit_id='20000000-0000-0000-0000-000000000002'
+    and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
+    and delivery_check and delivery_note='delivery note only' and row_version=6) then
+    raise exception 'FAIL: denied delivery attempt changed its row';
   end if;
 end $$;
 select set_config('test.user_id','30000000-0000-0000-0000-000000000001',true);
