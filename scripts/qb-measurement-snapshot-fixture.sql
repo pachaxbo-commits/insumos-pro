@@ -1,4 +1,6 @@
 \set ON_ERROR_STOP on
+-- Isolated schema contract. The CI workflow follows this setup by installing
+-- the exact predecessor view/RPC definitions extracted from their migrations.
 create role authenticated;
 create role anon;
 create schema auth;
@@ -14,13 +16,22 @@ create table public.qb_units(
   is_active boolean not null default true, is_base boolean not null default false,
   sort_order integer not null default 0
 );
-create table public.qb_orders(id uuid primary key, customer_account_id uuid, public_reference text, updated_at timestamptz default now());
+create table public.qb_orders(
+  id uuid primary key, customer_account_id uuid, public_reference text,
+  status text not null default 'pendiente_preparacion', updated_at timestamptz default now()
+);
 create table public.qb_order_items(
   id uuid primary key, order_id uuid not null references public.qb_orders(id), product_id uuid not null,
-  source_kind text, product_presentation_id uuid, base_unit_id uuid not null references public.qb_units(id),
+  source_kind text, product_presentation_id uuid, allowed_unit_id uuid, source_unit_id uuid,
+  base_unit_id uuid not null references public.qb_units(id), base_unit_symbol text,
   requested_quantity numeric not null default 1, base_quantity numeric not null default 1,
-  conversion_factor_to_base numeric(18,9) not null, source_label text not null,
+  conversion_factor_to_base numeric(18,9) not null, conversion_snapshot_id uuid, source_label text not null,
   order_input_mode text default 'quantity'
+);
+create table public.qb_order_preparations(
+  id uuid primary key default gen_random_uuid(), order_id uuid unique references public.qb_orders(id),
+  status text not null default 'en_preparacion', started_by uuid, prepared_by uuid,
+  prepared_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now()
 );
 create table public.qb_product_presentations(
   id uuid primary key, product_id uuid not null, symbol text not null default 'UNIT',
@@ -53,9 +64,14 @@ create table public.qb_order_delivery_items(
   delivery_check boolean default false, delivery_note text, delivered_by uuid, delivered_at timestamptz,
   row_version integer default 0, last_idempotency_key text, created_at timestamptz default now(), updated_at timestamptz default now(),
   display_unit_id text default 'original', actual_weight_kg numeric,
+  externally_sourced_by uuid, externally_sourced_at timestamptz,
   warehouse_used_base_quantity numeric default 0, pending_incoming_base_quantity numeric default 0,
   external_definitive_base_quantity numeric default 0, origin_review_base_quantity numeric default 0,
   source_origin_confirmed boolean default false
+);
+create table public.qb_order_delivery_movements(
+  id uuid primary key default gen_random_uuid(), delivery_item_id uuid,
+  preparation_item_id uuid, movement_id uuid
 );
 create table public.qb_order_line_change_events(
   id uuid primary key default gen_random_uuid(), order_id uuid, order_item_id uuid, customer_account_id uuid,
@@ -101,7 +117,8 @@ select p.id,p.preparation_id,p.order_item_id,p.product_id,p.requested_source_lab
  p.actual_quantity,p.actual_base_unit_id,p.actual_base_unit_symbol,p.actual_base_quantity,p.conversion_factor_to_base,
  p.conversion_snapshot_id,p.status,p.notes,p.created_at,p.updated_at,p.preparation_check,p.prepared_by_line,
  p.prepared_at_line,p.row_version,p.last_idempotency_key,p.actual_weight_kg,p.display_unit_id,
- (select f.full_name from public.profiles f where f.id=p.prepared_by_line) prepared_by_name
+ (select f.full_name from public.profiles f where f.id=p.prepared_by_line) prepared_by_name,
+ p.origin_plan_confirmed,p.planned_pending_base_quantity,p.planned_external_base_quantity,p.planned_review_base_quantity
 from public.qb_order_preparation_items p where public.current_user_role() in ('admin','administrador','inventario','entregador','supervisor');
 create view public.qb_supervisor_receipt_lines with (security_barrier=true) as
 select line.id,line.receipt_id,line.order_id,orders.public_reference as order_reference,
@@ -113,34 +130,6 @@ select line.id,line.receipt_id,line.order_id,orders.public_reference as order_re
 from public.qb_receipt_lines line join public.qb_orders orders on orders.id=line.order_id
 left join public.qb_units pricing_unit on pricing_unit.id=line.pricing_unit_id
 where public.current_user_role() in ('admin','administrador','supervisor');
-
-create or replace function public.save_qb_matrix_preparation_origin_with_unit(
-  uuid,integer,numeric,boolean,numeric,text,text,numeric,numeric,numeric,boolean,text
-) returns jsonb language plpgsql as $$
-declare v_order_item uuid := $1; v_weight numeric := $5; v_row public.qb_order_preparation_items%rowtype;
-begin
-  insert into public.qb_order_preparation_items(order_item_id,actual_weight_kg,display_unit_id,actual_quantity,preparation_check,notes,row_version)
-  values(v_order_item,v_weight,$6,$3,$4,$7,1)
-  on conflict(order_item_id) do update set actual_weight_kg=excluded.actual_weight_kg,
-    display_unit_id=excluded.display_unit_id,actual_quantity=excluded.actual_quantity,
-    preparation_check=excluded.preparation_check,notes=excluded.notes,row_version=public.qb_order_preparation_items.row_version+1
-  returning * into v_row;
-  return jsonb_build_object('replayed',false,'row_version',v_row.row_version);
-end $$;
-create or replace function public.save_qb_matrix_delivery_origin_with_unit(
-  uuid,integer,numeric,numeric,boolean,numeric,text,text,numeric,numeric,numeric,numeric,boolean,text
-) returns jsonb language plpgsql as $$
-declare v_item uuid := $1; v_row public.qb_order_delivery_items%rowtype;
-begin
-  insert into public.qb_order_delivery_items(order_item_id,preparation_item_id,actual_weight_kg,display_unit_id,externally_sourced_quantity,delivered_quantity,delivered_base_quantity,delivery_check,delivery_note,row_version)
-  values(v_item,(select id from public.qb_order_preparation_items where order_item_id=v_item),$6,$7,$3,$4,$4,$5,$8,1)
-  on conflict(order_item_id) do update set actual_weight_kg=excluded.actual_weight_kg,
-    display_unit_id=excluded.display_unit_id,delivered_quantity=excluded.delivered_quantity,
-    delivered_base_quantity=excluded.delivered_base_quantity,
-    delivery_check=excluded.delivery_check,delivery_note=excluded.delivery_note,row_version=public.qb_order_delivery_items.row_version+1
-  returning * into v_row;
-  return jsonb_build_object('replayed',false,'row_version',v_row.row_version);
-end $$;
 
 insert into public.qb_unit_dimensions(id,code) values
  ('10000000-0000-0000-0000-000000000001','peso'),

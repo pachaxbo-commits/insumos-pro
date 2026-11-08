@@ -76,6 +76,7 @@ select p.id,p.preparation_id,p.order_item_id,p.product_id,p.requested_source_lab
   p.conversion_snapshot_id,p.status,p.notes,p.created_at,p.updated_at,p.preparation_check,p.prepared_by_line,
   p.prepared_at_line,p.row_version,p.last_idempotency_key,p.actual_weight_kg,p.display_unit_id,
   (select f.full_name from public.profiles f where f.id=p.prepared_by_line) prepared_by_name,
+  p.origin_plan_confirmed,p.planned_pending_base_quantity,p.planned_external_base_quantity,p.planned_review_base_quantity,
   p.actual_weight_value,p.actual_weight_unit_id,p.actual_weight_factor_to_kg
 from public.qb_order_preparation_items p
 where public.current_user_role() in ('admin','administrador','inventario','entregador','supervisor');
@@ -140,7 +141,11 @@ declare
   v_previous public.qb_order_preparation_items%rowtype;
   v_user uuid := auth.uid();
   v_role text;
+  v_preserve_weight boolean := false;
 begin
+  if p_clear_actual_weight is null then
+    raise exception 'Indica si la medición debe conservarse o borrarse.';
+  end if;
   if p_clear_actual_weight and p_actual_weight_value is not null then
     raise exception 'Una medición no puede guardarse y borrarse en la misma solicitud.';
   end if;
@@ -168,10 +173,18 @@ begin
 
   select * into v_previous from public.qb_order_preparation_items
     where order_item_id = p_order_item_id for update;
-  if p_actual_weight_value is null and not p_clear_actual_weight
-    and v_previous.actual_weight_value is null and v_previous.actual_weight_unit_id is null
-    and v_previous.actual_weight_factor_to_kg is null then
+  if p_actual_weight_value is null and not p_clear_actual_weight then
+    v_preserve_weight := true;
     v_weight_kg := v_previous.actual_weight_kg;
+  end if;
+  -- The delegated legacy RPC updates actual_weight_kg under an immediate CHECK.
+  -- Temporarily clear the original-unit tuple inside this same transaction so
+  -- an edit cannot fail between the KG write and the new snapshot write. The
+  -- row lock prevents concurrent observers/writers, and any later error rolls
+  -- the entire RPC statement back.
+  if v_previous.id is not null and not v_preserve_weight then
+    update public.qb_order_preparation_items set actual_weight_value=null,
+      actual_weight_unit_id=null, actual_weight_factor_to_kg=null where id=v_previous.id;
   end if;
   v_result := public.save_qb_matrix_preparation_origin_with_unit(
     p_order_item_id, p_expected_version, p_prepared_quantity, p_preparation_check,
@@ -181,16 +194,27 @@ begin
   );
   select * into v_item from public.qb_order_preparation_items
     where order_item_id = p_order_item_id for update;
+  if coalesce((v_result->>'replayed')::boolean, false) then
+    update public.qb_order_preparation_items set
+      actual_weight_value=v_previous.actual_weight_value,
+      actual_weight_unit_id=v_previous.actual_weight_unit_id,
+      actual_weight_factor_to_kg=v_previous.actual_weight_factor_to_kg
+    where id=v_item.id;
+    select * into v_item from public.qb_order_preparation_items where id=v_item.id;
+    return v_result || jsonb_build_object('actual_weight_kg',v_item.actual_weight_kg,
+      'actual_weight_value',v_item.actual_weight_value,'actual_weight_unit_id',v_item.actual_weight_unit_id,
+      'actual_weight_factor_to_kg',v_item.actual_weight_factor_to_kg);
+  end if;
   if not coalesce((v_result->>'replayed')::boolean, false) then
     update public.qb_order_preparation_items set
-      actual_weight_value = p_actual_weight_value,
-      actual_weight_unit_id = p_actual_weight_unit_id,
-      actual_weight_factor_to_kg = p_actual_weight_factor_to_kg
+      actual_weight_value = case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end,
+      actual_weight_unit_id = case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end,
+      actual_weight_factor_to_kg = case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
-    if v_previous.actual_weight_value is distinct from p_actual_weight_value
-      or v_previous.actual_weight_unit_id is distinct from p_actual_weight_unit_id
-      or v_previous.actual_weight_factor_to_kg is distinct from p_actual_weight_factor_to_kg
+    if v_previous.actual_weight_value is distinct from case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end
+      or v_previous.actual_weight_unit_id is distinct from case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end
+      or v_previous.actual_weight_factor_to_kg is distinct from case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
       or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,
@@ -244,7 +268,11 @@ declare
   v_previous public.qb_order_delivery_items%rowtype;
   v_user uuid := auth.uid();
   v_role text;
+  v_preserve_weight boolean := false;
 begin
+  if p_clear_actual_weight is null then
+    raise exception 'Indica si la medición debe conservarse o borrarse.';
+  end if;
   if p_clear_actual_weight and p_actual_weight_value is not null then
     raise exception 'Una medición no puede guardarse y borrarse en la misma solicitud.';
   end if;
@@ -272,10 +300,15 @@ begin
 
   select * into v_previous from public.qb_order_delivery_items
     where order_item_id = p_order_item_id for update;
-  if p_actual_weight_value is null and not p_clear_actual_weight
-    and v_previous.actual_weight_value is null and v_previous.actual_weight_unit_id is null
-    and v_previous.actual_weight_factor_to_kg is null then
+  if p_actual_weight_value is null and not p_clear_actual_weight then
+    v_preserve_weight := true;
     v_weight_kg := v_previous.actual_weight_kg;
+  end if;
+  -- Keep the legacy delegated write compatible with the immediate snapshot
+  -- CHECK. Clearing and restoring occur inside this locked RPC transaction.
+  if v_previous.id is not null and not v_preserve_weight then
+    update public.qb_order_delivery_items set actual_weight_value=null,
+      actual_weight_unit_id=null, actual_weight_factor_to_kg=null where id=v_previous.id;
   end if;
   v_result := public.save_qb_matrix_delivery_origin_with_unit(
     p_order_item_id, p_expected_version, p_externally_sourced_quantity,
@@ -286,16 +319,27 @@ begin
   );
   select * into v_item from public.qb_order_delivery_items
     where order_item_id = p_order_item_id for update;
+  if coalesce((v_result->>'replayed')::boolean, false) then
+    update public.qb_order_delivery_items set
+      actual_weight_value=v_previous.actual_weight_value,
+      actual_weight_unit_id=v_previous.actual_weight_unit_id,
+      actual_weight_factor_to_kg=v_previous.actual_weight_factor_to_kg
+    where id=v_item.id;
+    select * into v_item from public.qb_order_delivery_items where id=v_item.id;
+    return v_result || jsonb_build_object('actual_weight_kg',v_item.actual_weight_kg,
+      'actual_weight_value',v_item.actual_weight_value,'actual_weight_unit_id',v_item.actual_weight_unit_id,
+      'actual_weight_factor_to_kg',v_item.actual_weight_factor_to_kg);
+  end if;
   if not coalesce((v_result->>'replayed')::boolean, false) then
     update public.qb_order_delivery_items set
-      actual_weight_value = p_actual_weight_value,
-      actual_weight_unit_id = p_actual_weight_unit_id,
-      actual_weight_factor_to_kg = p_actual_weight_factor_to_kg
+      actual_weight_value = case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end,
+      actual_weight_unit_id = case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end,
+      actual_weight_factor_to_kg = case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
-    if v_previous.actual_weight_value is distinct from p_actual_weight_value
-      or v_previous.actual_weight_unit_id is distinct from p_actual_weight_unit_id
-      or v_previous.actual_weight_factor_to_kg is distinct from p_actual_weight_factor_to_kg
+    if v_previous.actual_weight_value is distinct from case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end
+      or v_previous.actual_weight_unit_id is distinct from case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end
+      or v_previous.actual_weight_factor_to_kg is distinct from case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
       or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,

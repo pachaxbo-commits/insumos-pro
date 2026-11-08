@@ -4,7 +4,15 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql"
+      - "supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql"
+      - "supabase/migrations/20260724110000_qb_matrix_actual_weight.sql"
+      - "supabase/migrations/20260725010500_qb_delivery_can_complete_unreviewed_lines.sql"
+      - "supabase/migrations/20260926010000_qb_client_trial_readiness.sql"
+      - "supabase/migrations/20261027100000_qb_explicit_delivery_origin.sql"
+      - "supabase/migrations/20261027120000_qb_review_zero_preparation_quantity.sql"
+      - "supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql"
       - "scripts/qb-measurement-snapshot-*.sql"
+      - "scripts/install-qb-measurement-predecessor-rpcs.mjs"
       - ".github/workflows/measurement-snapshot.yml"
 
 jobs:
@@ -27,6 +35,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build isolated predecessor schema
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Install exact predecessor RPC definitions and grants
+        run: node scripts/install-qb-measurement-predecessor-rpcs.mjs
         env:
           DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
       - name: Apply the incremental migration
