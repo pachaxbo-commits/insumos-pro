@@ -21,6 +21,9 @@ const quantity = (value: number) => new Intl.NumberFormat("es-BO", {
 const actualWeight = (line: QbReceiptLine) => line.actualWeightValue !== null && line.actualWeightUnitSymbol
   ? `${quantity(line.actualWeightValue)} ${line.actualWeightUnitSymbol}`
   : line.actualWeightKilograms !== null ? `${quantity(line.actualWeightKilograms)} KG` : "—";
+const commercialQuantity = (line: QbReceiptLine) => line.commercialQuantitySnapshot !== null
+  ? `${quantity(line.commercialQuantitySnapshot)} ${line.commercialUnitLabelSnapshot ?? line.baseUnitSymbol}`
+  : `${quantity(line.deliveredBaseQuantity)} ${line.baseUnitSymbol}`;
 
 function initialDraft(line: QbReceiptLine): Draft {
   const knownCost = line.costBaseUnitSnapshot ?? resolveReceiptCostSnapshot({
@@ -137,7 +140,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
           <table className="w-full min-w-[1380px] text-xs">
             <thead className="sticky top-0 z-10 bg-slate-100 text-left">
               <tr>{[
-                "N°", "Código", "Producto", "UD", "Cant.", "Peso real", "Dist. %", "Exig. %", "Clima %",
+                "N°", "Código", "Producto", "UD", "Cantidad comercial", "Peso real", "Dist. %", "Exig. %", "Clima %",
                 "Extra. %", "Factor total %", "Costo base/UD", "Precio anterior", "Precio venta/UD",
                 "Precio ref. / @", "Costo total Bs", "Venta total Bs", "Utilidad Bs", "Utilidad Bs/UD", "Observación"
               ].map((name) => (
@@ -182,7 +185,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                           <td className="px-2 py-1.5">{line.productCode ?? "—"}</td>
                           <td className="max-w-48 px-2 py-1.5 font-medium">{line.productName}</td>
                           <td className="px-2 py-1.5">{line.baseUnitSymbol}</td>
-                          <td className="px-2 py-1.5 text-right">{line.deliveredBaseQuantity}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right">{commercialQuantity(line)}</td>
                           <td className="whitespace-nowrap px-2 py-1.5">{actualWeight(line)}</td>
                           <td className="px-1 py-1">{input("distance")}</td>
                           <td className="px-1 py-1">{input("exigency")}</td>
@@ -298,7 +301,7 @@ function SupervisorReceiptLineWorkspace({ receipt, emitAction, emitPending, void
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-slate-100 text-left text-xs">
             <tr><th className="px-3 py-2">Pedido</th><th className="px-3 py-2">Producto</th>
-              <th className="px-3 py-2 text-right">Cantidad entregada</th><th className="px-3 py-2">Peso real</th><th className="px-3 py-2">Costo base/UD</th>
+              <th className="px-3 py-2 text-right">Cantidad comercial entregada</th><th className="px-3 py-2">Peso real</th><th className="px-3 py-2">Costo base/UD</th>
               <th className="px-3 py-2 text-right">Precio venta/UD</th><th className="px-3 py-2 text-right">Importe línea</th>
               <th className="px-3 py-2">Observación</th></tr>
           </thead>
@@ -306,7 +309,7 @@ function SupervisorReceiptLineWorkspace({ receipt, emitAction, emitPending, void
             {receipt.lines.map((line) => <tr key={line.id}>
               <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{line.orderReference}</td>
               <td className="px-3 py-2"><span className="font-medium">{line.productName}</span><span className="block text-xs text-muted-foreground">{line.baseUnitSymbol}</span></td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{commercialQuantity(line)}</td>
               <td className="whitespace-nowrap px-3 py-2">{actualWeight(line)}</td>
               <td className="px-3 py-2">{editable ? <input aria-label={`Costo base unitario ${line.productName}`} type="number" min="0" step="0.00000001" value={costs[line.id] ?? ""} onChange={(event) => setCosts((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-32 rounded border bg-white px-2 text-right" /> : money(line.costBaseUnitSnapshot)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{line.finalUnitPrice === null ? "Pendiente" : money(line.finalUnitPrice)}</td>

@@ -78,6 +78,8 @@ type ReceiptLineRow = {
   actual_weight_unit_id?: string | null;
   actual_weight_unit_symbol?: string | null;
   actual_weight_kg?: number | string | null;
+  commercial_quantity_snapshot?: number | string | null;
+  commercial_unit_label_snapshot?: string | null;
   base_unit_id?: string | null;
   base_unit_symbol: string;
   visible_unit_label: string;
@@ -179,6 +181,8 @@ type SupervisorReceiptLineRow = {
   actual_weight_value?: number | string | null; actual_weight_unit_id?: string | null;
   actual_weight_factor_to_kg?: number | string | null; actual_weight_kg?: number | string | null;
   actual_weight_unit_symbol?: string | null;
+  commercial_quantity_snapshot?: number | string | null;
+  commercial_unit_label_snapshot?: string | null;
 };
 
 type SupervisorReceiptOrderRow = {
@@ -558,6 +562,8 @@ async function getReceiptParts(
           ? (unitById.get(row.actual_weight_unit_id)?.symbol ?? null)
           : null,
         actualWeightKilograms: nullableNumberValue(row.actual_weight_kg),
+        commercialQuantitySnapshot: nullableNumberValue(row.commercial_quantity_snapshot),
+        commercialUnitLabelSnapshot: row.commercial_unit_label_snapshot ?? null,
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
         inputMode: row.order_input_mode,
@@ -767,6 +773,8 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     actualWeightValue: nullableNumberValue(row.actual_weight_value),
     actualWeightUnitSymbol: row.actual_weight_unit_symbol ?? null,
     actualWeightKilograms: nullableNumberValue(row.actual_weight_kg),
+    commercialQuantitySnapshot: nullableNumberValue(row.commercial_quantity_snapshot),
+    commercialUnitLabelSnapshot: row.commercial_unit_label_snapshot ?? null,
     baseUnitSymbol: row.base_unit_symbol,
     visibleUnitLabel: row.visible_unit_label,
     inputMode: row.order_input_mode,
@@ -821,7 +829,7 @@ async function getSupervisorQbReceiptsData(
   const ids = headers.map((row) => row.id);
   const [lineResult, orderResult, eventResult, pendingGroups] = await Promise.all([
     ids.length ? supabase.from("qb_supervisor_receipt_lines")
-      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol")
+      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol,commercial_quantity_snapshot,commercial_unit_label_snapshot")
       .in("receipt_id", ids).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     ids.length ? supabase.from("qb_supervisor_receipt_orders")
       .select("id,receipt_id,order_id,inclusion_status,order_reference")

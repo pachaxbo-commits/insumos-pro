@@ -22,6 +22,8 @@ export type QbReceiptLine = {
   actualWeightValue: number | null;
   actualWeightUnitSymbol: string | null;
   actualWeightKilograms: number | null;
+  commercialQuantitySnapshot: number | null;
+  commercialUnitLabelSnapshot: string | null;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
   inputMode: "quantity" | "amount_bs";

@@ -19,7 +19,8 @@ create table public.qb_order_items(
   id uuid primary key, order_id uuid not null references public.qb_orders(id), product_id uuid not null,
   source_kind text, product_presentation_id uuid, base_unit_id uuid not null references public.qb_units(id),
   requested_quantity numeric not null default 1, base_quantity numeric not null default 1,
-  conversion_factor_to_base numeric(18,9) not null, source_label text not null
+  conversion_factor_to_base numeric(18,9) not null, source_label text not null,
+  order_input_mode text default 'quantity'
 );
 create table public.qb_product_presentations(
   id uuid primary key, product_id uuid not null, symbol text not null default 'UNIT',
@@ -131,10 +132,11 @@ create or replace function public.save_qb_matrix_delivery_origin_with_unit(
 ) returns jsonb language plpgsql as $$
 declare v_item uuid := $1; v_row public.qb_order_delivery_items%rowtype;
 begin
-  insert into public.qb_order_delivery_items(order_item_id,actual_weight_kg,display_unit_id,externally_sourced_quantity,delivered_quantity,delivery_check,delivery_note,row_version)
-  values(v_item,$6,$7,$3,$4,$5,$8,1)
+  insert into public.qb_order_delivery_items(order_item_id,preparation_item_id,actual_weight_kg,display_unit_id,externally_sourced_quantity,delivered_quantity,delivered_base_quantity,delivery_check,delivery_note,row_version)
+  values(v_item,(select id from public.qb_order_preparation_items where order_item_id=v_item),$6,$7,$3,$4,$4,$5,$8,1)
   on conflict(order_item_id) do update set actual_weight_kg=excluded.actual_weight_kg,
     display_unit_id=excluded.display_unit_id,delivered_quantity=excluded.delivered_quantity,
+    delivered_base_quantity=excluded.delivered_base_quantity,
     delivery_check=excluded.delivery_check,delivery_note=excluded.delivery_note,row_version=public.qb_order_delivery_items.row_version+1
   returning * into v_row;
   return jsonb_build_object('replayed',false,'row_version',v_row.row_version);

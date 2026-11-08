@@ -918,6 +918,7 @@ export function OperationalMatrix({
           actualWeightValue: line.preparationActualWeightValue,
           actualWeightUnitId: line.preparationActualWeightUnitId,
           actualWeightFactorToKg: line.preparationActualWeightFactorToKg,
+          actualWeightCleared: line.preparationActualWeightValue === null && line.preparationActualWeightKg === null,
           displayUnitId: line.preparationDisplayUnitId,
           note: line.preparationNote,
           pendingBaseQuantity: 0,
@@ -985,6 +986,7 @@ export function OperationalMatrix({
           actualWeightValue: line.deliveryActualWeightValue,
           actualWeightUnitId: line.deliveryActualWeightUnitId,
           actualWeightFactorToKg: line.deliveryActualWeightFactorToKg,
+          actualWeightCleared: line.deliveryActualWeightValue === null && line.deliveryActualWeightKg === null,
           displayUnitId: line.deliveryDisplayUnitId,
           note:
             line.deliveryNote ||

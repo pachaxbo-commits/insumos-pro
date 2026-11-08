@@ -17,7 +17,10 @@ alter table public.qb_receipt_lines
   add column if not exists actual_weight_value numeric(18, 6),
   add column if not exists actual_weight_unit_id uuid references public.qb_units(id) on delete restrict,
   add column if not exists actual_weight_factor_to_kg numeric(18, 9),
-  add column if not exists actual_weight_kg numeric(18, 6);
+  add column if not exists actual_weight_kg numeric(18, 6),
+  add column if not exists commercial_quantity_snapshot numeric(18, 6),
+  add column if not exists commercial_unit_label_snapshot text,
+  add column if not exists commercial_conversion_factor_snapshot numeric(18, 9);
 
 alter table public.qb_order_preparation_items
   drop constraint if exists qb_preparation_weight_snapshot_check;
@@ -51,6 +54,16 @@ alter table public.qb_receipt_lines
       and actual_weight_kg is not null and actual_weight_kg >= 0
       and abs(actual_weight_kg-round(actual_weight_value*actual_weight_factor_to_kg,6)) <= 0.000001)
   );
+alter table public.qb_receipt_lines
+  drop constraint if exists qb_receipt_commercial_quantity_snapshot_check;
+alter table public.qb_receipt_lines
+  add constraint qb_receipt_commercial_quantity_snapshot_check check (
+    (commercial_quantity_snapshot is null and commercial_unit_label_snapshot is null
+      and commercial_conversion_factor_snapshot is null)
+    or (commercial_quantity_snapshot is not null and commercial_quantity_snapshot >= 0
+      and commercial_unit_label_snapshot is not null and length(trim(commercial_unit_label_snapshot)) > 0
+      and commercial_conversion_factor_snapshot is not null and commercial_conversion_factor_snapshot > 0)
+  );
 
 -- Keep the operational projection explicit and append only the non-financial
 -- measurement snapshot fields needed by the matrix.
@@ -83,7 +96,9 @@ select
   line.final_unit_price, line.line_total, line.cost_base_unit_snapshot, line.notes,
   line.created_at, line.actual_weight_value, line.actual_weight_unit_id,
   line.actual_weight_factor_to_kg, line.actual_weight_kg,
-  weight_unit.symbol as actual_weight_unit_symbol
+  weight_unit.symbol as actual_weight_unit_symbol,
+  line.commercial_quantity_snapshot, line.commercial_unit_label_snapshot,
+  line.commercial_conversion_factor_snapshot
 from public.qb_receipt_lines line
 join public.qb_orders orders on orders.id = line.order_id
 left join public.qb_units pricing_unit on pricing_unit.id = line.pricing_unit_id
@@ -107,6 +122,7 @@ create or replace function public.save_qb_matrix_preparation_origin_with_weight_
   p_actual_weight_value numeric,
   p_actual_weight_unit_id uuid,
   p_actual_weight_factor_to_kg numeric,
+  p_clear_actual_weight boolean,
   p_display_unit_id text,
   p_note text,
   p_pending_base_quantity numeric,
@@ -125,8 +141,12 @@ declare
   v_user uuid := auth.uid();
   v_role text;
 begin
+  if p_clear_actual_weight and p_actual_weight_value is not null then
+    raise exception 'Una medición no puede guardarse y borrarse en la misma solicitud.';
+  end if;
   if p_actual_weight_value is null then
-    if p_actual_weight_unit_id is not null or p_actual_weight_factor_to_kg is not null then
+    if p_actual_weight_unit_id is not null or p_actual_weight_factor_to_kg is not null
+      or p_clear_actual_weight is null then
       raise exception 'La unidad y el factor del peso requieren una medición.';
     end if;
     v_weight_kg := null;
@@ -148,6 +168,11 @@ begin
 
   select * into v_previous from public.qb_order_preparation_items
     where order_item_id = p_order_item_id for update;
+  if p_actual_weight_value is null and not p_clear_actual_weight
+    and v_previous.actual_weight_value is null and v_previous.actual_weight_unit_id is null
+    and v_previous.actual_weight_factor_to_kg is null then
+    v_weight_kg := v_previous.actual_weight_kg;
+  end if;
   v_result := public.save_qb_matrix_preparation_origin_with_unit(
     p_order_item_id, p_expected_version, p_prepared_quantity, p_preparation_check,
     v_weight_kg, p_display_unit_id, p_note, p_pending_base_quantity,
@@ -163,6 +188,10 @@ begin
       actual_weight_factor_to_kg = p_actual_weight_factor_to_kg
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
+    if v_previous.actual_weight_value is distinct from p_actual_weight_value
+      or v_previous.actual_weight_unit_id is distinct from p_actual_weight_unit_id
+      or v_previous.actual_weight_factor_to_kg is distinct from p_actual_weight_factor_to_kg
+      or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,
       old_value, new_value, unit_label, actor_id, actor_role,
@@ -177,6 +206,7 @@ begin
       from public.qb_order_items oi join public.qb_orders o on o.id = oi.order_id
       where oi.id = p_order_item_id
     on conflict do nothing;
+    end if;
   end if;
   select * into v_item from public.qb_order_preparation_items
     where order_item_id = p_order_item_id;
@@ -195,6 +225,7 @@ create or replace function public.save_qb_matrix_delivery_origin_with_weight_sna
   p_actual_weight_value numeric,
   p_actual_weight_unit_id uuid,
   p_actual_weight_factor_to_kg numeric,
+  p_clear_actual_weight boolean,
   p_display_unit_id text,
   p_note text,
   p_warehouse_base_quantity numeric,
@@ -214,8 +245,12 @@ declare
   v_user uuid := auth.uid();
   v_role text;
 begin
+  if p_clear_actual_weight and p_actual_weight_value is not null then
+    raise exception 'Una medición no puede guardarse y borrarse en la misma solicitud.';
+  end if;
   if p_actual_weight_value is null then
-    if p_actual_weight_unit_id is not null or p_actual_weight_factor_to_kg is not null then
+    if p_actual_weight_unit_id is not null or p_actual_weight_factor_to_kg is not null
+      or p_clear_actual_weight is null then
       raise exception 'La unidad y el factor del peso requieren una medición.';
     end if;
     v_weight_kg := null;
@@ -237,6 +272,11 @@ begin
 
   select * into v_previous from public.qb_order_delivery_items
     where order_item_id = p_order_item_id for update;
+  if p_actual_weight_value is null and not p_clear_actual_weight
+    and v_previous.actual_weight_value is null and v_previous.actual_weight_unit_id is null
+    and v_previous.actual_weight_factor_to_kg is null then
+    v_weight_kg := v_previous.actual_weight_kg;
+  end if;
   v_result := public.save_qb_matrix_delivery_origin_with_unit(
     p_order_item_id, p_expected_version, p_externally_sourced_quantity,
     p_delivered_quantity, p_delivery_check, v_weight_kg, p_display_unit_id,
@@ -253,6 +293,10 @@ begin
       actual_weight_factor_to_kg = p_actual_weight_factor_to_kg
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
+    if v_previous.actual_weight_value is distinct from p_actual_weight_value
+      or v_previous.actual_weight_unit_id is distinct from p_actual_weight_unit_id
+      or v_previous.actual_weight_factor_to_kg is distinct from p_actual_weight_factor_to_kg
+      or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,
       old_value, new_value, unit_label, actor_id, actor_role,
@@ -267,6 +311,7 @@ begin
       from public.qb_order_items oi join public.qb_orders o on o.id = oi.order_id
       where oi.id = p_order_item_id
     on conflict do nothing;
+    end if;
   end if;
   select * into v_item from public.qb_order_delivery_items
     where order_item_id = p_order_item_id;
@@ -277,22 +322,29 @@ end;
 $$;
 
 revoke all on function public.save_qb_matrix_preparation_origin_with_weight_snapshot(
-  uuid,integer,numeric,boolean,numeric,uuid,numeric,text,text,numeric,numeric,numeric,boolean,text
+  uuid,integer,numeric,boolean,numeric,uuid,numeric,boolean,text,text,numeric,numeric,numeric,boolean,text
 ) from public, anon;
 grant execute on function public.save_qb_matrix_preparation_origin_with_weight_snapshot(
-  uuid,integer,numeric,boolean,numeric,uuid,numeric,text,text,numeric,numeric,numeric,boolean,text
+  uuid,integer,numeric,boolean,numeric,uuid,numeric,boolean,text,text,numeric,numeric,numeric,boolean,text
 ) to authenticated;
 revoke all on function public.save_qb_matrix_delivery_origin_with_weight_snapshot(
-  uuid,integer,numeric,numeric,boolean,numeric,uuid,numeric,text,text,numeric,numeric,numeric,numeric,boolean,text
+  uuid,integer,numeric,numeric,boolean,numeric,uuid,numeric,boolean,text,text,numeric,numeric,numeric,numeric,boolean,text
 ) from public, anon;
 grant execute on function public.save_qb_matrix_delivery_origin_with_weight_snapshot(
-  uuid,integer,numeric,numeric,boolean,numeric,uuid,numeric,text,text,numeric,numeric,numeric,numeric,boolean,text
+  uuid,integer,numeric,numeric,boolean,numeric,uuid,numeric,boolean,text,text,numeric,numeric,numeric,numeric,boolean,text
 ) to authenticated;
 
 -- Preserve the delivery measurement as an immutable receipt snapshot for new
 -- receipt lines. Existing receipt rows are intentionally not backfilled.
 create or replace function public.snapshot_qb_receipt_line_actual_weight()
 returns trigger language plpgsql security definer set search_path = pg_catalog as $$
+declare
+  v_delivered_base_quantity numeric;
+  v_conversion_factor numeric;
+  v_requested_quantity numeric;
+  v_source_label text;
+  v_input_mode text;
+  v_conversion_snapshot numeric;
 begin
   if new.actual_weight_value is null then
     select delivery.actual_weight_value, delivery.actual_weight_unit_id,
@@ -305,6 +357,28 @@ begin
       where item.id = new.preparation_item_id
     );
   end if;
+  if new.commercial_quantity_snapshot is null then
+    select delivery.delivered_base_quantity, order_item.conversion_factor_to_base,
+      order_item.requested_quantity, order_item.source_label, order_item.order_input_mode,
+      order_item.conversion_factor_to_base
+    into v_delivered_base_quantity, v_conversion_factor, v_requested_quantity, v_source_label, v_input_mode,
+      v_conversion_snapshot
+    from public.qb_order_delivery_items delivery
+    join public.qb_order_preparation_items preparation on preparation.id = delivery.preparation_item_id
+    join public.qb_order_items order_item on order_item.id = preparation.order_item_id
+    where delivery.order_item_id = order_item.id
+      and order_item.id = (select item.order_item_id from public.qb_order_preparation_items item
+        where item.id = new.preparation_item_id);
+  end if;
+  if new.commercial_quantity_snapshot is null and v_source_label is not null then
+    new.commercial_quantity_snapshot := case when v_input_mode = 'amount_bs'
+      then v_requested_quantity
+      when v_conversion_factor > 0 and v_delivered_base_quantity is not null
+        then round(v_delivered_base_quantity / v_conversion_factor, 6)
+      else null end;
+    new.commercial_unit_label_snapshot := v_source_label;
+    new.commercial_conversion_factor_snapshot := v_conversion_snapshot;
+  end if;
   return new;
 end;
 $$;
@@ -314,12 +388,9 @@ create trigger snapshot_qb_receipt_line_actual_weight
 before insert on public.qb_receipt_lines
 for each row execute function public.snapshot_qb_receipt_line_actual_weight();
 
--- Older pricing code rewrote delivered_base_quantity from the measured weight
--- whenever a product price used a weight unit. That silently changed a
--- commercial order such as 8 UNIDADES into a weight quantity on the receipt.
--- The receipt now keeps the commercial delivered quantity and stores measured
--- weight in its independent snapshot columns above.
-drop trigger if exists align_qb_receipt_weight_pricing_unit on public.qb_receipt_lines;
+-- The legacy pricing trigger may use measured weight as the configured pricing
+-- quantity. The commercial delivered quantity/unit above remain a separate
+-- immutable snapshot for display; actual measured weight remains separate too.
 
 -- A product presentation is an explicit product-specific physical mapping;
 -- unlike a universal unit conversion, it may legitimately cross dimensions

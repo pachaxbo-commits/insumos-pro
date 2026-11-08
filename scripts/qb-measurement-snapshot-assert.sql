@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 begin;
 do $$ begin
-  if exists(select 1 from pg_trigger where tgrelid='public.qb_receipt_lines'::regclass
+  if not exists(select 1 from pg_trigger where tgrelid='public.qb_receipt_lines'::regclass
     and tgname='align_qb_receipt_weight_pricing_unit' and not tgisinternal) then
-    raise exception 'FAIL: legacy trigger that conflates commercial quantity and weight is still active';
+    raise exception 'FAIL: configured weight-based pricing trigger was unexpectedly removed';
   end if;
   if not exists(select 1 from public.qb_order_preparation_items
     where id='90000000-0000-0000-0000-000000000009' and actual_weight_kg=4.25
@@ -19,10 +19,33 @@ values('40000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000
 insert into public.qb_order_items(id,order_id,product_id,source_kind,base_unit_id,conversion_factor_to_base,source_label)
 values('60000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',
  '70000000-0000-0000-0000-000000000001','universal_unit','20000000-0000-0000-0000-000000000003',1,'UNIDAD');
+insert into public.qb_order_items(id,order_id,product_id,source_kind,base_unit_id,conversion_factor_to_base,source_label)
+values('60000000-0000-0000-0000-000000000005','40000000-0000-0000-0000-000000000001',
+ '70000000-0000-0000-0000-000000000001','universal_unit','20000000-0000-0000-0000-000000000003',1,'UNIDAD');
+update public.qb_order_preparation_items set order_item_id='60000000-0000-0000-0000-000000000005'
+where id='90000000-0000-0000-0000-000000000009';
+select public.save_qb_matrix_preparation_origin_with_weight_snapshot(
+ '60000000-0000-0000-0000-000000000005',0,1,false,null,null,null,false,'original','legacy note',0,0,0,false,'fixture-legacy-weight-key'
+);
+do $$ begin
+  if not exists(select 1 from public.qb_order_preparation_items where order_item_id='60000000-0000-0000-0000-000000000005'
+    and actual_weight_kg=4.25 and actual_weight_value is null and actual_weight_unit_id is null) then
+    raise exception 'FAIL: saving another field did not preserve a legacy normalized weight';
+  end if;
+end $$;
+select public.save_qb_matrix_preparation_origin_with_weight_snapshot(
+ '60000000-0000-0000-0000-000000000005',1,1,false,null,null,null,true,'original','legacy note',0,0,0,false,'fixture-clear-legacy-weight-key'
+);
+do $$ begin
+  if not exists(select 1 from public.qb_order_preparation_items where order_item_id='60000000-0000-0000-0000-000000000005'
+    and actual_weight_kg is null and actual_weight_value is null and actual_weight_unit_id is null) then
+    raise exception 'FAIL: explicitly clearing a legacy weight did not clear its normalized value';
+  end if;
+end $$;
 
 select public.save_qb_matrix_preparation_origin_with_weight_snapshot(
  '60000000-0000-0000-0000-000000000001',0,8,true,12,
- '20000000-0000-0000-0000-000000000002',0.45359237,'original','fixture note',0,0,0,false,'fixture-preparation-weight-key'
+ '20000000-0000-0000-0000-000000000002',0.45359237,false,'original','fixture note',0,0,0,false,'fixture-preparation-weight-key'
 );
 do $$ begin
   if not exists(select 1 from public.qb_order_preparation_items where order_item_id='60000000-0000-0000-0000-000000000001'
@@ -34,7 +57,7 @@ end $$;
 
 select public.save_qb_matrix_delivery_origin_with_weight_snapshot(
  '60000000-0000-0000-0000-000000000001',0,0,8,true,12,
- '20000000-0000-0000-0000-000000000002',0.45359237,'original','fixture delivery note',
+ '20000000-0000-0000-0000-000000000002',0.45359237,false,'original','fixture delivery note',
  0,0,8,0,true,'fixture-delivery-weight-key'
 );
 do $$ begin
@@ -76,12 +99,10 @@ do $$ begin
   end;
 end $$;
 
-insert into public.qb_order_preparation_items(id,order_item_id,actual_weight_kg,actual_weight_value,actual_weight_unit_id,actual_weight_factor_to_kg)
-values('90000000-0000-0000-0000-000000000001','60000000-0000-0000-0000-000000000001',5.443108,12,
- '20000000-0000-0000-0000-000000000002',0.45359237);
 insert into public.qb_receipt_lines(id,order_id,preparation_item_id,delivered_base_quantity,base_unit_symbol,visible_unit_label,actual_weight_kg)
 values('a0000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001',
- '90000000-0000-0000-0000-000000000001',8,'UNIDAD','8 UNIDADES',5.443108);
+ (select id from public.qb_order_preparation_items where order_item_id='60000000-0000-0000-0000-000000000001'),
+ 8,'UNIDAD','8 UNIDADES',5.443108);
 do $$ begin
   if not exists(select 1 from public.qb_receipt_lines where id='a0000000-0000-0000-0000-000000000001'
     and actual_weight_value=12 and actual_weight_unit_id='20000000-0000-0000-0000-000000000002'
@@ -89,8 +110,10 @@ do $$ begin
     raise exception 'FAIL: receipt did not snapshot delivered measurement';
   end if;
   if not exists(select 1 from public.qb_receipt_lines where id='a0000000-0000-0000-0000-000000000001'
-    and delivered_base_quantity=8 and base_unit_symbol='UNIDAD' and visible_unit_label='8 UNIDADES') then
-    raise exception 'FAIL: measured weight changed the commercial receipt quantity or unit';
+    and delivered_base_quantity=5.443108 and visible_unit_label='KG'
+    and commercial_quantity_snapshot=8 and commercial_unit_label_snapshot='UNIDAD'
+    and commercial_conversion_factor_snapshot=1) then
+    raise exception 'FAIL: receipt did not keep commercial quantity separate from weight-based pricing quantity';
   end if;
   if not exists(select 1 from public.qb_supervisor_receipt_lines where id='a0000000-0000-0000-0000-000000000001'
     and actual_weight_unit_symbol='LB') then
