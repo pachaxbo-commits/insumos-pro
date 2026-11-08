@@ -1,9 +1,9 @@
 \set ON_ERROR_STOP on
 -- Isolated schema contract. The CI workflow follows this setup by installing
 -- the exact predecessor view/RPC definitions extracted from their migrations.
-create role authenticated;
-create role anon;
-create schema auth;
+do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
+do $$ begin create role anon; exception when duplicate_object then null; end $$;
+create schema if not exists auth;
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('test.user_id', true), '')::uuid
 $$;

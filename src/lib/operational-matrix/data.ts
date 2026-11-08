@@ -141,7 +141,7 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_operational_preparation_items")
           .select(
-            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, actual_weight_value, actual_weight_unit_id, actual_weight_factor_to_kg, notes, row_version, prepared_at_line, prepared_by_name, origin_plan_confirmed, planned_pending_base_quantity, planned_external_base_quantity, planned_review_base_quantity",
+            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, actual_weight_value, actual_weight_unit_id, actual_weight_factor_to_kg, notes, row_version, prepared_at_line, prepared_by_name, origin_plan_confirmed, planned_pending_base_quantity, planned_external_base_quantity, planned_review_base_quantity, auto_completed_before_quantity",
           )
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -464,6 +464,11 @@ export async function getOperationalMatrixData(
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),
       preparationDisplayUnitId: String(prep?.display_unit_id ?? "original"),
       preparationCheck,
+      preparationAutoFillPreviousQuantity: prep?.auto_completed_before_quantity == null
+        ? null
+        : numberOr(prep.auto_completed_before_quantity),
+      preparationAutoFillRequested: false,
+      preparationAutoFillResetRequested: false,
       preparationActualWeightKg,
       preparationActualWeightValue: prep?.actual_weight_value == null ? null : numberOr(prep.actual_weight_value),
       preparationActualWeightUnitId: prep?.actual_weight_unit_id ? String(prep.actual_weight_unit_id) : null,

@@ -31,7 +31,7 @@ import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-ori
 import {
   applyAutomaticDeliveryValues,
   comparePreparationCoverage,
-  preparedQuantityAfterCheck,
+  preparationCheckTransition,
   updateDeliveryChecks,
 } from "@/lib/operational-matrix/line-state";
 import {
@@ -348,6 +348,9 @@ function mergeServerLines(
         preparedBaseQuantity: current.preparedBaseQuantity,
         preparationDisplayUnitId: current.preparationDisplayUnitId,
         preparationCheck: current.preparationCheck,
+        preparationAutoFillPreviousQuantity: current.preparationAutoFillPreviousQuantity,
+        preparationAutoFillRequested: current.preparationAutoFillRequested,
+        preparationAutoFillResetRequested: current.preparationAutoFillResetRequested,
         preparationActualWeightKg: current.preparationActualWeightKg,
         preparationNote: current.preparationNote,
         originPlanConfirmed: current.originPlanConfirmed,
@@ -623,17 +626,14 @@ export function OperationalMatrix({
         preparationQuantityEdited.current.add(line.orderItemId),
       );
     }
-    const checkedPreparationQuantities =
-      patch.preparationCheck === true &&
+    const preparationTransitions =
+      typeof patch.preparationCheck === "boolean" &&
       !Object.hasOwn(patch, "preparedQuantity")
-        ? groupedLines.map((line) =>
-            preparedQuantityAfterCheck(
-              line,
-              true,
-              options.preserveZeroPreparation ||
-                preparationQuantityEdited.current.has(line.orderItemId),
-            ),
-          )
+        ? groupedLines.map((line) => preparationCheckTransition(
+            line,
+            patch.preparationCheck as boolean,
+            options.preserveZeroPreparation || preparationQuantityEdited.current.has(line.orderItemId),
+          ))
         : [];
     const deliveryWeights =
       Object.hasOwn(patch, "deliveryActualWeightKg") &&
@@ -671,16 +671,32 @@ export function OperationalMatrix({
         typeof patch.preparedQuantity === "number"
       ) {
         next.preparedQuantity = preparationQuantities[index];
+        if (line.requestedConversionValid) {
+          next.preparedBaseQuantity = Number((preparationQuantities[index] * line.basePerSourceQuantity).toFixed(6));
+        }
         changed ||= next.preparedQuantity !== line.preparedQuantity;
-      } else if (patch.preparationCheck === true) {
-        next.preparedQuantity = checkedPreparationQuantities[index];
-        changed ||= next.preparedQuantity !== line.preparedQuantity;
+      } else if (typeof patch.preparationCheck === "boolean") {
+        const transition = preparationTransitions[index];
+        if (transition) {
+          next.preparedQuantity = transition.preparedQuantity;
+          next.preparedBaseQuantity = Number((transition.preparedQuantity * line.basePerSourceQuantity).toFixed(6));
+          next.preparationAutoFillPreviousQuantity = transition.previousQuantity;
+          next.preparationAutoFillRequested = transition.autoFill;
+          next.preparationAutoFillResetRequested = transition.resetAutoFill;
+        }
+        changed ||= next.preparedQuantity !== line.preparedQuantity
+          || next.preparationAutoFillPreviousQuantity !== line.preparationAutoFillPreviousQuantity;
       }
       if (
         Object.hasOwn(patch, "preparedQuantity") &&
         typeof patch.preparationCheck !== "boolean"
       ) {
         next.preparationCheck = false;
+      }
+      if (Object.hasOwn(patch, "preparedQuantity")) {
+        next.preparationAutoFillPreviousQuantity = null;
+        next.preparationAutoFillRequested = false;
+        next.preparationAutoFillResetRequested = false;
       }
       if (
         patch.preparationCheck === false &&
@@ -845,11 +861,17 @@ export function OperationalMatrix({
   ) => {
     if (result.success) {
       setMessage("Guardado.");
+      const transientFlagsCleared = linesRef.current.map((line) => line.orderItemId === id
+        ? { ...line, preparationAutoFillRequested: false, preparationAutoFillResetRequested: false }
+        : line);
+      linesRef.current = transientFlagsCleared;
+      setLines(transientFlagsCleared);
       if (result.data && typeof result.data === "object") {
         const response = result.data as {
           row_version?: unknown;
           order_updated_at?: unknown;
           delivered_base_quantity?: unknown;
+          auto_completed_before_quantity?: unknown;
         };
         const version = Number(response.row_version);
         if (Number.isInteger(version)) {
@@ -858,6 +880,11 @@ export function OperationalMatrix({
               ? {
                   ...line,
                   [versionField]: Math.max(line[versionField], version),
+                  ...(versionField === "preparationVersion" && Object.hasOwn(response, "auto_completed_before_quantity")
+                    ? { preparationAutoFillPreviousQuantity: response.auto_completed_before_quantity == null
+                      ? null
+                      : Number(response.auto_completed_before_quantity) }
+                    : {}),
                   ...(versionField === "deliveryVersion" && Number.isFinite(Number(response.delivered_base_quantity))
                     ? { deliveredBaseQuantity: Number(response.delivered_base_quantity) }
                     : {}),
@@ -914,6 +941,8 @@ export function OperationalMatrix({
           expectedVersion: line.preparationVersion,
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
+          autoFillQuantity: line.preparationAutoFillRequested,
+          resetAutoFillQuantity: line.preparationAutoFillResetRequested,
           actualWeightKg: line.preparationActualWeightKg,
           actualWeightValue: line.preparationActualWeightValue,
           actualWeightUnitId: line.preparationActualWeightUnitId,
@@ -2284,6 +2313,7 @@ function PreparedMeasurementDisplay({
     requestedBaseQuantity: line.requestedBaseQuantity,
     preparedBaseQuantity: line.preparedBaseQuantity,
     requestedConversionValid: line.requestedConversionValid,
+    verified: line.preparationCheck,
   });
 
   return (
@@ -2325,7 +2355,7 @@ function PreparedMeasurementDisplay({
             ? `Preparación incompleta · Faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.baseUnitSymbol}`
             : coverage.status === "over"
               ? `Advertencia · Excede lo solicitado por ${formatQuantity(coverage.excessBaseQuantity)} ${line.baseUnitSymbol}`
-              : "Advertencia · No se puede comparar; conversión física no verificable."}
+              : "Pendiente de verificación o conversión física no verificable."}
       </div>
     </div>
   );

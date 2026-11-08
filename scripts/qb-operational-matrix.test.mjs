@@ -125,7 +125,7 @@ assert.match(
   workflows,
   /v_role not in \('admin', 'administrador', 'inventario'\)/,
 );
-assert.match(actions, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
+assert.match(actions, /save_qb_matrix_preparation_with_check_reset/);
 assert.match(actions, /save_qb_matrix_delivery_origin_with_weight_snapshot/);
 assert.match(explicitOrigin, /save_qb_matrix_preparation_item_with_unit/);
 assert.match(explicitOrigin, /save_qb_matrix_delivery_item_with_unit/);
