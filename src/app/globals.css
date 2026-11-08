@@ -153,7 +153,7 @@
     width: 100% !important; max-width: none !important; padding: 0 !important;
   }
   .qb-warehouse-purchase-print-page { page: qb-warehouse-purchase-page; }
-  @page qb-receipt-page { margin: 12mm; }
+  @page qb-receipt-page { size: A4 landscape; margin: 10mm; }
   body:has(.qb-receipt-print-page) {
     background: #fff !important;
     background-image: none !important;

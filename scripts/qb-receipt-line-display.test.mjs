@@ -41,14 +41,15 @@ test("un recibo histórico no inventa unidad comercial ni unidad original de pes
 });
 
 test("documentos imprimibles usan las mismas columnas descriptivas", async () => {
-  const source = await readFile(
-    new URL("../src/components/qb-receipts/receipt-document.tsx", import.meta.url),
-    "utf8",
-  );
+  const [source, printStyles] = await Promise.all([
+    readFile(new URL("../src/components/qb-receipts/receipt-document.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/globals.css", import.meta.url), "utf8"),
+  ]);
   assert.match(source, /Cantidad comercial/);
   assert.match(source, /Entregado \(base\)/);
   assert.match(source, /Peso real/);
   assert.match(source, /formatReceiptCommercialQuantity\(line\)/);
   assert.match(source, /formatReceiptDeliveredBaseQuantity\(line\)/);
   assert.match(source, /formatReceiptActualWeight\(line\)/);
+  assert.match(printStyles, /@page qb-receipt-page\s*\{\s*size:\s*A4 landscape;/);
 });
