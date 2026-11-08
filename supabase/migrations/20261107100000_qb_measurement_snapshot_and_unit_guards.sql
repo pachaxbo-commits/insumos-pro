@@ -142,6 +142,9 @@ declare
   v_user uuid := auth.uid();
   v_role text;
   v_preserve_weight boolean := false;
+  v_saved_weight_value numeric(18,6);
+  v_saved_weight_unit_id uuid;
+  v_saved_weight_factor_to_kg numeric(18,9);
 begin
   if p_clear_actual_weight is null then
     raise exception 'Indica si la medición debe conservarse o borrarse.';
@@ -177,6 +180,9 @@ begin
     v_preserve_weight := true;
     v_weight_kg := v_previous.actual_weight_kg;
   end if;
+  v_saved_weight_value := case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end;
+  v_saved_weight_unit_id := case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end;
+  v_saved_weight_factor_to_kg := case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end;
   -- The delegated legacy RPC updates actual_weight_kg under an immediate CHECK.
   -- Temporarily clear the original-unit tuple inside this same transaction so
   -- an edit cannot fail between the KG write and the new snapshot write. The
@@ -207,14 +213,14 @@ begin
   end if;
   if not coalesce((v_result->>'replayed')::boolean, false) then
     update public.qb_order_preparation_items set
-      actual_weight_value = case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end,
-      actual_weight_unit_id = case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end,
-      actual_weight_factor_to_kg = case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
+      actual_weight_value = v_saved_weight_value,
+      actual_weight_unit_id = v_saved_weight_unit_id,
+      actual_weight_factor_to_kg = v_saved_weight_factor_to_kg
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
-    if v_previous.actual_weight_value is distinct from case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end
-      or v_previous.actual_weight_unit_id is distinct from case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end
-      or v_previous.actual_weight_factor_to_kg is distinct from case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
+    if v_previous.actual_weight_value is distinct from v_saved_weight_value
+      or v_previous.actual_weight_unit_id is distinct from v_saved_weight_unit_id
+      or v_previous.actual_weight_factor_to_kg is distinct from v_saved_weight_factor_to_kg
       or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,
@@ -269,6 +275,9 @@ declare
   v_user uuid := auth.uid();
   v_role text;
   v_preserve_weight boolean := false;
+  v_saved_weight_value numeric(18,6);
+  v_saved_weight_unit_id uuid;
+  v_saved_weight_factor_to_kg numeric(18,9);
 begin
   if p_clear_actual_weight is null then
     raise exception 'Indica si la medición debe conservarse o borrarse.';
@@ -304,6 +313,9 @@ begin
     v_preserve_weight := true;
     v_weight_kg := v_previous.actual_weight_kg;
   end if;
+  v_saved_weight_value := case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end;
+  v_saved_weight_unit_id := case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end;
+  v_saved_weight_factor_to_kg := case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end;
   -- Keep the legacy delegated write compatible with the immediate snapshot
   -- CHECK. Clearing and restoring occur inside this locked RPC transaction.
   if v_previous.id is not null and not v_preserve_weight then
@@ -332,14 +344,14 @@ begin
   end if;
   if not coalesce((v_result->>'replayed')::boolean, false) then
     update public.qb_order_delivery_items set
-      actual_weight_value = case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end,
-      actual_weight_unit_id = case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end,
-      actual_weight_factor_to_kg = case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
+      actual_weight_value = v_saved_weight_value,
+      actual_weight_unit_id = v_saved_weight_unit_id,
+      actual_weight_factor_to_kg = v_saved_weight_factor_to_kg
     where id = v_item.id;
     select role into v_role from public.profiles where id = v_user and is_active;
-    if v_previous.actual_weight_value is distinct from case when v_preserve_weight then v_previous.actual_weight_value else p_actual_weight_value end
-      or v_previous.actual_weight_unit_id is distinct from case when v_preserve_weight then v_previous.actual_weight_unit_id else p_actual_weight_unit_id end
-      or v_previous.actual_weight_factor_to_kg is distinct from case when v_preserve_weight then v_previous.actual_weight_factor_to_kg else p_actual_weight_factor_to_kg end
+    if v_previous.actual_weight_value is distinct from v_saved_weight_value
+      or v_previous.actual_weight_unit_id is distinct from v_saved_weight_unit_id
+      or v_previous.actual_weight_factor_to_kg is distinct from v_saved_weight_factor_to_kg
       or v_previous.actual_weight_kg is distinct from v_weight_kg then
     insert into public.qb_order_line_change_events(
       order_id, order_item_id, customer_account_id, stage, field_name,
