@@ -171,9 +171,11 @@ export async function updateMarketSheetProductActualAction(
   }
 
   const { error } = await supabase.rpc(
-    "save_qb_matrix_preparation_origin_with_weight_snapshot",
+    "save_qb_matrix_preparation_with_check_reset",
     {
       ...plan.params,
+      p_auto_fill_quantity: false,
+      p_reset_auto_fill_quantity: false,
       p_idempotency_key: `market-sheet-${plan.params.p_order_item_id}-${Date.now()}`,
     },
   );

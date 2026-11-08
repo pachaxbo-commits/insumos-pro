@@ -477,7 +477,7 @@ test("provision edits reject grouped writes and preserve a single preparation li
   ]);
   const matrixRpc = await read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql");
   assert.match(action, /planMarketPreparationWrite\(lines \?\? \[\], controlsActualWeight, actualValue\)/);
-  assert.match(action, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
+  assert.match(action, /save_qb_matrix_preparation_with_check_reset/);
   const actualAction = action.slice(action.indexOf("export async function updateMarketSheetProductActualAction"));
   assert.ok(actualAction.indexOf("if (controlsActualWeight)") < actualAction.indexOf("supabase.rpc("), "weight writes are rejected server-side before RPC");
   assert.ok(actualAction.indexOf("planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue)") < actualAction.indexOf("supabase.rpc("), "The grouped-write policy runs before the only RPC call");

@@ -114,10 +114,12 @@ export async function saveMatrixPreparationAction(input: unknown) {
     externalBaseQuantity: quantity,
     reviewBaseQuantity: quantity,
     originPlanConfirmed: z.boolean(),
+    autoFillQuantity: z.boolean().default(false),
+    resetAutoFillQuantity: z.boolean().default(false),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_origin_with_weight_snapshot", {
+  return rpc("save_qb_matrix_preparation_with_check_reset", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
@@ -132,6 +134,8 @@ export async function saveMatrixPreparationAction(input: unknown) {
     p_external_base_quantity: parsed.data.externalBaseQuantity,
     p_review_base_quantity: parsed.data.reviewBaseQuantity,
     p_origin_plan_confirmed: parsed.data.originPlanConfirmed,
+    p_auto_fill_quantity: parsed.data.autoFillQuantity,
+    p_reset_auto_fill_quantity: parsed.data.resetAutoFillQuantity,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "inventario", "supervisor"], false);
 }

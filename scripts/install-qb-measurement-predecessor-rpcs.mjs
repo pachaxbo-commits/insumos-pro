@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error('DATABASE_URL is required for the isolated PostgreSQL contract.');
-const parsedUrl = new URL(databaseUrl);
-if (!['localhost', '127.0.0.1', '::1', 'postgres'].includes(parsedUrl.hostname)) {
+const outputSqlPath = process.env.QB_SQL_OUTPUT_PATH;
+if (!databaseUrl && !outputSqlPath) throw new Error('DATABASE_URL or QB_SQL_OUTPUT_PATH is required.');
+const parsedUrl = databaseUrl ? new URL(databaseUrl) : null;
+if (parsedUrl && !['localhost', '127.0.0.1', '::1', 'postgres'].includes(parsedUrl.hostname)) {
   throw new Error('Refusing to run predecessor RPC fixture against a non-local database host.');
 }
 
@@ -73,8 +74,10 @@ const grants = [
 const directory = mkdtempSync(path.join(tmpdir(), 'qb-measurement-rpc-contract-'));
 const file = path.join(directory, 'predecessor-functions.sql');
 try {
-  writeFileSync(file, `\\set ON_ERROR_STOP on\nbegin;\n${definitions.join('\n\n')}\n${grants.join('\n')}\ncommit;\n`);
-  execFileSync('psql', [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-f', file], { stdio: 'inherit' });
+  const sql = `\\set ON_ERROR_STOP on\nbegin;\n${definitions.join('\n\n')}\n${grants.join('\n')}\ncommit;\n`;
+  writeFileSync(file, sql);
+  if (outputSqlPath) writeFileSync(outputSqlPath, sql);
+  else execFileSync('psql', [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-f', file], { stdio: 'inherit' });
 } finally {
   rmSync(directory, { recursive: true, force: true });
 }
