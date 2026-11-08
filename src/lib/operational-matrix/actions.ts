@@ -104,6 +104,9 @@ export async function saveMatrixPreparationAction(input: unknown) {
     preparedQuantity: quantity,
     preparationCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    actualWeightValue: quantity.nullable(),
+    actualWeightUnitId: z.uuid().nullable(),
+    actualWeightFactorToKg: quantity.positive().nullable(),
     displayUnitId,
     note: z.string().max(500),
     pendingBaseQuantity: quantity,
@@ -113,12 +116,14 @@ export async function saveMatrixPreparationAction(input: unknown) {
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_origin_with_unit", {
+  return rpc("save_qb_matrix_preparation_origin_with_weight_snapshot", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
     p_preparation_check: parsed.data.preparationCheck,
-    p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_actual_weight_value: parsed.data.actualWeightValue,
+    p_actual_weight_unit_id: parsed.data.actualWeightUnitId,
+    p_actual_weight_factor_to_kg: parsed.data.actualWeightFactorToKg,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_pending_base_quantity: parsed.data.pendingBaseQuantity,
@@ -137,6 +142,9 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     deliveredQuantity: quantity,
     deliveryCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    actualWeightValue: quantity.nullable(),
+    actualWeightUnitId: z.uuid().nullable(),
+    actualWeightFactorToKg: quantity.positive().nullable(),
     displayUnitId,
     note: z.string().max(500),
     warehouseBaseQuantity: quantity,
@@ -147,13 +155,15 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Entrega invalida." };
-  return rpc("save_qb_matrix_delivery_origin_with_unit", {
+  return rpc("save_qb_matrix_delivery_origin_with_weight_snapshot", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_externally_sourced_quantity: parsed.data.externalQuantity,
     p_delivered_quantity: parsed.data.deliveredQuantity,
     p_delivery_check: parsed.data.deliveryCheck,
-    p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_actual_weight_value: parsed.data.actualWeightValue,
+    p_actual_weight_unit_id: parsed.data.actualWeightUnitId,
+    p_actual_weight_factor_to_kg: parsed.data.actualWeightFactorToKg,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_warehouse_base_quantity: parsed.data.warehouseBaseQuantity,

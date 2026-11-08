@@ -1,0 +1,39 @@
+name: Measurement snapshot and physical unit SQL contract
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql"
+      - "scripts/qb-measurement-snapshot-*.sql"
+      - ".github/workflows/measurement-snapshot.yml"
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated
+          POSTGRES_DB: qb_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qb_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated predecessor schema
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Apply the incremental migration
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Assert original unit persistence, receipts, and dimensional guard
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-assert.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract

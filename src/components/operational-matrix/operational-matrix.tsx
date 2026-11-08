@@ -26,6 +26,7 @@ import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-s
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import { suggestWarehouseSplit } from "@/lib/operational-matrix/stock-suggestion";
 import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-origin-choice";
+import { createWeightMeasurementSnapshot, formatWeightMeasurement } from "@/lib/operational-matrix/weight-measurement";
 import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
   applyAutomaticDeliveryValues,
@@ -202,7 +203,7 @@ function sumLines(
 
 function sumNullable(
   lines: MatrixLine[],
-  field: "preparationActualWeightKg" | "deliveryActualWeightKg",
+  field: "preparationActualWeightKg" | "deliveryActualWeightKg" | "preparationActualWeightValue" | "deliveryActualWeightValue",
 ) {
   const values = lines
     .map((line) => line[field])
@@ -226,6 +227,26 @@ function selectedQuantityUnit(
   );
 }
 
+function measuredWeightPatch(
+  stage: "preparacion" | "entrega",
+  value: number | null,
+  unit: MatrixWeightUnit | null,
+): Partial<MatrixLine> {
+  const snapshot = value === null || !unit ? null : createWeightMeasurementSnapshot(value, unit);
+  if (stage === "preparacion") return {
+    preparationActualWeightValue: snapshot?.value ?? null,
+    preparationActualWeightUnitId: snapshot?.unitId ?? null,
+    preparationActualWeightFactorToKg: snapshot?.factorToKg ?? null,
+    preparationActualWeightKg: snapshot?.kilograms ?? null,
+  };
+  return {
+    deliveryActualWeightValue: snapshot?.value ?? null,
+    deliveryActualWeightUnitId: snapshot?.unitId ?? null,
+    deliveryActualWeightFactorToKg: snapshot?.factorToKg ?? null,
+    deliveryActualWeightKg: snapshot?.kilograms ?? null,
+  };
+}
+
 function aggregateLines(lines: MatrixLine[]): MatrixLine {
   const first = lines[0];
   return {
@@ -242,6 +263,12 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     preparedBaseQuantity: sumLines(lines, "preparedBaseQuantity"),
     preparationCheck: lines.every((line) => line.preparationCheck),
     preparationActualWeightKg: sumNullable(lines, "preparationActualWeightKg"),
+    preparationActualWeightValue: lines.every((line) => line.preparationActualWeightUnitId === first.preparationActualWeightUnitId)
+      ? sumNullable(lines, "preparationActualWeightValue") : null,
+    preparationActualWeightUnitId: lines.every((line) => line.preparationActualWeightUnitId === first.preparationActualWeightUnitId)
+      ? first.preparationActualWeightUnitId : null,
+    preparationActualWeightFactorToKg: lines.every((line) => line.preparationActualWeightFactorToKg === first.preparationActualWeightFactorToKg)
+      ? first.preparationActualWeightFactorToKg : null,
     preparationNote: uniqueText(lines.map((line) => line.preparationNote)).join(
       " | ",
     ),
@@ -257,6 +284,12 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     deliveredBaseQuantity: sumLines(lines, "deliveredBaseQuantity"),
     deliveryCheck: lines.every(hasDeliveryCheck),
     deliveryActualWeightKg: sumNullable(lines, "deliveryActualWeightKg"),
+    deliveryActualWeightValue: lines.every((line) => line.deliveryActualWeightUnitId === first.deliveryActualWeightUnitId)
+      ? sumNullable(lines, "deliveryActualWeightValue") : null,
+    deliveryActualWeightUnitId: lines.every((line) => line.deliveryActualWeightUnitId === first.deliveryActualWeightUnitId)
+      ? first.deliveryActualWeightUnitId : null,
+    deliveryActualWeightFactorToKg: lines.every((line) => line.deliveryActualWeightFactorToKg === first.deliveryActualWeightFactorToKg)
+      ? first.deliveryActualWeightFactorToKg : null,
     deliveryNote: uniqueText(lines.map((line) => line.deliveryNote)).join(
       " | ",
     ),
@@ -578,6 +611,8 @@ export function OperationalMatrix({
       patch.preparationActualWeightKg !== null
         ? distributeValue(groupedLines, patch.preparationActualWeightKg ?? 0)
         : [];
+    const preparationWeightValues = Object.hasOwn(patch, "preparationActualWeightValue") && patch.preparationActualWeightValue !== null
+      ? distributeValue(groupedLines, patch.preparationActualWeightValue ?? 0) : [];
     const preparationQuantities =
       Object.hasOwn(patch, "preparedQuantity") &&
       typeof patch.preparedQuantity === "number"
@@ -605,6 +640,8 @@ export function OperationalMatrix({
       patch.deliveryActualWeightKg !== null
         ? distributeValue(groupedLines, patch.deliveryActualWeightKg ?? 0)
         : [];
+    const deliveryWeightValues = Object.hasOwn(patch, "deliveryActualWeightValue") && patch.deliveryActualWeightValue !== null
+      ? distributeValue(groupedLines, patch.deliveryActualWeightValue ?? 0) : [];
     const deliveryQuantities =
       Object.hasOwn(patch, "deliveredQuantity") &&
       typeof patch.deliveredQuantity === "number"
@@ -660,6 +697,14 @@ export function OperationalMatrix({
             : preparationWeights[index];
         changed ||= next.preparationActualWeightKg !== line.preparationActualWeightKg;
       }
+      if (Object.hasOwn(patch, "preparationActualWeightValue")) {
+        next.preparationActualWeightValue = patch.preparationActualWeightValue === null ? null : preparationWeightValues[index];
+        next.preparationActualWeightUnitId = patch.preparationActualWeightUnitId ?? null;
+        next.preparationActualWeightFactorToKg = patch.preparationActualWeightFactorToKg ?? null;
+        changed ||= next.preparationActualWeightValue !== line.preparationActualWeightValue
+          || next.preparationActualWeightUnitId !== line.preparationActualWeightUnitId
+          || next.preparationActualWeightFactorToKg !== line.preparationActualWeightFactorToKg;
+      }
       if (typeof patch.deliveryCheck === "boolean") {
         next.deliveryCheck = patch.deliveryCheck;
         changed ||= next.deliveryCheck !== line.deliveryCheck;
@@ -690,6 +735,14 @@ export function OperationalMatrix({
         next.deliveryActualWeightKg =
           patch.deliveryActualWeightKg === null ? null : deliveryWeights[index];
         changed ||= next.deliveryActualWeightKg !== line.deliveryActualWeightKg;
+      }
+      if (Object.hasOwn(patch, "deliveryActualWeightValue")) {
+        next.deliveryActualWeightValue = patch.deliveryActualWeightValue === null ? null : deliveryWeightValues[index];
+        next.deliveryActualWeightUnitId = patch.deliveryActualWeightUnitId ?? null;
+        next.deliveryActualWeightFactorToKg = patch.deliveryActualWeightFactorToKg ?? null;
+        changed ||= next.deliveryActualWeightValue !== line.deliveryActualWeightValue
+          || next.deliveryActualWeightUnitId !== line.deliveryActualWeightUnitId
+          || next.deliveryActualWeightFactorToKg !== line.deliveryActualWeightFactorToKg;
       }
       for (const [field, values] of distributedBaseFields) {
         (next[field as keyof MatrixLine] as number) = values[index] ?? 0;
@@ -862,6 +915,9 @@ export function OperationalMatrix({
           preparedQuantity: line.preparedQuantity,
           preparationCheck: line.preparationCheck,
           actualWeightKg: line.preparationActualWeightKg,
+          actualWeightValue: line.preparationActualWeightValue,
+          actualWeightUnitId: line.preparationActualWeightUnitId,
+          actualWeightFactorToKg: line.preparationActualWeightFactorToKg,
           displayUnitId: line.preparationDisplayUnitId,
           note: line.preparationNote,
           pendingBaseQuantity: 0,
@@ -926,6 +982,9 @@ export function OperationalMatrix({
           deliveredQuantity: line.deliveredQuantity,
           deliveryCheck: effectiveDeliveryCheck,
           actualWeightKg: line.deliveryActualWeightKg,
+          actualWeightValue: line.deliveryActualWeightValue,
+          actualWeightUnitId: line.deliveryActualWeightUnitId,
+          actualWeightFactorToKg: line.deliveryActualWeightFactorToKg,
           displayUnitId: line.deliveryDisplayUnitId,
           note:
             line.deliveryNote ||
@@ -1397,7 +1456,7 @@ export function OperationalMatrix({
                                   {stage === "preparacion" ? <StockSplitSuggestion line={line} disabled={!editable} onAccept={(quantity) => updateGroupedLines([line], { preparedQuantity: quantity, preparationCheck: false })} /> : null}
                                   {stage === "entrega" ? <div className="space-y-1 rounded bg-slate-50 p-2 text-xs">
                                     Preparado: {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
-                                    {line.preparationActualWeightKg !== null ? " · Peso: " + formatQuantity(line.preparationActualWeightKg) + " KG" : ""}
+                                    {line.preparationActualWeightKg !== null ? " · Peso: " + (actualWeightLabel(line.preparationActualWeightValue, line.preparationActualWeightUnitSymbol, line.preparationActualWeightKg) ?? "") : ""}
                                     <span className={`block font-medium ${line.preparationCheck ? "text-emerald-800" : "text-amber-800"}`}>
                                       {line.preparationCheck ? "✓ Revisado en Preparación" : "Pendiente de revisión en Preparación"}
                                     </span>
@@ -1410,13 +1469,15 @@ export function OperationalMatrix({
                                     quantityUnits={line.quantityUnits}
                                     selectedUnitId={stage === "preparacion" ? line.preparationDisplayUnitId : line.deliveryDisplayUnitId}
                                     actualWeightKg={stage === "preparacion" ? line.preparationActualWeightKg : line.deliveryActualWeightKg}
+                                    actualWeightValue={stage === "preparacion" ? line.preparationActualWeightValue : line.deliveryActualWeightValue}
+                                    actualWeightUnitId={stage === "preparacion" ? line.preparationActualWeightUnitId : line.deliveryActualWeightUnitId}
                                     sourceLabel={line.sourceLabel}
                                     sourceUnitHint={line.baseUnitSymbol}
                                     weightUnits={data.weightUnits}
                                     disabled={!editable}
                                     onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0, preparationCheck: false } : { deliveredQuantity: value ?? 0, deliverySourceConfirmed: false })}
                                     onUnitChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
-                                    onWeightChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationActualWeightKg: value } : { deliveryActualWeightKg: value })}
+                                    onWeightChange={(value, unit) => updateGroupedLines([line], measuredWeightPatch(stage, value, unit))}
                                     onBlur={() => void saveFormLine(line.orderItemId)}
                                   />
                                   <WeightPricingHint line={line} />
@@ -1979,12 +2040,8 @@ function weightFromKilograms(
   return Number((value / unit.kilograms).toFixed(6));
 }
 
-function weightToKilograms(
-  value: number | null,
-  unit: MatrixWeightUnit,
-) {
-  if (value === null) return null;
-  return Number((value * unit.kilograms).toFixed(6));
+function actualWeightLabel(value: number | null, unitSymbol: string | null, kilograms: number | null) {
+  return formatWeightMeasurement({ value, unitSymbol, kilograms, format: formatQuantity });
 }
 
 function decimalInputText(value: number | null) {
@@ -2070,6 +2127,8 @@ function MeasuredQuantityEditor({
   quantityLabel = "Cantidad real",
   quantityValue,
   actualWeightKg,
+  actualWeightValue,
+  actualWeightUnitId,
   sourceLabel,
   sourceUnitHint,
   weightUnits,
@@ -2086,6 +2145,8 @@ function MeasuredQuantityEditor({
   quantityLabel?: string;
   quantityValue: number | null;
   actualWeightKg: number | null;
+  actualWeightValue: number | null;
+  actualWeightUnitId: string | null;
   sourceLabel: string;
   sourceUnitHint: string;
   weightUnits: MatrixWeightUnit[];
@@ -2093,7 +2154,7 @@ function MeasuredQuantityEditor({
   selectedUnitId: string;
   onQuantityChange: (value: number | null) => void;
   onUnitChange: (value: string) => void;
-  onWeightChange: (value: number | null) => void;
+  onWeightChange: (value: number | null, unit: MatrixWeightUnit | null) => void;
   onBlur: () => void;
   disabled?: boolean;
   attention?: boolean;
@@ -2103,18 +2164,19 @@ function MeasuredQuantityEditor({
     sourceLabel,
     sourceUnitHint,
   );
-  const defaultWeightUnit =
-    sourceWeightUnit ??
-    weightUnits.find((option) => option.code === "kg") ??
-    weightUnits[0];
-  const [weightUnitId, setWeightUnitId] = useState(
-    () => defaultWeightUnit?.id ?? "",
-  );
+  const kilogramWeightUnit = weightUnits.find((option) => option.code === "kg") ??
+    findWeightUnit(weightUnits, "kg", "kilogramo");
+  // Legacy rows only contain normalized KG. Do not infer that the original
+  // operator selected the product's commercial weight unit.
+  const defaultWeightUnit = actualWeightKg !== null && !actualWeightUnitId
+    ? (kilogramWeightUnit ?? weightUnits[0])
+    : sourceWeightUnit ?? kilogramWeightUnit ?? weightUnits[0];
+  const [weightUnitId, setWeightUnitId] = useState(() => actualWeightUnitId ?? defaultWeightUnit?.id ?? "");
   const selectedWeightUnit =
     weightUnits.find((option) => option.id === weightUnitId) ??
     defaultWeightUnit;
   const displayWeight = selectedWeightUnit
-    ? weightFromKilograms(actualWeightKg, selectedWeightUnit)
+    ? actualWeightValue ?? weightFromKilograms(actualWeightKg, selectedWeightUnit)
     : null;
 
   return (
@@ -2147,11 +2209,7 @@ function MeasuredQuantityEditor({
             disabled={disabled || !selectedWeightUnit}
             attention={attention}
             onChange={(value) =>
-              onWeightChange(
-                selectedWeightUnit
-                  ? weightToKilograms(value, selectedWeightUnit)
-                  : null,
-              )
+              onWeightChange(value, selectedWeightUnit ?? null)
             }
             onBlur={onBlur}
           />
@@ -2160,7 +2218,13 @@ function MeasuredQuantityEditor({
             className="h-7 rounded-md border border-input bg-background px-1 text-[11px] font-semibold"
             value={selectedWeightUnit?.id ?? ""}
             disabled={disabled || weightUnits.length === 0}
-            onChange={(event) => setWeightUnitId(event.target.value)}
+            onChange={(event) => {
+              const next = weightUnits.find((option) => option.id === event.target.value) ?? null;
+              setWeightUnitId(event.target.value);
+              if (actualWeightKg !== null && next) {
+                onWeightChange(weightFromKilograms(actualWeightKg, next), next);
+              }
+            }}
           >
             {weightUnits.length === 0 ? (
               <option value="">Sin unidad</option>
@@ -2200,6 +2264,11 @@ function PreparedMeasurementDisplay({
   const displayWeight = displayUnit
     ? weightFromKilograms(line.preparationActualWeightKg, displayUnit)
     : null;
+  const originalWeightLabel = actualWeightLabel(
+    line.preparationActualWeightValue,
+    line.preparationActualWeightUnitSymbol,
+    line.preparationActualWeightKg,
+  );
   const preparedUnit = selectedQuantityUnit(
     line.quantityUnits,
     line.preparationDisplayUnitId,
@@ -2232,9 +2301,9 @@ function PreparedMeasurementDisplay({
             Peso preparado
           </span>
           <span className="block font-semibold">
-            {displayWeight === null || !displayUnit
+            {originalWeightLabel ?? (displayWeight === null || !displayUnit
               ? "Sin registrar"
-              : `${formatQuantity(displayWeight)} ${displayUnit.symbol || displayUnit.name}`}
+              : `${formatQuantity(displayWeight)} ${displayUnit.symbol || displayUnit.name}`)}
           </span>
         </>
       ) : null}
@@ -2600,6 +2669,8 @@ function DesktopOrderCells(props: CellProps) {
             quantityUnits={line.quantityUnits}
             selectedUnitId={line.preparationDisplayUnitId}
             actualWeightKg={line.preparationActualWeightKg}
+            actualWeightValue={line.preparationActualWeightValue}
+            actualWeightUnitId={line.preparationActualWeightUnitId}
             sourceLabel={line.sourceLabel}
             sourceUnitHint={line.baseUnitSymbol}
             weightUnits={weightUnits}
@@ -2614,10 +2685,8 @@ function DesktopOrderCells(props: CellProps) {
             onUnitChange={(value) =>
               onChange({ preparationDisplayUnitId: value })
             }
-            onWeightChange={(value) =>
-              onChange({
-                preparationActualWeightKg: value,
-              })
+            onWeightChange={(value, unit) =>
+              onChange(measuredWeightPatch("preparacion", value, unit))
             }
             onBlur={onSavePreparation}
           />
@@ -2700,6 +2769,8 @@ function DesktopOrderCells(props: CellProps) {
             quantityUnits={line.quantityUnits}
             selectedUnitId={line.deliveryDisplayUnitId}
             actualWeightKg={line.deliveryActualWeightKg}
+            actualWeightValue={line.deliveryActualWeightValue}
+            actualWeightUnitId={line.deliveryActualWeightUnitId}
             sourceLabel={line.sourceLabel}
             sourceUnitHint={line.baseUnitSymbol}
             weightUnits={weightUnits}
@@ -2713,10 +2784,8 @@ function DesktopOrderCells(props: CellProps) {
             onUnitChange={(value) =>
               onChange({ deliveryDisplayUnitId: value })
             }
-            onWeightChange={(value) =>
-              onChange({
-                deliveryActualWeightKg: value,
-              })
+            onWeightChange={(value, unit) =>
+              onChange(measuredWeightPatch("entrega", value, unit))
             }
             onBlur={onSaveDelivery}
           />
@@ -2785,7 +2854,7 @@ function DesktopOrderCells(props: CellProps) {
       </td>
       <td style={cellStyle} className={cellClass}>
         {line.deliveryActualWeightKg !== null
-          ? `${formatQuantity(line.deliveryActualWeightKg)} kg`
+          ? actualWeightLabel(line.deliveryActualWeightValue, line.deliveryActualWeightUnitSymbol, line.deliveryActualWeightKg)
           : "—"}
       </td>
       <td

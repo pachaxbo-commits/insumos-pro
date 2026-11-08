@@ -14,6 +14,7 @@ import type {
   QbReceiptsData,
 } from "@/types/qb-receipts";
 import type { UserRole } from "@/types/auth";
+import { resolveWeightUnitFactor } from "@/lib/qb-receipts/unit-cost-normalization";
 
 type ReceiptRow = {
   id: string;
@@ -73,6 +74,10 @@ type ReceiptLineRow = {
   product_code_snapshot?: string | null;
   category_name_snapshot?: string | null;
   delivered_base_quantity: number | string;
+  actual_weight_value?: number | string | null;
+  actual_weight_unit_id?: string | null;
+  actual_weight_unit_symbol?: string | null;
+  actual_weight_kg?: number | string | null;
   base_unit_id?: string | null;
   base_unit_symbol: string;
   visible_unit_label: string;
@@ -171,6 +176,9 @@ type SupervisorReceiptLineRow = {
   fixed_line_amount: number | string | null; base_price_used: number | string | null;
   final_unit_price: number | string | null; line_total: number | string | null;
   cost_base_unit_snapshot: number | string | null; notes: string | null;
+  actual_weight_value?: number | string | null; actual_weight_unit_id?: string | null;
+  actual_weight_factor_to_kg?: number | string | null; actual_weight_kg?: number | string | null;
+  actual_weight_unit_symbol?: string | null;
 };
 
 type SupervisorReceiptOrderRow = {
@@ -214,46 +222,12 @@ function customerName(customer: CustomerRow | null) {
 function resolveWeightFactor(
   unit: UnitSymbolRow | undefined,
   weightDimensionId: string | undefined,
-  weightUnits: UnitSymbolRow[],
 ): number | null {
   if (!unit) return null;
-  if (weightDimensionId && unit.dimension_id === weightDimensionId) {
-    const factor = numberValue(unit.conversion_factor_to_base);
-    return factor > 0 ? factor : null;
-  }
-  const norm = (val: string | null | undefined) =>
-    (val ?? "").trim().toLowerCase();
-  const unitSymbol = norm(unit.symbol);
-  const unitName = norm(unit.name);
-  const unitCode = norm(unit.code);
-
-  const matched = weightUnits.find((w) => {
-    const wSymbol = norm(w.symbol);
-    const wName = norm(w.name);
-    const wCode = norm(w.code);
-    return (
-      (unitSymbol && (unitSymbol === wSymbol || unitSymbol === wCode || unitSymbol === wName)) ||
-      (unitCode && (unitCode === wCode || unitCode === wSymbol)) ||
-      (unitName && (unitName === wName || unitName === wSymbol))
-    );
-  });
-
-  if (matched) {
-    const factor = numberValue(matched.conversion_factor_to_base);
-    return factor > 0 ? factor : null;
-  }
-
-  if (unitSymbol === "kg" || unitCode === "legacy_1" || unitName === "kg" || unitName === "kilogramo") {
-    return 1.0;
-  }
-  if (unitSymbol === "gr" || unitCode === "legacy_29" || unitName === "gramos" || unitName === "gr") {
-    return 0.001;
-  }
-  if (unitSymbol === "libra" || unitCode === "legacy_9" || unitName === "libra") {
-    return 0.453592;
-  }
-
-  return null;
+  return resolveWeightUnitFactor({
+    dimensionId: unit.dimension_id,
+    conversionFactorToBase: numberValue(unit.conversion_factor_to_base),
+  }, weightDimensionId);
 }
 
 function calculatePricePerArroba(
@@ -261,7 +235,6 @@ function calculatePricePerArroba(
   unit: UnitSymbolRow | undefined,
   arrobaUnit: UnitSymbolRow | undefined,
   weightDimensionId: string | undefined,
-  weightUnits: UnitSymbolRow[],
 ): number | null {
   if (price === null || price <= 0 || !unit || !arrobaUnit) {
     return null;
@@ -269,7 +242,7 @@ function calculatePricePerArroba(
   const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
   if (arrobaFactor <= 0) return null;
 
-  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId);
   if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
 
   return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
@@ -279,13 +252,12 @@ function calculateArrobaFactor(
   unit: UnitSymbolRow | undefined,
   arrobaUnit: UnitSymbolRow | undefined,
   weightDimensionId: string | undefined,
-  weightUnits: UnitSymbolRow[],
 ): number | null {
   if (!unit || !arrobaUnit) return null;
   const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
   if (arrobaFactor <= 0) return null;
 
-  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId, weightUnits);
+  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId);
   if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
 
   return Number((arrobaFactor / unitWeightFactor).toFixed(6));
@@ -494,6 +466,9 @@ async function getReceiptParts(
         ...lineRows
           .map((line) => line.purchase_cost_reference_unit_id)
           .filter((unitId): unitId is string => Boolean(unitId)),
+        ...lineRows
+          .map((line) => line.actual_weight_unit_id)
+          .filter((unitId): unitId is string => Boolean(unitId)),
       ]),
     ];
 
@@ -534,7 +509,9 @@ async function getReceiptParts(
     }
 
     arrobaUnit =
-      ((canonicalArrobaData ?? []) as UnitSymbolRow[])[0] ??
+      ((canonicalArrobaData ?? []) as UnitSymbolRow[]).find(
+        (unit) => Boolean(weightDimensionId) && unit.dimension_id === weightDimensionId,
+      ) ??
       weightUnits.find(
         (u) =>
           u.code === "arroba" ||
@@ -576,6 +553,11 @@ async function getReceiptParts(
         productCode: row.product_code_snapshot ?? metaByProduct.get(row.product_id)?.sku ?? null,
         categoryName: row.category_name_snapshot ?? single(metaByProduct.get(row.product_id)?.category)?.name ?? null,
         deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
+        actualWeightValue: nullableNumberValue(row.actual_weight_value),
+        actualWeightUnitSymbol: row.actual_weight_unit_id
+          ? (unitById.get(row.actual_weight_unit_id)?.symbol ?? null)
+          : null,
+        actualWeightKilograms: nullableNumberValue(row.actual_weight_kg),
         baseUnitSymbol: row.base_unit_symbol,
         visibleUnitLabel: row.visible_unit_label,
         inputMode: row.order_input_mode,
@@ -601,7 +583,6 @@ async function getReceiptParts(
           lineUnit,
           arrobaUnit,
           weightDimensionId,
-          weightUnits,
         ),
         previousBasePrice: null,
         previousBasePricePerArroba: null,
@@ -611,13 +592,11 @@ async function getReceiptParts(
           lineUnit,
           arrobaUnit,
           weightDimensionId,
-          weightUnits,
         ),
         arrobaFactor: calculateArrobaFactor(
           lineUnit,
           arrobaUnit,
           weightDimensionId,
-          weightUnits,
         ),
         purchaseCostTotal: nullableNumberValue(row.purchase_cost_total),
         costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
@@ -785,6 +764,9 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     productCode: row.product_code_snapshot,
     categoryName: row.category_name_snapshot,
     deliveredBaseQuantity: numberValue(row.delivered_base_quantity),
+    actualWeightValue: nullableNumberValue(row.actual_weight_value),
+    actualWeightUnitSymbol: row.actual_weight_unit_symbol ?? null,
+    actualWeightKilograms: nullableNumberValue(row.actual_weight_kg),
     baseUnitSymbol: row.base_unit_symbol,
     visibleUnitLabel: row.visible_unit_label,
     inputMode: row.order_input_mode,
@@ -839,7 +821,7 @@ async function getSupervisorQbReceiptsData(
   const ids = headers.map((row) => row.id);
   const [lineResult, orderResult, eventResult, pendingGroups] = await Promise.all([
     ids.length ? supabase.from("qb_supervisor_receipt_lines")
-      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes")
+      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol")
       .in("receipt_id", ids).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     ids.length ? supabase.from("qb_supervisor_receipt_orders")
       .select("id,receipt_id,order_id,inclusion_status,order_reference")

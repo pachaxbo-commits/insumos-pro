@@ -66,6 +66,10 @@ export type MatrixLine = {
   preparationDisplayUnitId: string;
   preparationCheck: boolean;
   preparationActualWeightKg: number | null;
+  preparationActualWeightValue: number | null;
+  preparationActualWeightUnitId: string | null;
+  preparationActualWeightUnitSymbol: string | null;
+  preparationActualWeightFactorToKg: number | null;
   preparationNote: string;
   originPlanConfirmed: boolean;
   plannedPendingBaseQuantity: number;
@@ -81,6 +85,10 @@ export type MatrixLine = {
   deliveryDisplayUnitId: string;
   deliveryCheck: boolean;
   deliveryActualWeightKg: number | null;
+  deliveryActualWeightValue: number | null;
+  deliveryActualWeightUnitId: string | null;
+  deliveryActualWeightUnitSymbol: string | null;
+  deliveryActualWeightFactorToKg: number | null;
   deliveryNote: string;
   deliveryWarehouseBaseQuantity: number;
   deliveryPendingBaseQuantity: number;
