@@ -235,6 +235,45 @@ do $$ begin
     raise exception 'FAIL: denied preparation attempt changed its row';
   end if;
 end $$;
+-- The legacy Provision-sheet write RPC updates normalized KG without carrying
+-- the source unit. With an existing LB snapshot the CHECK must reject it and
+-- roll back the whole request. The active sheet path instead uses the new RPC
+-- with a null measurement and clear=false to preserve the original tuple.
+select set_config('test.user_id','30000000-0000-0000-0000-000000000002',true);
+do $$ begin
+  begin
+    perform public.save_qb_matrix_preparation_item_with_unit(
+      '60000000-0000-0000-0000-000000000001',6,8,true,4.535924,
+      'original','legacy provision write','legacy-market-weight-key'
+    );
+    raise exception 'FAIL: legacy weight-only RPC unexpectedly accepted an inconsistent snapshot';
+  exception when check_violation then null;
+  end;
+  if not exists(select 1 from public.qb_order_preparation_items
+    where order_item_id='60000000-0000-0000-0000-000000000001'
+      and actual_weight_value=12 and actual_weight_unit_id='20000000-0000-0000-0000-000000000002'
+      and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
+      and preparation_check and notes='note changed only' and row_version=6
+      and origin_plan_confirmed and planned_pending_base_quantity=0
+      and planned_external_base_quantity=0 and planned_review_base_quantity=0) then
+    raise exception 'FAIL: rejected legacy call changed the weight snapshot or preparation state';
+  end if;
+end $$;
+select public.save_qb_matrix_preparation_origin_with_weight_snapshot(
+  '60000000-0000-0000-0000-000000000001',6,8,true,null,null,null,false,
+  'original','note changed only',0,0,0,true,'market-sheet-quantity-preserve-weight-key'
+);
+do $$ begin
+  if not exists(select 1 from public.qb_order_preparation_items
+    where order_item_id='60000000-0000-0000-0000-000000000001'
+      and actual_weight_value=12 and actual_weight_unit_id='20000000-0000-0000-0000-000000000002'
+      and actual_weight_factor_to_kg=0.45359237 and actual_weight_kg=5.443108
+      and preparation_check and notes='note changed only' and row_version=7
+      and origin_plan_confirmed and planned_pending_base_quantity=0
+      and planned_external_base_quantity=0 and planned_review_base_quantity=0) then
+    raise exception 'FAIL: quantity-only snapshot RPC did not preserve weight, checks, note, and origin';
+  end if;
+end $$;
 
 -- The real delivery RPC requires a prepared order/preparation. Represent the
 -- completed preparation transition before exercising delivery saves.

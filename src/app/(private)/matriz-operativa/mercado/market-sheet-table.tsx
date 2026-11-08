@@ -363,38 +363,62 @@ function MarketSheetTableRow({
         {row.unitReviewRequired ? (
           <span className="text-[9px] font-semibold text-amber-800">Revisar unidad base</span>
         ) : null}
-        <div className="flex items-center justify-center gap-1 print:hidden">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={actualInput}
-            onChange={(e) => setActualInput(e.target.value)}
-            onBlur={handleBlurActual}
-            onKeyDown={(e) => e.key === "Enter" && handleBlurActual()}
-            disabled={isSavingActual || row.unitReviewRequired || row.lines.length > 1}
-            placeholder={row.actualWeightOrQuantity !== null ? String(row.actualWeightOrQuantity) : "—"}
-            aria-label={`Peso o cantidad real de ${row.productName}`}
-            className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-60"
-          />
-          <span className="text-[9px] text-slate-500">
-            {row.controlsActualWeight ? "kg" : row.unit}
-          </span>
-          {isSavingActual ? (
-            <Loader2 className="size-3 animate-spin text-slate-400" />
-          ) : savedActual ? (
-            <Check className="size-3 text-emerald-600" />
-          ) : null}
-        </div>
-        {row.lines.length > 1 ? (
-          <p className="print:hidden text-[9px] leading-tight text-amber-800">
-            Fila agrupada: edita cada pedido desde Preparación.
-          </p>
-        ) : null}
-        <div className="hidden print:block text-center font-medium">
-          {row.actualWeightOrQuantity !== null
-            ? `${formatQuantity(row.actualWeightOrQuantity)} ${row.controlsActualWeight ? "kg" : row.unit}`
-            : "—"}
-        </div>
+        {row.controlsActualWeight ? (
+          <div className="space-y-1">
+            {row.actualWeightOrQuantity === null ? (
+              <div className="font-medium text-slate-800">Peso pendiente</div>
+            ) : (
+              <div className="space-y-0.5 text-left">
+                <div className="font-medium text-slate-800">
+                  Total normalizado: {formatQuantity(row.actualWeightOrQuantity)} kg
+                </div>
+                {row.lines.filter((line) => line.actualWeightKg !== null).map((line) => (
+                  <div key={line.orderItemId} className="text-[9px] text-slate-600">
+                    {line.actualWeightValue !== null && line.actualWeightUnitSymbol
+                      ? `${formatQuantity(line.actualWeightValue)} ${line.actualWeightUnitSymbol}`
+                      : `${formatQuantity(line.actualWeightKg!)} kg · unidad original no registrada`}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[9px] leading-tight text-slate-600 print:hidden">
+              Edita el peso y su unidad original desde Preparación.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-center gap-1 print:hidden">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={actualInput}
+                onChange={(e) => setActualInput(e.target.value)}
+                onBlur={handleBlurActual}
+                onKeyDown={(e) => e.key === "Enter" && handleBlurActual()}
+                disabled={isSavingActual || row.unitReviewRequired || row.lines.length > 1}
+                placeholder={row.actualWeightOrQuantity !== null ? String(row.actualWeightOrQuantity) : "—"}
+                aria-label={`Peso o cantidad real de ${row.productName}`}
+                className="h-6 w-16 rounded border border-slate-300 bg-white px-1 text-right text-[10px] font-medium text-slate-900 shadow-sm focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600 disabled:opacity-60"
+              />
+              <span className="text-[9px] text-slate-500">{row.unit}</span>
+              {isSavingActual ? (
+                <Loader2 className="size-3 animate-spin text-slate-400" />
+              ) : savedActual ? (
+                <Check className="size-3 text-emerald-600" />
+              ) : null}
+            </div>
+            {row.lines.length > 1 ? (
+              <p className="print:hidden text-[9px] leading-tight text-amber-800">
+                Fila agrupada: edita cada pedido desde Preparación.
+              </p>
+            ) : null}
+            <div className="hidden print:block text-center font-medium">
+              {row.actualWeightOrQuantity !== null
+                ? `${formatQuantity(row.actualWeightOrQuantity)} ${row.controlsActualWeight ? "kg" : row.unit}`
+                : "—"}
+            </div>
+          </>
+        )}
       </td>
 
       {/* Provision cost editable */}

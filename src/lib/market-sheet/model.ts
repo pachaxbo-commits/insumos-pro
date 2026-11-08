@@ -32,9 +32,15 @@ export type MarketSheetLineRef = {
   preparationDisplayUnitId: string;
   quantityUnits: MatrixLine["quantityUnits"];
   actualWeightKg: number | null;
+  actualWeightValue: number | null;
+  actualWeightUnitSymbol: string | null;
   preparedQuantity: number;
   preparationCheck: boolean;
   preparationNote: string;
+  originPlanConfirmed: boolean;
+  plannedPendingBaseQuantity: number;
+  plannedExternalBaseQuantity: number;
+  plannedReviewBaseQuantity: number;
   provisionCostUnit: number | null;
 };
 
@@ -353,9 +359,15 @@ export function buildMarketSheetModel(
           preparationDisplayUnitId: l.preparationDisplayUnitId,
           quantityUnits: l.quantityUnits,
           actualWeightKg: l.preparationActualWeightKg,
+          actualWeightValue: l.preparationActualWeightValue,
+          actualWeightUnitSymbol: l.preparationActualWeightUnitSymbol,
           preparedQuantity: l.preparedQuantity,
           preparationCheck: l.preparationCheck,
           preparationNote: l.preparationNote,
+          originPlanConfirmed: l.originPlanConfirmed,
+          plannedPendingBaseQuantity: l.plannedPendingBaseQuantity,
+          plannedExternalBaseQuantity: l.plannedExternalBaseQuantity,
+          plannedReviewBaseQuantity: l.plannedReviewBaseQuantity,
           provisionCostUnit: l.provisionCostUnit,
         };
       });
