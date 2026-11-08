@@ -153,6 +153,8 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.match(printStyles, /size:\s*landscape/);
   assert.match(printStyles, /break-before:\s*page/);
   assert.match(tableView, /slice\(index \* 2, index \* 2 \+ 2\)/, "Browser print divides customers into readable horizontal pages");
+  assert.match(tableView, /Peso real entregado/);
+  assert.match(tableView, /Peso preparado/);
 });
 
 test("the provision sheet keeps fully delivered, partial, and pending lines for all customers", async () => {
@@ -258,6 +260,8 @@ test("delivery display units never relabel an original commercial quantity witho
         deliveredQuantity: 8,
         deliveredBaseQuantity: 3.40194,
         deliveryActualWeightKg: 3.40194,
+        deliveryActualWeightValue: 7.5,
+        deliveryActualWeightUnitSymbol: "LB",
         deliveryDisplayUnitId: "unit:kg",
         quantityUnits: [
           { id: "original", label: "UNIDAD", sourceQuantity: 1 },
@@ -307,6 +311,8 @@ test("delivery display units never relabel an original commercial quantity witho
   assert.equal(pepperLine.deliveredDisplayQuantity, 8);
   assert.equal(pepperLine.deliveredUnitLabel, "UNIDAD");
   assert.equal(pepperLine.deliveredWeightKg, 3.40194);
+  assert.equal(pepperLine.deliveredWeightValue, 7.5);
+  assert.equal(pepperLine.deliveredWeightUnitSymbol, "LB");
   assert.match(pepperLine.deliveredDisplayWarning, /cantidad comercial original/);
 
   assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
@@ -338,7 +344,7 @@ test("delivery display units never relabel an original commercial quantity witho
     assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
     const pepperRow = model.rows.findIndex((row) => row.productId === "pepper") + 6;
     assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Entregado 8 UNIDAD/);
-    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real 3,402 kg/);
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real entregado 7,5 LB/);
   });
 });
 
@@ -357,6 +363,8 @@ test("the Excel actual measure column keeps measured weight separate and labels 
       deliveredQuantity: 8,
       deliveredBaseQuantity: 8,
       deliveryActualWeightKg: 12,
+      deliveryActualWeightValue: 26.455471,
+      deliveryActualWeightUnitSymbol: "LB",
     }],
   };
   const model = buildMarketSheetModel(weightData);
@@ -368,7 +376,9 @@ test("the Excel actual measure column keeps measured weight separate and labels 
   assert.ok(sheet);
   assert.equal(sheet.getCell("K4").value, "PESO / CANT. REAL");
   assert.equal(sheet.getCell("K6").value, 5.443108);
-  assert.equal(sheet.getCell("K6").numFmt, '0.###" kg"');
+  assert.equal(sheet.getCell("K6").numFmt, '0.###" KG normalizado"');
+  assert.match(String(sheet.getCell("D6").value), /Peso preparado 12 LB/);
+  assert.match(String(sheet.getCell("D6").value), /Peso real entregado 26,455 LB/);
   assert.equal(sheet.getCell("L6").value, null);
 });
 

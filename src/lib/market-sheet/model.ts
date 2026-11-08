@@ -25,6 +25,8 @@ export type MarketSheetLineRef = {
   deliveredUnitLabel: string;
   deliveredDisplayWarning: string | null;
   deliveredBaseQuantity: number;
+  deliveredWeightValue: number | null;
+  deliveredWeightUnitSymbol: string | null;
   deliveredWeightKg: number | null;
   conversionValid: boolean;
   baseUnitId: string;
@@ -352,6 +354,8 @@ export function buildMarketSheetModel(
           deliveredUnitLabel: deliveredDisplay.unitLabel,
           deliveredDisplayWarning: deliveredDisplay.warning,
           deliveredBaseQuantity: l.deliveredBaseQuantity,
+          deliveredWeightValue: l.deliveryActualWeightValue,
+          deliveredWeightUnitSymbol: l.deliveryActualWeightUnitSymbol,
           deliveredWeightKg: l.deliveryActualWeightKg,
           conversionValid: l.requestedConversionValid !== false,
           baseUnitId: baseUnitKey(l),
