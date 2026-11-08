@@ -6,6 +6,10 @@ import Decimal from "decimal.js";
 import { setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
 import { resolveReceiptCostSnapshot } from "@/lib/qb-receipts/cost-source";
 import { calculateReceiptLine, sumReceiptAmounts } from "@/lib/qb-receipts/line-pricing";
+import {
+  formatReceiptActualWeight,
+  formatReceiptCommercialQuantity,
+} from "@/lib/qb-receipts/line-display";
 import type { QbReceipt, QbReceiptLine } from "@/types/qb-receipts";
 import type { UserRole } from "@/types/auth";
 
@@ -15,15 +19,8 @@ type Draft = { cost: string; distance: string; exigency: string; weather: string
 const money = (value: number | string | null) => value === null ? "Pendiente" :
   new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2,
     maximumFractionDigits: 2 }).format(Number(value));
-const quantity = (value: number) => new Intl.NumberFormat("es-BO", {
-  maximumFractionDigits: 3,
-}).format(value);
-const actualWeight = (line: QbReceiptLine) => line.actualWeightValue !== null && line.actualWeightUnitSymbol
-  ? `${quantity(line.actualWeightValue)} ${line.actualWeightUnitSymbol}`
-  : line.actualWeightKilograms !== null ? `${quantity(line.actualWeightKilograms)} KG` : "—";
-const commercialQuantity = (line: QbReceiptLine) => line.commercialQuantitySnapshot !== null
-  ? `${quantity(line.commercialQuantitySnapshot)} ${line.commercialUnitLabelSnapshot ?? line.baseUnitSymbol}`
-  : `${quantity(line.deliveredBaseQuantity)} ${line.baseUnitSymbol}`;
+const actualWeight = (line: QbReceiptLine) => formatReceiptActualWeight(line);
+const commercialQuantity = (line: QbReceiptLine) => formatReceiptCommercialQuantity(line);
 
 function initialDraft(line: QbReceiptLine): Draft {
   const knownCost = line.costBaseUnitSnapshot ?? resolveReceiptCostSnapshot({

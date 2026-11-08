@@ -500,7 +500,9 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(purchaseCostMigration, /dimension\.code = 'peso'/);
   assert.match(purchaseCostMigration, /no modifica pedidos, entregas, precios de venta ni inventario/i);
   assert.match(deliveryNote, /delivery-note/);
-  assert.match(deliveryNote, /line\.deliveredBaseQuantity/);
+  assert.match(deliveryNote, /formatReceiptCommercialQuantity\(line\)/);
+  assert.match(deliveryNote, /formatReceiptDeliveredBaseQuantity\(line\)/);
+  assert.match(deliveryNote, /formatReceiptActualWeight\(line\)/);
   assert.match(deliveryNote, /Documento sin precios/);
   assert.match(management, /function ReceiptCustomerSelector/);
   assert.match(management, /Buscar cliente\.\.\./);
