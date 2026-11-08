@@ -24,6 +24,7 @@ where version::text = any(array[
   '20260723130100',
   '20260723210100',
   '20260724110000',
+  '20260725010000',
   '20260725010500',
   '20260804010000',
   '20260812010000',
@@ -55,6 +56,7 @@ with expected(signature) as (values
  ('public.save_qb_matrix_delivery_item_with_unit(uuid,integer,numeric,numeric,boolean,numeric,text,text,text)'),
  ('public.save_qb_matrix_preparation_item_with_weight(uuid,integer,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
+ ('public.save_qb_matrix_delivery_item_with_weight_v1(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight_v2(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_preparation_item(uuid,integer,numeric,boolean,text,text)'),
  ('public.save_qb_matrix_delivery_item(uuid,integer,numeric,numeric,boolean,text,text)'),
@@ -271,6 +273,7 @@ with expected(signature) as (values
  ('public.save_qb_matrix_delivery_item_with_unit(uuid,integer,numeric,numeric,boolean,numeric,text,text,text)'),
  ('public.save_qb_matrix_preparation_item_with_weight(uuid,integer,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
+ ('public.save_qb_matrix_delivery_item_with_weight_v1(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight_v2(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_preparation_item(uuid,integer,numeric,boolean,text,text)'),
  ('public.save_qb_matrix_delivery_item(uuid,integer,numeric,numeric,boolean,text,text)'),
@@ -305,6 +308,7 @@ with expected(signature) as (values
  ('public.save_qb_matrix_delivery_item_with_unit(uuid,integer,numeric,numeric,boolean,numeric,text,text,text)'),
  ('public.save_qb_matrix_preparation_item_with_weight(uuid,integer,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
+ ('public.save_qb_matrix_delivery_item_with_weight_v1(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_delivery_item_with_weight_v2(uuid,integer,numeric,numeric,boolean,numeric,text,text)'),
  ('public.save_qb_matrix_preparation_item(uuid,integer,numeric,boolean,text,text)'),
  ('public.save_qb_matrix_delivery_item(uuid,integer,numeric,numeric,boolean,text,text)')
@@ -318,7 +322,7 @@ order by e.signature,dependent_object;
 --     when catalog metadata cannot establish a safe conclusion without rows.
 with required_migrations(version) as (values
  ('20260712090500'),('20260712090800'),('20260712090900'),('20260712091000'),
- ('20260723130000'),('20260723130100'),('20260723210100'),('20260724110000'),('20260725010500'),
+ ('20260723130000'),('20260723130100'),('20260723210100'),('20260724110000'),('20260725010000'),('20260725010500'),
  ('20260804010000'),('20260812010000'),('20260918010000'),('20260926010000'),('20260928010000'),
  ('20260929010000'),('20261002160000'),('20261007120000'),('20261007130000'),('20261027100000'),
  ('20261027120000'),('20261104100000')
@@ -444,7 +448,8 @@ with required_migrations(version) as (values
  ('public.save_qb_matrix_delivery_item_with_unit(uuid,integer,numeric,numeric,boolean,numeric,text,text,text)','save_qb_matrix_delivery_item_with_weight'),
  ('public.save_qb_matrix_preparation_item_with_weight(uuid,integer,numeric,boolean,numeric,text,text)','save_qb_matrix_preparation_item'),
  ('public.save_qb_matrix_delivery_item_with_weight(uuid,integer,numeric,numeric,boolean,numeric,text,text)','save_qb_matrix_delivery_item_with_weight_v2'),
- ('public.save_qb_matrix_delivery_item_with_weight_v2(uuid,integer,numeric,numeric,boolean,numeric,text,text)','save_qb_matrix_delivery_item')
+ ('public.save_qb_matrix_delivery_item_with_weight_v1(uuid,integer,numeric,numeric,boolean,numeric,text,text)','save_qb_matrix_delivery_item'),
+ ('public.save_qb_matrix_delivery_item_with_weight_v2(uuid,integer,numeric,numeric,boolean,numeric,text,text)','save_qb_matrix_delivery_item_with_weight_v1')
 ), function_state as (
  select e.signature,e.delegate_name,p.oid,p.prorettype,p.prosecdef,p.proconfig,l.lanname,p.prosrc,
         has_function_privilege('authenticated',p.oid,'execute') as auth_execute,

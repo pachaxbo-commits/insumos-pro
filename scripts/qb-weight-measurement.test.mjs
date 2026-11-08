@@ -30,6 +30,7 @@ assert.equal(normalizeReferenceCost(95,
   { dimensionId: weightDimension, conversionFactorToBase: 1 }), null);
 
 const migration = await readFile(new URL("../supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql", import.meta.url), "utf8");
+const preflight = await readFile(new URL("./production-close/qb-measurement-snapshot-preflight.sql", import.meta.url), "utf8");
 assert.match(migration, /actual_weight_value/);
 assert.match(migration, /actual_weight_factor_to_kg/);
 assert.match(migration, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
@@ -41,6 +42,16 @@ assert.doesNotMatch(migration, /drop trigger if exists align_qb_receipt_weight_p
 assert.match(migration, /v_presentation\.base_unit_id is distinct from new\.base_unit_id/);
 assert.match(migration, /new\.base_quantity-round\(new\.requested_quantity\*v_presentation\.conversion_factor_to_base,6\)/);
 assert.match(migration, /Existing receipt rows are intentionally not backfilled/i);
+
+// Production's real delegated delivery chain is v2 -> v1 -> base RPC.
+// Keep the read-only preflight contract aligned so an extra compatibility
+// wrapper is not misreported as a migration blocker.
+assert.match(preflight, /save_qb_matrix_delivery_item_with_weight_v1\(uuid,integer,numeric,numeric,boolean,numeric,text,text\)/);
+assert.match(preflight, /save_qb_matrix_delivery_item_with_weight_v2\(uuid,integer,numeric,numeric,boolean,numeric,text,text\)','save_qb_matrix_delivery_item_with_weight_v1'/);
+assert.match(preflight, /save_qb_matrix_delivery_item_with_weight_v1\(uuid,integer,numeric,numeric,boolean,numeric,text,text\)','save_qb_matrix_delivery_item'/);
+assert.match(preflight, /has_function_privilege\('anon',p\.oid,'execute'\)/);
+assert.match(preflight, /x\.grantee=0 and x\.privilege_type='EXECUTE'/);
+assert.match(preflight, /20260725010000/);
 
 const actions = await readFile(new URL("../src/lib/operational-matrix/actions.ts", import.meta.url), "utf8");
 assert.match(actions, /p_actual_weight_value: parsed\.data\.actualWeightValue/);

@@ -15,6 +15,6 @@ Este preflight es una consulta de catálogo para revisar, sin cambios, la compat
 - `INCOMPATIBLE`: se informa el objeto y la diferencia observada; no aplicar la migración.
 - `NO VERIFICABLE`: el objeto ya parece parcialmente aplicado, falta metadato, o el catálogo por sí solo no permite afirmar seguridad. Se necesita revisar el resultado antes de decidir.
 
-La matriz requiere las migraciones predecesoras registradas y que `20261107100000` todavía no figure aplicada. Verifica firmas, delegación de RPC, `SECURITY DEFINER`, `search_path`, permisos efectivos a nivel de tabla, vista, columna y función, orden y tipos de columnas de vistas, columnas base, dependencias directas, triggers y restricciones. No lee filas de clientes, pedidos, compras, Recibos, movimientos ni productos.
+La matriz requiere las migraciones predecesoras registradas y que `20261107100000` todavía no figure aplicada. Verifica firmas, delegación de RPC, `SECURITY DEFINER`, `search_path`, permisos efectivos a nivel de tabla, vista, columna y función, orden y tipos de columnas de vistas, columnas base, dependencias directas, triggers y restricciones. La cadena de entrega contempla `save_qb_matrix_delivery_item_with_weight_v2 → save_qb_matrix_delivery_item_with_weight_v1 → save_qb_matrix_delivery_item`, y valida cada función y sus permisos, incluido `PUBLIC`. No lee filas de clientes, pedidos, compras, Recibos, movimientos ni productos.
 
 Este archivo no aplica migraciones, no ejecuta RPC de negocio y no cambia datos ni configuración.
