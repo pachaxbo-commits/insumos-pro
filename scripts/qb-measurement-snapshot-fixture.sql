@@ -119,10 +119,10 @@ create or replace function public.save_qb_matrix_preparation_origin_with_unit(
 ) returns jsonb language plpgsql as $$
 declare v_order_item uuid := $1; v_weight numeric := $5; v_row public.qb_order_preparation_items%rowtype;
 begin
-  insert into public.qb_order_preparation_items(order_item_id,actual_weight_kg,display_unit_id,prepared_quantity,preparation_check,notes,row_version)
+  insert into public.qb_order_preparation_items(order_item_id,actual_weight_kg,display_unit_id,actual_quantity,preparation_check,notes,row_version)
   values(v_order_item,v_weight,$6,$3,$4,$7,1)
   on conflict(order_item_id) do update set actual_weight_kg=excluded.actual_weight_kg,
-    display_unit_id=excluded.display_unit_id,prepared_quantity=excluded.prepared_quantity,
+    display_unit_id=excluded.display_unit_id,actual_quantity=excluded.actual_quantity,
     preparation_check=excluded.preparation_check,notes=excluded.notes,row_version=public.qb_order_preparation_items.row_version+1
   returning * into v_row;
   return jsonb_build_object('replayed',false,'row_version',v_row.row_version);
