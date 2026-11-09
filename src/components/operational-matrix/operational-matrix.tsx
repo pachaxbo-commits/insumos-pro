@@ -33,6 +33,7 @@ import {
   preparedQuantityAfterCheck,
   updateDeliveryChecks,
 } from "@/lib/operational-matrix/line-state";
+import { coveragePresentation } from "@/lib/operational-matrix/coverage-presentation";
 import {
   originDistributionIsResolved,
   originDistributionMatches,
@@ -134,6 +135,51 @@ function groupStatus(group: MatrixCustomerGroup) {
     return "En preparación";
   }
   return "Pendiente de preparación";
+}
+
+function lineCoverage(line: MatrixLine, phase: "preparacion" | "entrega") {
+  return comparePreparationCoverage({
+    requestedBaseQuantity: line.requestedBaseQuantity,
+    preparedBaseQuantity:
+      phase === "preparacion"
+        ? line.preparedBaseQuantity
+        : line.deliveredBaseQuantity,
+    requestedConversionValid: line.requestedConversionValid,
+  });
+}
+
+function CoverageStatus({
+  line,
+  phase,
+  compact = false,
+}: {
+  line: MatrixLine;
+  phase: "preparacion" | "entrega";
+  compact?: boolean;
+}) {
+  const coverage = lineCoverage(line, phase);
+  const presentation = coveragePresentation({
+    status: coverage.status,
+    missingBaseQuantity: coverage.status === "short" ? coverage.missingBaseQuantity : undefined,
+    excessBaseQuantity: coverage.status === "over" ? coverage.excessBaseQuantity : undefined,
+    baseUnitSymbol: line.baseUnitSymbol,
+  });
+  const tone =
+    coverage.status === "complete"
+      ? "border-2 border-emerald-600 bg-emerald-50 text-emerald-900"
+      : coverage.status === "short"
+        ? "border-2 border-rose-600 bg-rose-50 text-rose-900"
+        : "border-2 border-amber-500 bg-amber-50 text-amber-950";
+
+  return (
+    <span
+      role="status"
+      aria-label={`${phase === "preparacion" ? "Preparación" : "Entrega"}: ${presentation.label}`}
+      className={`inline-flex max-w-full items-center justify-center rounded-full px-2 py-0.5 font-bold leading-tight ${tone} ${compact ? "text-[10px]" : "text-xs"}`}
+    >
+      {presentation.label}
+    </span>
+  );
 }
 
 function orderFormStatus(order: MatrixOrder) {
@@ -379,10 +425,25 @@ export function OperationalMatrix({
   const [remotePending, setRemotePending] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
   const matrixScrollRef = useRef<HTMLDivElement>(null);
+  const customerHeaderRowRef = useRef<HTMLTableRowElement>(null);
+  const [customerHeaderHeight, setCustomerHeaderHeight] = useState(68);
   const dirty = useRef(new Set<string>());
   const preparationQuantityEdited = useRef(new Set<string>());
   const preparationSaveQueues = useRef(new Map<string, Promise<void>>());
   const deliverySaveQueues = useRef(new Map<string, Promise<void>>());
+
+  useEffect(() => {
+    const row = customerHeaderRowRef.current;
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const nextHeight = Math.ceil(row.getBoundingClientRect().height);
+      if (nextHeight > 0) setCustomerHeaderHeight((current) =>
+        current === nextHeight ? current : nextHeight,
+      );
+    });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [data.orders.length, stage, viewMode]);
   const customerGroups = useMemo(() => {
     const groups = new Map<string, MatrixCustomerGroup>();
     for (const order of orders) {
@@ -1380,6 +1441,9 @@ export function OperationalMatrix({
                                   ) : (
                                     <p role="alert" className="text-[11px] font-medium text-amber-800">Conversión física no verificable; revisar la parametrización antes de usar equivalencias.</p>
                                   )}
+                                  {stage === "preparacion" || stage === "entrega" ? (
+                                    <div className="mt-1"><CoverageStatus line={line} phase={stage} /></div>
+                                  ) : null}
                                 </div>
                                 {stage === "pedido" && canAdmin ? <Button size="xs" variant="outline" onClick={() => void correctGroupedRequest([line])}>Corregir</Button> : null}
                               </div>
@@ -1526,7 +1590,7 @@ export function OperationalMatrix({
         >
           <table className="w-max min-w-full border-separate border-spacing-0 text-[10px] sm:text-xs">
             <thead>
-              <tr>
+              <tr ref={customerHeaderRowRef}>
                 <th
                   rowSpan={2}
                   className="sticky left-0 top-0 z-50 w-9 min-w-9 border-b border-r bg-slate-100 px-1 py-1.5 text-center"
@@ -1552,7 +1616,7 @@ export function OperationalMatrix({
                       key={group.id}
                       data-customer-group={groupDomId(group.id)}
                       colSpan={headers.length}
-                      className={`sticky top-0 z-40 h-[68px] border-b border-r px-2 py-1 text-left ${customerDividerClass(focused)} ${
+                      className={`sticky top-0 z-40 min-h-[68px] border-b border-r px-2 py-1 text-left ${customerDividerClass(focused)} ${
                         focused
                           ? "border-b-sky-500 border-r-sky-500 bg-sky-100 ring-2 ring-inset ring-sky-500"
                           : "bg-slate-100"
@@ -1572,6 +1636,28 @@ export function OperationalMatrix({
                           <span className="mt-1 inline-flex rounded-full border border-slate-300 bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold text-slate-700">
                             {groupStatus(group)}
                           </span>
+                          {stage === "entrega" ? (
+                            <span className="mt-1 flex max-w-full flex-wrap gap-1">
+                              {group.orders.map((order) => (
+                                <span key={order.id} className="inline-flex items-center gap-1 rounded-full border bg-white px-1.5 py-0.5">
+                                  <span className="max-w-28 truncate text-[10px] font-semibold" title={order.reference}>{order.reference}</span>
+                                  {order.deliveryStatus === "confirmado" ? (
+                                    <span role="status" className="rounded-full border border-emerald-600 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-900">Entregado</span>
+                                  ) : actionableOrders([order], new Set([order.id]), "confirm").length ? (
+                                    <Button
+                                      type="button"
+                                      size="xs"
+                                      className="h-6 px-2 text-[10px]"
+                                      disabled={Boolean(actionPending)}
+                                      onClick={() => void actionForOrders([order], group.customerName + " · " + order.reference, order.id, "confirm")}
+                                    >
+                                      {actionPending === `${order.id}:confirm` ? "Confirmando…" : "Confirmar"}
+                                    </Button>
+                                  ) : <span className="text-[10px] text-muted-foreground">No listo</span>}
+                                </span>
+                              ))}
+                            </span>
+                          ) : null}
                           {group.generalNotes ? (
                             <span
                               className="mt-1 block max-w-64 truncate text-[10px] font-semibold text-amber-800"
@@ -1637,7 +1723,8 @@ export function OperationalMatrix({
                   headers.map((header, index) => (
                     <th
                       key={`${group.id}:${header}`}
-                      className={`sticky top-[68px] z-40 min-w-[68px] border-b border-r px-1.5 py-1 text-center font-semibold ${
+                      style={{ top: customerHeaderHeight }}
+                      className={`sticky z-40 min-w-[68px] border-b border-r px-1.5 py-1 text-center font-semibold ${
                         index === 0 ? customerDividerClass(group.id === focusedCustomerId) : ""
                       } ${
                         group.id === focusedCustomerId
@@ -2032,7 +2119,7 @@ function DecimalInput({
   return (
     <Input
       aria-label={label}
-      className={`h-7 min-w-24 text-right text-xs font-semibold ${
+      className={`h-8 min-w-24 text-right text-sm font-semibold ${
         attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
       }`}
       type="text"
@@ -2120,7 +2207,7 @@ function MeasuredQuantityEditor({
   return (
     <div className="grid min-w-40 grid-cols-2 items-start gap-2">
       <div className="min-w-0">
-        <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
+        <span className="mb-0.5 block text-left text-xs font-semibold text-slate-700">
           {quantityLabel}
         </span>
         <QuantityEditor
@@ -2137,7 +2224,7 @@ function MeasuredQuantityEditor({
         />
       </div>
       <div className="min-w-0">
-        <span className="mb-0.5 block text-left text-[9px] font-medium text-muted-foreground">
+        <span className="mb-0.5 block text-left text-xs font-semibold text-slate-700">
           Peso real (opcional)
         </span>
         <div className="flex items-center gap-1">
@@ -2157,7 +2244,7 @@ function MeasuredQuantityEditor({
           />
           <select
             aria-label={`Unidad de ${label.toLowerCase()}`}
-            className="h-7 rounded-md border border-input bg-background px-1 text-[11px] font-semibold"
+            className="h-8 rounded-md border-2 border-slate-400 bg-background px-1.5 text-xs font-bold"
             value={selectedWeightUnit?.id ?? ""}
             disabled={disabled || weightUnits.length === 0}
             onChange={(event) => setWeightUnitId(event.target.value)}
@@ -2318,7 +2405,7 @@ function QuantityEditor({
           title={quantityUnits.length < 2
             ? "La unidad queda guardada; no hay conversiones adicionales configuradas."
             : "La unidad elegida queda guardada para preparación o entrega."}
-          className="h-7 max-w-28 rounded-md border border-input bg-background px-1 text-[11px] font-semibold uppercase"
+          className="h-8 max-w-28 rounded-md border-2 border-slate-400 bg-background px-1.5 text-xs font-bold uppercase"
           value={selectedUnit.id}
           disabled={disabled}
           onChange={(event) => onUnitChange(event.target.value)}
@@ -2330,7 +2417,7 @@ function QuantityEditor({
         </select>
       </div>
       {selectedUnit.id !== "original" ? (
-        <span className="mt-1 block text-[9px] text-muted-foreground">
+        <span className="mt-1 block text-[11px] font-medium text-slate-700">
           Equivale a {formatQuantity(value ?? 0)} {unitLabel} del pedido
         </span>
       ) : null}
@@ -2571,7 +2658,7 @@ function DesktopOrderCells(props: CellProps) {
           </span>
         </td>
         <td style={cellStyle} className={cellClass}>
-          <div className="flex flex-col items-center gap-1">
+          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "preparacion").status === "complete" ? "border-2 border-emerald-600 bg-emerald-50/80" : lineCoverage(line, "preparacion").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : "border-2 border-amber-500 bg-amber-50/80"}`}>
             <CheckEditor
               label={`Preparación verificada ${line.productName}`}
               checked={line.preparationCheck}
@@ -2579,6 +2666,7 @@ function DesktopOrderCells(props: CellProps) {
               onChange={(checked) => onChange({ preparationCheck: checked })}
               onBlur={onSavePreparation}
             />
+            <CoverageStatus line={line} phase="preparacion" compact />
             {!line.preparationCheck && line.preparedQuantity <= 0.000001 ? (
               <Button
                 size="xs"
@@ -2668,17 +2756,16 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
-          <CheckEditor
-            label={
-              line.preparationCheck
-                ? `Check de Inventario ${line.productName}`
-                : `Check de Entrega faltante ${line.productName}`
-            }
-            checked={hasDeliveryCheck(line)}
-            disabled={deliveryDisabled}
-            onChange={onToggleMissingDeliveryCheck}
-            onBlur={onSaveMissingDeliveryCheck}
-          />
+          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "entrega").status === "complete" ? "border-2 border-emerald-600 bg-emerald-50/80" : lineCoverage(line, "entrega").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : "border-2 border-amber-500 bg-amber-50/80"}`}>
+            <CheckEditor
+              label={`Verificación física de Entrega ${line.productName}`}
+              checked={hasDeliveryCheck(line)}
+              disabled={deliveryDisabled}
+              onChange={onToggleMissingDeliveryCheck}
+              onBlur={onSaveMissingDeliveryCheck}
+            />
+            <CoverageStatus line={line} phase="entrega" compact />
+          </div>
         </td>
         <td style={cellStyle} className={cellClass}>
           <PreparedMeasurementDisplay
@@ -2760,8 +2847,8 @@ function DesktopOrderCells(props: CellProps) {
       </>
     );
   }
-  const differs =
-    Math.abs(line.requestedQuantity - line.deliveredQuantity) > 0.000001;
+  const deliveredCoverage = lineCoverage(line, "entrega");
+  const differs = deliveredCoverage.status !== "complete";
   return (
     <>
       <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
@@ -2771,13 +2858,13 @@ function DesktopOrderCells(props: CellProps) {
         style={cellStyle}
         className={`${cellClass} ${differs ? "text-amber-700" : "text-emerald-700"}`}
       >
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex flex-col items-center gap-1">
           {differs ? (
             <AlertTriangle className="size-3" />
           ) : (
             <Check className="size-3" />
           )}
-          {differs ? "Diferencia" : "Completo"}
+          <CoverageStatus line={line} phase="entrega" compact />
         </span>
       </td>
       <td style={cellStyle} className={`${cellClass} font-semibold`}>

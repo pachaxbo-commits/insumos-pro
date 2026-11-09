@@ -201,7 +201,7 @@ assert.match(
   matrix,
   /return line\.deliveryCheck/,
 );
-assert.match(matrix, /Check de Entrega faltante/);
+assert.match(matrix, /Verificación física de Entrega/);
 assert.match(
   matrix,
   /disabled=\{deliveryDisabled\}/,
