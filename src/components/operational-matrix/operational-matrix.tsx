@@ -41,7 +41,7 @@ import {
 import {
   classifySameDayDeliverySourceAction,
   confirmMatrixDeliveryAction,
-  correctMatrixRequestAction,
+  correctGroupedMatrixRequestAction,
   reopenMatrixDeliveryAction,
   reorderMatrixOrdersAction,
   saveMatrixDeliveryAction,
@@ -996,23 +996,20 @@ export function OperationalMatrix({
     const reason = window.prompt("Motivo de corrección") ?? "";
     if (reason.trim().length < 3) return;
     const distributed = distributeValue(groupedLines, value);
-    const results = await Promise.all(
-      groupedLines.map(async (line, index) => ({
-        result: await correctMatrixRequestAction({
-          orderItemId: line.orderItemId,
-          expectedVersion: line.requestedVersion,
-          requestedQuantity: distributed[index],
-          reason,
-          idempotencyKey: idempotencyKey("request"),
-        }),
+    const result = await correctGroupedMatrixRequestAction({
+      changes: groupedLines.map((line, index) => ({
+        orderItemId: line.orderItemId,
+        expectedVersion: line.requestedVersion,
+        requestedQuantity: distributed[index],
       })),
-    );
-    const failed = results.find(({ result }) => !result.success);
+      reason,
+      idempotencyKey: idempotencyKey("request-group"),
+    });
     setMessage(
-      failed?.result.message ??
+      result.message ??
         `Cantidad actualizada en ${groupedLines.length} pedido${groupedLines.length === 1 ? "" : "s"}.`,
     );
-    router.refresh();
+    if (result.success) router.refresh();
   };
 
   const moveCustomer = async (index: number, delta: number) => {

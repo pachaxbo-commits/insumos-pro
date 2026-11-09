@@ -245,6 +245,24 @@ export async function correctMatrixRequestAction(input: unknown) {
   }, ["administrador"]);
 }
 
+export async function correctGroupedMatrixRequestAction(input: unknown) {
+  const parsed = z.object({
+    changes: z.array(z.object({
+      orderItemId: id,
+      expectedVersion: z.number().int().min(0),
+      requestedQuantity: z.number().finite().positive(),
+    })).min(1).max(30),
+    reason: z.string().min(3).max(500),
+    idempotencyKey: key,
+  }).safeParse(input);
+  if (!parsed.success) return { success: false, message: "Correccion invalida." };
+  return rpc("admin_update_qb_requested_quantities", {
+    p_changes: parsed.data.changes,
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  }, ["administrador"]);
+}
+
 export async function reorderMatrixOrdersAction(input: unknown) {
   const parsed = z.object({
     operationalDate: z.string().date(),
