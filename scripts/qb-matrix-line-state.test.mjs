@@ -19,6 +19,10 @@ function deliveryLine(overrides = {}) {
     preparationCheck: true,
     preparedQuantity: 18,
     preparedBaseQuantity: 18,
+    requestedBaseQuantity: requested,
+    originPlanConfirmed: false,
+    plannedPendingBaseQuantity: 0,
+    plannedExternalBaseQuantity: 0,
     preparationDisplayUnitId: "unit-kg",
     preparationActualWeightKg: 18,
     deliveredAt: null,
@@ -28,6 +32,11 @@ function deliveryLine(overrides = {}) {
     deliveryDisplayUnitId: null,
     deliveryActualWeightKg: null,
     deliveryCheck: false,
+    deliveryWarehouseBaseQuantity: 0,
+    deliveryPendingBaseQuantity: 0,
+    deliveryExternalBaseQuantity: 0,
+    deliveryReviewBaseQuantity: 0,
+    deliverySourceConfirmed: false,
     ...overrides,
   };
 }
@@ -119,6 +128,44 @@ test("zero external preparation, edited quantity, and confirmed delivery are nev
   assert.equal(result[0].deliveredQuantity, 0);
   assert.equal(result[1].deliveredQuantity, 17);
   assert.equal(result[2].deliveredQuantity, 17);
+});
+
+test("a confirmed preparation origin plan becomes an editable delivery suggestion without checking delivery", () => {
+  const planned = deliveryLine({
+    preparedQuantity: 20,
+    preparedBaseQuantity: 20,
+    requestedQuantity: 25,
+    requestedBaseQuantity: 25,
+    originPlanConfirmed: true,
+    plannedPendingBaseQuantity: 3,
+    plannedExternalBaseQuantity: 2,
+  });
+  const [suggested] = applyAutomaticDeliveryValues([planned]);
+  assert.equal(suggested.deliveredQuantity, 25);
+  assert.equal(suggested.deliveredBaseQuantity, 25);
+  assert.equal(suggested.deliveryWarehouseBaseQuantity, 20);
+  assert.equal(suggested.deliveryPendingBaseQuantity, 3);
+  assert.equal(suggested.deliveryExternalBaseQuantity, 2);
+  assert.equal(suggested.deliveryReviewBaseQuantity, 0);
+  assert.equal(suggested.deliverySourceConfirmed, true);
+  assert.equal(suggested.deliveryCheck, false);
+});
+
+test("a zero-warehouse external preparation can suggest the planned delivery without auto-checking it", () => {
+  const planned = deliveryLine({
+    preparedQuantity: 0,
+    preparedBaseQuantity: 0,
+    requestedQuantity: 10,
+    requestedBaseQuantity: 10,
+    originPlanConfirmed: true,
+    plannedExternalBaseQuantity: 10,
+  });
+  const [suggested] = applyAutomaticDeliveryValues([planned]);
+  assert.equal(suggested.deliveredQuantity, 10);
+  assert.equal(suggested.deliveryExternalBaseQuantity, 10);
+  assert.equal(suggested.deliveryWarehouseBaseQuantity, 0);
+  assert.equal(suggested.deliverySourceConfirmed, true);
+  assert.equal(suggested.deliveryCheck, false);
 });
 
 test("delivery checks can be checked and unchecked for only the selected grouped items", () => {

@@ -102,19 +102,36 @@ do $$ begin
   end if;
 end $$;
 
--- A stale version is rejected without changing quantity, check, marker, or note.
+-- The existing preparation RPC persists a line-level source plan independently
+-- from its commercially measured quantity and check state.
+select public.save_qb_matrix_preparation_with_check_reset(
+ '61000000-0000-0000-0000-000000000001',5,8,true,null,null,null,false,'original','manual quantity',12,0,0,true,false,false,'prep-origin-plan-key'
+);
+do $$ begin
+  if not exists(select 1 from public.qb_order_preparation_items
+    where order_item_id='61000000-0000-0000-0000-000000000001'
+      and actual_quantity=8 and actual_base_quantity=8 and preparation_check
+      and origin_plan_confirmed and planned_pending_base_quantity=12
+      and planned_external_base_quantity=0 and planned_review_base_quantity=0
+      and row_version=6 and notes='manual quantity') then
+    raise exception 'FAIL: preparation origin plan was not persisted with the line, quantity, check and note intact';
+  end if;
+end $$;
+
+-- A stale version is rejected without changing quantity, check, plan, or note.
 do $$ begin
   begin
     perform public.save_qb_matrix_preparation_with_check_reset(
-      '61000000-0000-0000-0000-000000000001',3,20,true,null,null,null,false,'original','stale',0,0,0,false,true,false,'check-reset-stale-key'
+      '61000000-0000-0000-0000-000000000001',5,20,true,null,null,null,false,'original','stale',0,0,0,false,true,false,'check-reset-stale-key'
     );
     raise exception 'FAIL: stale preparation version was accepted';
   exception when sqlstate '40001' then null;
   end;
   if not exists(select 1 from public.qb_order_preparation_items
     where order_item_id='61000000-0000-0000-0000-000000000001'
-      and actual_quantity=8 and not preparation_check and auto_completed_before_quantity is null
-      and row_version=5 and notes='manual quantity') then
+      and actual_quantity=8 and preparation_check and auto_completed_before_quantity is null
+      and row_version=6 and origin_plan_confirmed and planned_pending_base_quantity=12
+      and notes='manual quantity') then
     raise exception 'FAIL: stale request partially changed preparation state';
   end if;
 end $$;

@@ -96,6 +96,11 @@ type DeliverySuggestionLine = {
   preparationCheck: boolean;
   preparedQuantity: number;
   preparedBaseQuantity: number;
+  requestedQuantity: number;
+  requestedBaseQuantity: number;
+  originPlanConfirmed: boolean;
+  plannedPendingBaseQuantity: number;
+  plannedExternalBaseQuantity: number;
   preparationDisplayUnitId: string | null;
   preparationActualWeightKg: number | null;
   deliveredAt: string | null;
@@ -105,6 +110,11 @@ type DeliverySuggestionLine = {
   deliveryDisplayUnitId: string | null;
   deliveryActualWeightKg: number | null;
   deliveryCheck: boolean;
+  deliveryWarehouseBaseQuantity: number;
+  deliveryPendingBaseQuantity: number;
+  deliveryExternalBaseQuantity: number;
+  deliveryReviewBaseQuantity: number;
+  deliverySourceConfirmed: boolean;
 };
 
 export function preparedQuantityAfterCheck(
@@ -130,20 +140,31 @@ export function applyAutomaticDeliveryValues<T extends DeliverySuggestionLine>(
     const isNewDelivery =
       line.preparedAt !== null &&
       line.preparationCheck &&
-      line.preparedQuantity > QUANTITY_EPSILON &&
+      (line.preparedQuantity > QUANTITY_EPSILON || line.originPlanConfirmed) &&
       line.deliveredAt === null &&
       line.deliveryVersion === 0 &&
       line.deliveredQuantity <= QUANTITY_EPSILON &&
       !line.deliveryCheck;
     if (!isNewDelivery) return line;
 
+    const usePreparationPlan = line.originPlanConfirmed &&
+      Math.abs(
+        line.preparedBaseQuantity + line.plannedPendingBaseQuantity +
+        line.plannedExternalBaseQuantity - line.requestedBaseQuantity,
+      ) <= QUANTITY_EPSILON;
+
     return {
       ...line,
-      deliveredQuantity: line.preparedQuantity,
-      deliveredBaseQuantity: line.preparedBaseQuantity,
+      deliveredQuantity: usePreparationPlan ? line.requestedQuantity : line.preparedQuantity,
+      deliveredBaseQuantity: usePreparationPlan ? line.requestedBaseQuantity : line.preparedBaseQuantity,
       deliveryDisplayUnitId: line.preparationDisplayUnitId,
       deliveryActualWeightKg:
         line.deliveryActualWeightKg ?? line.preparationActualWeightKg,
+      deliveryWarehouseBaseQuantity: usePreparationPlan ? line.preparedBaseQuantity : 0,
+      deliveryPendingBaseQuantity: usePreparationPlan ? line.plannedPendingBaseQuantity : 0,
+      deliveryExternalBaseQuantity: usePreparationPlan ? line.plannedExternalBaseQuantity : 0,
+      deliveryReviewBaseQuantity: usePreparationPlan ? 0 : line.preparedBaseQuantity,
+      deliverySourceConfirmed: usePreparationPlan,
       // This is only a starting suggestion. The deliverer still has to verify it.
       deliveryCheck: false,
     };

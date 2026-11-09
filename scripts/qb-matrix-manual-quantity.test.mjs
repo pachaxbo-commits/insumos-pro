@@ -43,10 +43,13 @@ test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
   );
 });
 
-test("editar cantidades conserva los checks; aceptar una sugerencia requiere reverificación", () => {
+test("editar cantidades exige reverificación y los orígenes se planifican en preparación", () => {
   assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+preparedQuantity: value \?\? 0,/);
   assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+deliveredQuantity: value \?\? 0,/);
-  assert.match(matrix, /StockSplitSuggestion[^\n]*preparationCheck: false/);
+  assert.match(matrix, /function PreparationOriginPlanEditor/);
+  assert.match(matrix, /pendingBaseQuantity: line\.plannedPendingBaseQuantity/);
+  assert.match(matrix, /externalBaseQuantity: line\.plannedExternalBaseQuantity/);
+  assert.match(matrix, /preparationCheck: false/);
   assert.doesNotMatch(matrix, /preparationCheck: value !== null/);
   assert.doesNotMatch(matrix, /deliveryCheck: value !== null/);
 });
@@ -75,7 +78,7 @@ test("resumen separa cantidad y peso reales entregados", () => {
     /"SOLICITADO",\s+"CHECK",\s+"CANT\. REAL ENTREGADA",\s+"PESO REAL ENTREGADO"/,
   );
   assert.match(matrix, /formatQuantity\(line\.deliveredQuantity\)/);
-  assert.match(matrix, /formatQuantity\(line\.deliveryActualWeightKg\)/);
+  assert.match(matrix, /actualWeightLabel\(line\.deliveryActualWeightValue, line\.deliveryActualWeightUnitSymbol, line\.deliveryActualWeightKg\)/);
 });
 
 test("las observaciones conservan los espacios escritos", () => {
@@ -90,11 +93,11 @@ test("las observaciones conservan los espacios escritos", () => {
 test("editar solamente el peso conserva la cantidad y el check", () => {
   assert.match(
     matrix,
-    /onWeightChange=\{\(value\) =>\s+onChange\(\{\s+preparationActualWeightKg: value,\s+\}\)/,
+    /function measuredWeightPatch\([\s\S]*preparationActualWeightValue: snapshot\?\.value[\s\S]*preparationActualWeightUnitId: snapshot\?\.unitId[\s\S]*preparationActualWeightFactorToKg: snapshot\?\.factorToKg[\s\S]*preparationActualWeightKg: snapshot\?\.kilograms/,
   );
   assert.match(
     matrix,
-    /onWeightChange=\{\(value\) =>\s+onChange\(\{\s+deliveryActualWeightKg: value,\s+\}\)/,
+    /deliveryActualWeightValue: snapshot\?\.value[\s\S]*deliveryActualWeightUnitId: snapshot\?\.unitId[\s\S]*deliveryActualWeightFactorToKg: snapshot\?\.factorToKg[\s\S]*deliveryActualWeightKg: snapshot\?\.kilograms/,
   );
 });
 
@@ -111,10 +114,11 @@ test("la cantidad preparada agrupada se distribuye entre pedidos", () => {
 });
 
 test("marcar preparación completa lo solicitado y permite verificar cero explícitamente", () => {
-  assert.match(matrix, /preparedQuantityAfterCheck\(/);
+  assert.match(matrix, /preparationCheckTransition\(/);
+  assert.match(matrix, /capacity\.allocatedBaseQuantity/);
   assert.match(matrix, /const verifyZeroPreparation =/);
   assert.match(matrix, /preserveZeroPreparation: true/);
-  assert.match(actions, /rpc\("save_qb_matrix_preparation_origin_with_unit",\s*\{/);
+  assert.match(actions, /rpc\("save_qb_matrix_preparation_with_check_reset",\s*\{/);
   assert.match(actions, /p_prepared_quantity:\s*parsed\.data\.preparedQuantity/);
   assert.match(actions, /p_preparation_check:\s*parsed\.data\.preparationCheck/);
   assert.match(actions, /p_display_unit_id:\s*parsed\.data\.displayUnitId/);

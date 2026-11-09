@@ -106,7 +106,7 @@ test("delivery exposes preparation review separately from physical delivery and 
   assert.match(matrix, /Entrega física verificada/);
   assert.match(matrix, /Confirmar entrega · \{order\.reference\}/);
   assert.match(matrix, /id="delivery-order-select"[\s\S]*Confirmar · \{selectedConfirmationOrder\.reference\}/);
-  assert.match(matrix, /Origen · \{selectedConfirmationOrder\.customerName\} · \{selectedConfirmationOrder\.reference\}/);
+  assert.match(matrix, /Origen por producto · \{selectedConfirmationOrder\.customerName\} · \{selectedConfirmationOrder\.reference\}/);
   assert.match(matrix, /orderFormStatus\(order\)/);
   assert.match(matrix, /aria-label="Origen de la mercadería · este pedido"|Origen de la mercadería · este pedido/);
   assert.match(matrix, /checked=\{stage === "preparacion" \? line\.preparationCheck : line\.deliveryCheck\}/);
