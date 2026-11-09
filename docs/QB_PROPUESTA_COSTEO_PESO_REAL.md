@@ -2,9 +2,11 @@
 
 ## Estado
 
-Propuesta funcional para revisión. No cambia precios, costos, datos históricos ni
-la configuración de productos. No debe implementarse hasta aprobar la base de
-costo y las unidades de referencia de cada producto afectado.
+La estructura y el cálculo están implementados localmente en la migración
+`20261109110000_qb_explicit_receipt_cost_basis.sql`; no se aplicaron a
+Production. Las reglas no se precargan a partir de precios ni de datos
+históricos: Administración debe parametrizar cada presentación aprobada.
+Los recibos existentes no se recalculan.
 
 ## Regla central
 
@@ -19,27 +21,38 @@ La existencia de un peso medido nunca decide por sí sola cuál regla aplicar.
 
 ## Configuración propuesta
 
-Una regla explícita por producto, con una sustitución opcional por presentación:
+Una regla explícita por producto y presentación de Pedido (la asociación de
+unidad permitida identifica la presentación):
 
 - `cost_basis`: `commercial_unit` o `actual_weight`.
 - `cost_reference_unit_id`: unidad en que se expresa el costo.
 - `cost_reference_factor_to_base`: snapshot del factor aprobado, validado contra
   la unidad y su dimensión al guardar.
-- `cost_source` y referencia de compra/recepción para rastrear el valor usado.
-- Fecha de vigencia y responsable de cada cambio.
+- Snapshot de la tarifa configurada, unidad y factor para rastrear el valor
+  usado en cada nueva línea de recibo.
+- Fecha, responsable y versión para auditar cambios concurrentes.
 
 Para `actual_weight`, la unidad de referencia debe pertenecer a la dimensión de
-peso y el sistema requiere una medición original válida o un peso normalizado
-fiable. Para `commercial_unit`, la unidad del costo debe coincidir con la unidad
-comercial o existir una conversión producto-presentación explícita y vigente.
+peso normalizada a KG y el sistema requiere una medición original válida o un
+peso normalizado fiable. Para `commercial_unit`, la tarifa se aplica a la
+cantidad y unidad comercial capturadas para esa presentación; no se infiere una
+conversión física.
 Una asociación `legacy_dump`, una coincidencia de nombre o un factor de otra
 dimensión nunca califica como equivalencia.
 
-El servidor debe comprobar la regla vigente, la unidad, dimensión, factor,
-medición y cantidad entregada dentro de la operación que crea el borrador del
-Recibo. Debe guardar en cada línea el snapshot de la base seleccionada, tarifa,
-unidad/factor, peso original y normalizado, cantidad comercial y resultado del
-costo. El cliente no calcula ni puede cambiar la regla enviando otro payload.
+El servidor comprueba la regla vigente, unidad, dimensión, factor, medición y
+cantidad entregada al crear cada línea. Guarda el snapshot de la base
+seleccionada, tarifa, unidad/factor, peso original y normalizado, cantidad
+comercial y resultado del costo. Administración guarda reglas mediante una RPC
+con autorización, auditoría y versión esperada. El cliente no decide ni puede
+alterar el resultado enviando otro payload. Si el costo por peso no tiene
+medición, o la referencia no es válida, el costo queda pendiente y se bloquea
+la emisión del recibo hasta resolverlo.
+
+La interfaz no copia automáticamente `products.purchase_price`, precios de
+venta, costos FIFO ni costos de compras a las nuevas reglas. Esos campos
+existentes continúan atendiendo sus flujos actuales; el costo configurado se
+activa únicamente cuando Administración lo parametriza para una presentación.
 
 ## Presentación en Recibos
 
@@ -65,16 +78,23 @@ el costo citado corresponde a una arroba física con esa equivalencia. Hasta
 entonces, la normalización de ese costo se mantiene bloqueada y el usuario debe
 revisar la unidad de referencia.
 
-## Aprobaciones necesarias antes de implementar el costeo
+## Decisiones comerciales todavía pendientes
 
 1. Confirmar por producto/presentación qué costos se determinan por peso real y
    cuáles por unidad comercial.
 2. Confirmar la unidad y equivalencia de cada tarifa de costo. En particular,
    aclarar la referencia `legacy_6` de Papa Holandesa.
-3. Confirmar quién puede editar estas reglas y qué roles pueden ver cada
-   snapshot unitario.
-4. Aprobar el tratamiento operativo cuando falte el dato requerido: impedir la
-   emisión del Recibo hasta completar peso/referencia, sin cambiar la venta.
+3. Para Papa Holandesa, confirmar qué representa la tarifa de Bs 95 asociada a
+   `legacy_6`, a qué presentación de pedido aplica y si existe una equivalencia
+   física aprobada. El sistema no la trata como arroba ni asigna 11,25 KG.
+4. Confirmar por presentación si el costo debe calcularse con la regla nueva o
+   continuar con el flujo existente de costo manual/FIFO/compra. No hay
+   parametrización automática para productos actuales.
 
-La migración y los cálculos deben quedar en un cambio separado, con contrato
-PostgreSQL y pruebas de recibos, antes de habilitar esta regla en Production.
+## Validación y publicación
+
+La migración tiene un contrato PostgreSQL local sobre una base aislada y pruebas
+de cálculos decimales. No está aplicada en Production. Antes de publicarla aún
+se necesita restaurar y probar el esquema completo vigente, instalar la
+migración en QA conectado a la aplicación y completar un recorrido autenticado
+de creación/cálculo/emisión de recibos.

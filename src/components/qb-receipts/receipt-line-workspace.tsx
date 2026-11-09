@@ -5,6 +5,7 @@ import Link from "next/link";
 import Decimal from "decimal.js";
 import { setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
 import { resolveReceiptCostSnapshot } from "@/lib/qb-receipts/cost-source";
+import { calculateIndependentSale } from "@/lib/qb-receipts/cost-basis";
 import { calculateReceiptLine, sumReceiptAmounts } from "@/lib/qb-receipts/line-pricing";
 import {
   formatReceiptActualWeight,
@@ -51,9 +52,32 @@ function linePreview(line: QbReceiptLine, draft: Draft, issuedSnapshot = false) 
       profitTotal: line.profitTotalPrecise,
     };
   }
-  if (draft.cost.trim() === "") return null;
+  if (line.costCalculationStatus === "pending_weight") return null;
+  if (line.costCalculationStatus === "pending_quantity" || line.costCalculationStatus === "invalid_reference") return null;
+  const costValue = line.costRuleId ? line.costBaseUnitSnapshot : draft.cost;
+  if (costValue === null || String(costValue).trim() === "") return null;
   try {
-    return calculateReceiptLine({ quantity: line.deliveredBaseQuantity, costBaseUnit: draft.cost,
+    if (line.salePriceIndependentSnapshot && line.inputMode !== "amount_bs") {
+      if (line.basePriceUsed === null) return null;
+      const quantity = new Decimal(line.deliveredBaseQuantity);
+      const sale = calculateIndependentSale({ quantity: quantity.toString(), baseUnitPrice: line.basePriceUsed,
+        factorsPercent: [draft.distance, draft.exigency, draft.weather, draft.extraordinary] });
+      const saleTotal = new Decimal(sale.saleTotalPrecise);
+      const costTotal = line.costRuleId && line.costTotalPrecise !== null
+        ? new Decimal(line.costTotalPrecise)
+        : quantity.times(costValue);
+      const profitTotal = saleTotal.minus(costTotal);
+      return {
+        factorTotalPct: sale.factorTotalPercent,
+        costBaseUnit: String(costValue),
+        unitSale: quantity.isZero() ? "0" : saleTotal.div(quantity).toString(),
+        unitProfit: quantity.isZero() ? "0" : profitTotal.div(quantity).toString(),
+        costTotal: costTotal.toString(),
+        saleTotal: saleTotal.toString(),
+        profitTotal: profitTotal.toString(),
+      };
+    }
+    return calculateReceiptLine({ quantity: line.deliveredBaseQuantity, costBaseUnit: costValue,
       factors: { distance: draft.distance, exigency: draft.exigency,
         weather: draft.weather, extraordinary: draft.extraordinary },
       fixedSaleTotal: line.inputMode === "amount_bs" ? line.fixedLineAmount : null });
@@ -189,7 +213,10 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                           <td className="px-1 py-1">{input("weather")}</td>
                           <td className="px-1 py-1">{input("extraordinary")}</td>
                           <td className="px-2 py-1.5 text-right">{preview ? `${preview.factorTotalPct}%` : "—"}</td>
-                          <td className="px-1 py-1">{input("cost", "w-24")}</td>
+                          <td className="px-2 py-1.5">{line.costRuleId ? <span className="whitespace-nowrap text-xs">
+                            {money(line.costRateSnapshot)} Bs / {line.costBasisSnapshot === "actual_weight" ? line.costReferenceUnitSymbolSnapshot : line.commercialUnitLabelSnapshot}
+                            {line.costCalculationStatus !== "ready" && <span className="ml-1 text-amber-700">· {line.costCalculationStatus === "pending_weight" ? "Peso pendiente" : "Revisar regla"}</span>}
+                          </span> : input("cost", "w-24")}</td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">
                             {line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}
                           </td>
@@ -308,7 +335,9 @@ function SupervisorReceiptLineWorkspace({ receipt, emitAction, emitPending, void
               <td className="px-3 py-2"><span className="font-medium">{line.productName}</span><span className="block text-xs text-muted-foreground">{line.baseUnitSymbol}</span></td>
               <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{commercialQuantity(line)}</td>
               <td className="whitespace-nowrap px-3 py-2">{actualWeight(line)}</td>
-              <td className="px-3 py-2">{editable ? <input aria-label={`Costo base unitario ${line.productName}`} type="number" min="0" step="0.00000001" value={costs[line.id] ?? ""} onChange={(event) => setCosts((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-32 rounded border bg-white px-2 text-right" /> : money(line.costBaseUnitSnapshot)}</td>
+              <td className="px-3 py-2">{line.costRuleId
+                ? <span className="whitespace-nowrap text-xs">{money(line.costRateSnapshot)} Bs / {line.costBasisSnapshot === "actual_weight" ? line.costReferenceUnitSymbolSnapshot : line.commercialUnitLabelSnapshot}</span>
+                : editable ? <input aria-label={`Costo base unitario ${line.productName}`} type="number" min="0" step="0.00000001" value={costs[line.id] ?? ""} onChange={(event) => setCosts((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-32 rounded border bg-white px-2 text-right" /> : money(line.costBaseUnitSnapshot)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{line.finalUnitPrice === null ? "Pendiente" : money(line.finalUnitPrice)}</td>
               <td className="px-3 py-2 text-right font-semibold tabular-nums">{line.lineTotal === null ? "Pendiente" : money(line.lineTotal)}</td>
               <td className="px-3 py-2">{editable ? <input aria-label={`Observación ${line.productName}`} value={notes[line.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-40 rounded border bg-white px-2" /> : line.notes || "—"}</td>

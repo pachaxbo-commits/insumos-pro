@@ -101,7 +101,14 @@ type ReceiptLineRow = {
   sale_total_precise?: number | string | null;
   profit_unit_precise?: number | string | null;
   profit_total_precise?: number | string | null;
-  cost_source?: "manual" | "purchase_snapshot" | "fifo" | null;
+  cost_source?: "manual" | "purchase_snapshot" | "fifo" | "configured_rule" | null;
+  cost_rule_id?: string | null;
+  cost_basis_snapshot?: "commercial_unit" | "actual_weight" | null;
+  cost_rate_snapshot?: number | string | null;
+  cost_reference_unit_symbol_snapshot?: string | null;
+  cost_quantity_snapshot?: number | string | null;
+  cost_calculation_status?: QbReceiptLine["costCalculationStatus"];
+  sale_price_independent_snapshot?: boolean;
   distance_factor_percent?: number | string;
   exigency_factor_percent?: number | string;
   weather_factor_percent?: number | string;
@@ -183,6 +190,13 @@ type SupervisorReceiptLineRow = {
   actual_weight_unit_symbol?: string | null;
   commercial_quantity_snapshot?: number | string | null;
   commercial_unit_label_snapshot?: string | null;
+  cost_basis_snapshot?: QbReceiptLine["costBasisSnapshot"];
+  cost_rate_snapshot?: number | string | null;
+  cost_reference_unit_symbol_snapshot?: string | null;
+  cost_quantity_snapshot?: number | string | null;
+  cost_calculation_status?: QbReceiptLine["costCalculationStatus"];
+  sale_price_independent_snapshot?: boolean;
+  cost_rule_id?: string | null;
 };
 
 type SupervisorReceiptOrderRow = {
@@ -611,6 +625,13 @@ async function getReceiptParts(
         profitUnitPrecise: nullableDecimalText(row.profit_unit_precise),
         profitTotalPrecise: nullableDecimalText(row.profit_total_precise),
         costSource: row.cost_source ?? null,
+        costRuleId: row.cost_rule_id ?? null,
+        costBasisSnapshot: row.cost_basis_snapshot ?? null,
+        costRateSnapshot: nullableDecimalText(row.cost_rate_snapshot),
+        costReferenceUnitSymbolSnapshot: row.cost_reference_unit_symbol_snapshot ?? null,
+        costQuantitySnapshot: nullableDecimalText(row.cost_quantity_snapshot),
+        costCalculationStatus: row.cost_calculation_status ?? "unconfigured",
+        salePriceIndependentSnapshot: row.sale_price_independent_snapshot ?? false,
         distanceFactorPercent: numberValue(row.distance_factor_percent),
         exigencyFactorPercent: numberValue(row.exigency_factor_percent),
         weatherFactorPercent: numberValue(row.weather_factor_percent),
@@ -804,6 +825,13 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     profitUnitPrecise: null,
     profitTotalPrecise: null,
     costSource: null,
+    costRuleId: row.cost_rule_id ?? null,
+    costBasisSnapshot: row.cost_basis_snapshot ?? null,
+    costRateSnapshot: nullableDecimalText(row.cost_rate_snapshot),
+    costReferenceUnitSymbolSnapshot: row.cost_reference_unit_symbol_snapshot ?? null,
+    costQuantitySnapshot: nullableDecimalText(row.cost_quantity_snapshot),
+    costCalculationStatus: row.cost_calculation_status ?? "unconfigured",
+    salePriceIndependentSnapshot: row.sale_price_independent_snapshot ?? false,
     distanceFactorPercent: 0,
     exigencyFactorPercent: 0,
     weatherFactorPercent: 0,
@@ -829,7 +857,7 @@ async function getSupervisorQbReceiptsData(
   const ids = headers.map((row) => row.id);
   const [lineResult, orderResult, eventResult, pendingGroups] = await Promise.all([
     ids.length ? supabase.from("qb_supervisor_receipt_lines")
-      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol,commercial_quantity_snapshot,commercial_unit_label_snapshot")
+      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol,commercial_quantity_snapshot,commercial_unit_label_snapshot,cost_basis_snapshot,cost_rate_snapshot,cost_reference_unit_symbol_snapshot,cost_quantity_snapshot,cost_calculation_status,sale_price_independent_snapshot,cost_rule_id")
       .in("receipt_id", ids).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     ids.length ? supabase.from("qb_supervisor_receipt_orders")
       .select("id,receipt_id,order_id,inclusion_status,order_reference")

@@ -52,7 +52,14 @@ export type QbReceiptLine = {
   saleTotalPrecise: string | null;
   profitUnitPrecise: string | null;
   profitTotalPrecise: string | null;
-  costSource: "manual" | "purchase_snapshot" | "fifo" | null;
+  costSource: "manual" | "purchase_snapshot" | "fifo" | "configured_rule" | null;
+  costRuleId: string | null;
+  costBasisSnapshot: "commercial_unit" | "actual_weight" | null;
+  costRateSnapshot: string | null;
+  costReferenceUnitSymbolSnapshot: string | null;
+  costQuantitySnapshot: string | null;
+  costCalculationStatus: "unconfigured" | "ready" | "pending_weight" | "pending_quantity" | "invalid_reference" | "manual_override";
+  salePriceIndependentSnapshot: boolean;
   distanceFactorPercent: number;
   exigencyFactorPercent: number;
   weatherFactorPercent: number;

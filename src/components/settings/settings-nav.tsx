@@ -4,6 +4,7 @@ const sections = [
   { href: "/configuracion", title: "General" },
   { href: "/configuracion/productos", title: "Agregar / Configurar productos" },
   { href: "/configuracion/parametrizacion", title: "Parametrización" },
+  { href: "/configuracion/costos", title: "Base de costo" },
   { href: "/configuracion/datos-prueba", title: "Datos de prueba" },
 ];
 
