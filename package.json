@@ -25,7 +25,8 @@
     "test:receipt-market": "node --conditions=react-server --experimental-strip-types scripts/qb-receipt-market-enhancements.test.mjs",
     "test:owner-observations": "node --experimental-strip-types scripts/qb-owner-observations.test.mjs",
     "test:november-config-security": "node --experimental-strip-types scripts/qb-november-config-security.test.mjs",
-    "test:kardex-attribution": "node --experimental-strip-types scripts/qb-kardex-attribution.test.mjs"
+    "test:kardex-attribution": "node --experimental-strip-types scripts/qb-kardex-attribution.test.mjs",
+    "test:preparation-origin-plan": "node --experimental-strip-types scripts/qb-preparation-origin-plan.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
