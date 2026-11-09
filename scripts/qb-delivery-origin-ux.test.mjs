@@ -55,7 +55,10 @@ assert.match(matrix, /<OperationalDateFilter[\s\S]*currentDate=\{operationalDate
 assert.match(matrix, /<PendingWorkBar[\s\S]*isAllPending=\{false\}/);
 assert.match(matrix, /role="tablist"[\s\S]*aria-label="Etapa operativa"/);
 assert.match(matrix, /role="group" aria-label="Vista operativa"/);
-assert.match(matrix, /<details className="rounded-md border border-slate-200 bg-white px-2\.5 py-1\.5">[\s\S]*Origen requerido · seleccionar/);
+assert.match(matrix, /<fieldset className=\{`rounded-lg border p-3 \$\{isMissingSelection/);
+assert.match(selector, /Origen de entrega/);
+assert.match(selector, /Origen de la mercadería · este pedido/);
+assert.match(selector, /Selecciona el origen real para poder confirmar/);
 assert.doesNotMatch(matrix, /function stageGuidance\(|Confirmación de Inventario|Confirmación del Entregador/);
 assert.doesNotMatch(matrix, /max-h-\[calc\(100vh-12rem\)\]/);
 assert.match(matrix, /overflow-x-auto overflow-y-clip overscroll-x-contain/);

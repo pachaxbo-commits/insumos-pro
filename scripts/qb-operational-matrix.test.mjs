@@ -159,7 +159,10 @@ assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
 assert.match(matrix, /applyAutomaticDeliveryValues,/);
 assert.match(lineState, /export function applyAutomaticDeliveryValues/);
-assert.match(lineState, /deliveredQuantity: line\.preparedQuantity/);
+assert.match(
+  lineState,
+  /deliveredQuantity: usePreparationPlan \? line\.requestedQuantity : line\.preparedQuantity/,
+);
 assert.match(lineState, /deliveryCheck: false/);
 assert.doesNotMatch(matrixData, /rawDeliveryWeight <= 0\.000001/);
 assert.match(matrixData, /const deliveryActualWeightKg = rawDeliveryWeight;/);
