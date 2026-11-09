@@ -14,6 +14,10 @@ type PreparationLineForWrite = Pick<
   | "preparedQuantity"
   | "preparationCheck"
   | "preparationNote"
+  | "originPlanConfirmed"
+  | "plannedPendingBaseQuantity"
+  | "plannedExternalBaseQuantity"
+  | "plannedReviewBaseQuantity"
 >;
 
 export type PreparationWriteParams = {
@@ -21,9 +25,16 @@ export type PreparationWriteParams = {
   p_expected_version: number;
   p_prepared_quantity: number;
   p_preparation_check: boolean;
-  p_actual_weight_kg: number | null;
+  p_actual_weight_value: null;
+  p_actual_weight_unit_id: null;
+  p_actual_weight_factor_to_kg: null;
+  p_clear_actual_weight: false;
   p_display_unit_id: string;
   p_note: string;
+  p_pending_base_quantity: number;
+  p_external_base_quantity: number;
+  p_review_base_quantity: number;
+  p_origin_plan_confirmed: boolean;
 };
 
 export type PreparationWritePlan =
@@ -42,6 +53,13 @@ export function planMarketPreparationWrite(
     return {
       ok: false,
       message: "Esta fila agrupa varios pedidos y no se puede guardar en bloque. Edita cada línea desde Preparación para conservar su check, nota y versión.",
+    };
+  }
+
+  if (controlsActualWeight) {
+    return {
+      ok: false,
+      message: "El peso real no se puede editar desde la Hoja de Provisión. Ábrelo en Preparación para conservar la unidad original del peso.",
     };
   }
 
@@ -88,17 +106,20 @@ export function planMarketPreparationWrite(
     params: {
       p_order_item_id: line.orderItemId,
       p_expected_version: line.preparationVersion,
-      // Updating a measured weight must not change the commercial quantity.
-      // Clearing weight preserves both the amount and the existing check.
-      p_prepared_quantity: controlsActualWeight
-        ? line.preparedQuantity
-        : (lineActual ?? line.preparedQuantity),
-      // The verification flag is independent: weighing a line never checks it.
+      // This sheet only edits commercial quantity. The weight snapshot is
+      // deliberately omitted and preserved by the snapshot-aware RPC.
+      p_prepared_quantity: lineActual ?? line.preparedQuantity,
       p_preparation_check: line.preparationCheck,
-      p_actual_weight_kg: controlsActualWeight ? lineActual : null,
+      p_actual_weight_value: null,
+      p_actual_weight_unit_id: null,
+      p_actual_weight_factor_to_kg: null,
+      p_clear_actual_weight: false,
       p_display_unit_id: displayUnitId,
-      // The RPC replaces this field, so always pass the captured note unchanged.
       p_note: line.preparationNote,
+      p_pending_base_quantity: line.plannedPendingBaseQuantity,
+      p_external_base_quantity: line.plannedExternalBaseQuantity,
+      p_review_base_quantity: line.plannedReviewBaseQuantity,
+      p_origin_plan_confirmed: line.originPlanConfirmed,
     },
   };
 }

@@ -1,0 +1,60 @@
+name: Measurement snapshot and physical unit SQL contract
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql"
+      - "supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql"
+      - "supabase/migrations/20260724110000_qb_matrix_actual_weight.sql"
+      - "supabase/migrations/20260725010000_qb_live_preparation_delivery_flow.sql"
+      - "supabase/migrations/20260725010500_qb_delivery_can_complete_unreviewed_lines.sql"
+      - "supabase/migrations/20260926010000_qb_client_trial_readiness.sql"
+      - "supabase/migrations/20261027100000_qb_explicit_delivery_origin.sql"
+      - "supabase/migrations/20261027120000_qb_review_zero_preparation_quantity.sql"
+      - "supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql"
+      - "scripts/qb-measurement-snapshot-*.sql"
+      - "scripts/production-close/qb-measurement-snapshot-preflight.sql"
+      - "scripts/qb-measurement-preflight-contract.test.mjs"
+      - "scripts/qb-weight-measurement.test.mjs"
+      - "scripts/install-qb-measurement-predecessor-rpcs.mjs"
+      - ".github/workflows/measurement-snapshot.yml"
+
+jobs:
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated
+          POSTGRES_DB: qb_contract
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qb_contract"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify Production preflight delivery chain
+        run: node scripts/qb-measurement-preflight-contract.test.mjs
+      - name: Build isolated predecessor schema
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-fixture.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Install exact predecessor RPC definitions and grants
+        run: node scripts/install-qb-measurement-predecessor-rpcs.mjs
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Apply the incremental migration
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Assert original unit persistence, receipts, and dimensional guard
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-measurement-snapshot-assert.sql
+        env:
+          DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract

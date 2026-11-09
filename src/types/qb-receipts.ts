@@ -19,6 +19,11 @@ export type QbReceiptLine = {
   productCode: string | null;
   categoryName: string | null;
   deliveredBaseQuantity: number;
+  actualWeightValue: number | null;
+  actualWeightUnitSymbol: string | null;
+  actualWeightKilograms: number | null;
+  commercialQuantitySnapshot: number | null;
+  commercialUnitLabelSnapshot: string | null;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
   inputMode: "quantity" | "amount_bs";

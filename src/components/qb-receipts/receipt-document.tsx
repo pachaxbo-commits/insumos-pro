@@ -1,5 +1,10 @@
 import { QbInsumosBrand } from "@/components/branding/qb-insumos-brand";
 import { formatBoliviaDate } from "@/lib/date-time";
+import {
+  formatReceiptActualWeight,
+  formatReceiptCommercialQuantity,
+  formatReceiptDeliveredBaseQuantity,
+} from "@/lib/qb-receipts/line-display";
 import type { QbReceipt } from "@/types/qb-receipts";
 
 type ReceiptDocumentVariant = "admin" | "customer-export" | "delivery-note";
@@ -11,12 +16,6 @@ function money(value: number | string | null) {
     currency: "BOB",
     maximumFractionDigits: 2,
   }).format(Number(value));
-}
-
-function quantity(value: number) {
-  return new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(
-    value,
-  );
 }
 
 export function ReceiptDocument({
@@ -146,13 +145,15 @@ export function ReceiptDocument({
 
       <div data-qb-receipt-table className="overflow-x-auto py-5">
         <table
-          className={`w-full text-sm ${isExternalDocument ? "min-w-[480px]" : "min-w-[760px]"}`}
+          className={`w-full text-sm ${isExternalDocument ? "min-w-[760px]" : "min-w-[1040px]"}`}
         >
           <thead>
             <tr className="border-b text-left text-xs uppercase text-muted-foreground">
               <th className="py-2 pr-3">Producto</th>
               {!isExternalDocument ? <th className="py-2 pr-3">Pedido</th> : null}
-              <th className="py-2 pr-3 text-right">Cantidad</th>
+              <th className="py-2 pr-3 text-right">Cantidad comercial</th>
+              <th className="py-2 pr-3 text-right">Entregado (base)</th>
+              <th className="py-2 pr-3 text-right">Peso real</th>
               {!isExternalDocument ? (
                 <th className="py-2 pr-3 text-right">{receipt.pricingMode === "line_cost_markup" ? "Costo base/UD" : "Venta antes de ajustes"}</th>
               ) : null}
@@ -179,7 +180,13 @@ export function ReceiptDocument({
                   </td>
                 ) : null}
                 <td className="py-3 pr-3 text-right">
-                  {quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}
+                  {formatReceiptCommercialQuantity(line)}
+                </td>
+                <td className="py-3 pr-3 text-right">
+                  {formatReceiptDeliveredBaseQuantity(line)}
+                </td>
+                <td className="py-3 pr-3 text-right">
+                  {formatReceiptActualWeight(line)}
                 </td>
                 {!isExternalDocument ? (
                   <td className="py-3 pr-3 text-right">

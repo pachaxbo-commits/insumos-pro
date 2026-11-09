@@ -153,6 +153,8 @@ test("the generated file is a real printable Excel workbook", async () => {
   assert.match(printStyles, /size:\s*landscape/);
   assert.match(printStyles, /break-before:\s*page/);
   assert.match(tableView, /slice\(index \* 2, index \* 2 \+ 2\)/, "Browser print divides customers into readable horizontal pages");
+  assert.match(tableView, /Peso real entregado/);
+  assert.match(tableView, /Peso preparado/);
 });
 
 test("the provision sheet keeps fully delivered, partial, and pending lines for all customers", async () => {
@@ -258,6 +260,8 @@ test("delivery display units never relabel an original commercial quantity witho
         deliveredQuantity: 8,
         deliveredBaseQuantity: 3.40194,
         deliveryActualWeightKg: 3.40194,
+        deliveryActualWeightValue: 7.5,
+        deliveryActualWeightUnitSymbol: "LB",
         deliveryDisplayUnitId: "unit:kg",
         quantityUnits: [
           { id: "original", label: "UNIDAD", sourceQuantity: 1 },
@@ -307,6 +311,8 @@ test("delivery display units never relabel an original commercial quantity witho
   assert.equal(pepperLine.deliveredDisplayQuantity, 8);
   assert.equal(pepperLine.deliveredUnitLabel, "UNIDAD");
   assert.equal(pepperLine.deliveredWeightKg, 3.40194);
+  assert.equal(pepperLine.deliveredWeightValue, 7.5);
+  assert.equal(pepperLine.deliveredWeightUnitSymbol, "LB");
   assert.match(pepperLine.deliveredDisplayWarning, /cantidad comercial original/);
 
   assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
@@ -338,7 +344,7 @@ test("delivery display units never relabel an original commercial quantity witho
     assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
     const pepperRow = model.rows.findIndex((row) => row.productId === "pepper") + 6;
     assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Entregado 8 UNIDAD/);
-    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real 3,402 kg/);
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real entregado 7,5 LB/);
   });
 });
 
@@ -349,22 +355,30 @@ test("the Excel actual measure column keeps measured weight separate and labels 
     lines: [{
       ...line("weight-order", "UNIDAD", 8, "weight"),
       controlsActualWeight: true,
-      preparationActualWeightKg: 12,
+      preparationActualWeightKg: 5.443108,
+      preparationActualWeightValue: 12,
+      preparationActualWeightUnitSymbol: "LB",
       requestedBaseQuantity: 8,
       preparedBaseQuantity: 8,
       deliveredQuantity: 8,
       deliveredBaseQuantity: 8,
       deliveryActualWeightKg: 12,
+      deliveryActualWeightValue: 26.455471,
+      deliveryActualWeightUnitSymbol: "LB",
     }],
   };
   const model = buildMarketSheetModel(weightData);
+  assert.equal(model.rows[0]?.lines[0]?.actualWeightValue, 12);
+  assert.equal(model.rows[0]?.lines[0]?.actualWeightUnitSymbol, "LB");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await buildMarketWorkbook(model));
   const sheet = workbook.getWorksheet("Provisiones");
   assert.ok(sheet);
   assert.equal(sheet.getCell("K4").value, "PESO / CANT. REAL");
-  assert.equal(sheet.getCell("K6").value, 12);
-  assert.equal(sheet.getCell("K6").numFmt, '0.###" kg"');
+  assert.equal(sheet.getCell("K6").value, 5.443108);
+  assert.equal(sheet.getCell("K6").numFmt, '0.###" KG normalizado"');
+  assert.match(String(sheet.getCell("D6").value), /Peso preparado 12 LB/);
+  assert.match(String(sheet.getCell("D6").value), /Peso real entregado 26,455 LB/);
   assert.equal(sheet.getCell("L6").value, null);
 });
 
@@ -383,6 +397,10 @@ test("provision edits reject grouped writes and preserve a single preparation li
     preparedQuantity: 8,
     preparationCheck: false,
     preparationNote: "Revisar tamaño antes de salir",
+    originPlanConfirmed: false,
+    plannedPendingBaseQuantity: 0,
+    plannedExternalBaseQuantity: 0,
+    plannedReviewBaseQuantity: 0,
   };
 
   for (const count of [2, 3]) {
@@ -396,15 +414,8 @@ test("provision edits reject grouped writes and preserve a single preparation li
   }
 
   const weightPlan = planMarketPreparationWrite([writeLine], true, 2.75);
-  assert.equal(weightPlan.ok, true);
-  if (weightPlan.ok) {
-    assert.equal(weightPlan.params.p_order_item_id, writeLine.orderItemId);
-    assert.equal(weightPlan.params.p_expected_version, 7, "the database RPC can reject a stale version");
-    assert.equal(weightPlan.params.p_prepared_quantity, 8, "weight edits do not rewrite the commercial quantity");
-    assert.equal(weightPlan.params.p_preparation_check, false, "recording weight does not mark preparation checked");
-    assert.equal(weightPlan.params.p_actual_weight_kg, 2.75);
-    assert.equal(weightPlan.params.p_note, "Revisar tamaño antes de salir");
-  }
+  assert.equal(weightPlan.ok, false, "the Provision sheet cannot write weight without the original selected unit");
+  if (!weightPlan.ok) assert.match(weightPlan.message, /unidad original del peso/);
 
   const selectedDisplayUnit = "presentation:00000000-0000-4000-8000-000000000111";
   const selectedUnitLine = {
@@ -415,10 +426,15 @@ test("provision edits reject grouped writes and preserve a single preparation li
       { id: selectedDisplayUnit, label: "CAJA", sourceQuantity: 4 },
     ],
   };
-  const selectedUnitPlan = planMarketPreparationWrite([selectedUnitLine], true, 2.75);
+  const selectedUnitPlan = planMarketPreparationWrite([selectedUnitLine], false, 8);
   assert.equal(selectedUnitPlan.ok, true);
   if (selectedUnitPlan.ok) {
     assert.equal(selectedUnitPlan.params.p_display_unit_id, selectedDisplayUnit);
+    assert.equal(selectedUnitPlan.params.p_actual_weight_value, null);
+    assert.equal(selectedUnitPlan.params.p_clear_actual_weight, false);
+    assert.equal(selectedUnitPlan.params.p_origin_plan_confirmed, writeLine.originPlanConfirmed);
+    assert.equal(selectedUnitPlan.params.p_pending_base_quantity, writeLine.plannedPendingBaseQuantity);
+    assert.equal(selectedUnitPlan.params.p_note, "Revisar tamaño antes de salir");
 
     const reloadedModel = buildMarketSheetModel({
       ...data,
@@ -429,6 +445,8 @@ test("provision edits reject grouped writes and preserve a single preparation li
         quantityUnits: selectedUnitLine.quantityUnits,
         controlsActualWeight: true,
         preparationActualWeightKg: 2.75,
+        preparationActualWeightValue: 12,
+        preparationActualWeightUnitSymbol: "LB",
         requestedBaseQuantity: 8,
         preparedQuantity: writeLine.preparedQuantity,
         preparedBaseQuantity: 8,
@@ -446,7 +464,7 @@ test("provision edits reject grouped writes and preserve a single preparation li
   const invalidDisplayUnitPlan = planMarketPreparationWrite([{
     ...writeLine,
     preparationDisplayUnitId: "presentation:missing-from-current-options",
-  }], true, 2.75);
+  }], false, 8);
   assert.equal(invalidDisplayUnitPlan.ok, true);
   if (invalidDisplayUnitPlan.ok) assert.equal(invalidDisplayUnitPlan.params.p_display_unit_id, "original");
 
@@ -459,10 +477,14 @@ test("provision edits reject grouped writes and preserve a single preparation li
   ]);
   const matrixRpc = await read("supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql");
   assert.match(action, /planMarketPreparationWrite\(lines \?\? \[\], controlsActualWeight, actualValue\)/);
-  assert.match(action, /save_qb_matrix_preparation_item_with_unit/);
+  assert.match(action, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
   const actualAction = action.slice(action.indexOf("export async function updateMarketSheetProductActualAction"));
+  assert.ok(actualAction.indexOf("if (controlsActualWeight)") < actualAction.indexOf("supabase.rpc("), "weight writes are rejected server-side before RPC");
   assert.ok(actualAction.indexOf("planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue)") < actualAction.indexOf("supabase.rpc("), "The grouped-write policy runs before the only RPC call");
   assert.doesNotMatch(actualAction, /for\s*\(/, "The product summary action cannot partially loop over RPC writes");
+  assert.match(table, /row\.controlsActualWeight \? \(/);
+  assert.match(table, /Edita el peso y su unidad original desde Preparación/);
+  assert.match(table, /unidad original no registrada/);
   assert.match(table, /disabled=\{isSavingActual \|\| row\.unitReviewRequired \|\| row\.lines\.length > 1\}/);
   assert.match(table, /Fila agrupada: edita cada pedido desde Preparación/);
   assert.match(action, /\.\.\.plan\.params/);
@@ -488,7 +510,9 @@ test("receipt enhancements stay manual and do not alter order state", async () =
   assert.match(purchaseCostMigration, /dimension\.code = 'peso'/);
   assert.match(purchaseCostMigration, /no modifica pedidos, entregas, precios de venta ni inventario/i);
   assert.match(deliveryNote, /delivery-note/);
-  assert.match(deliveryNote, /line\.deliveredBaseQuantity/);
+  assert.match(deliveryNote, /formatReceiptCommercialQuantity\(line\)/);
+  assert.match(deliveryNote, /formatReceiptDeliveredBaseQuantity\(line\)/);
+  assert.match(deliveryNote, /formatReceiptActualWeight\(line\)/);
   assert.match(deliveryNote, /Documento sin precios/);
   assert.match(management, /function ReceiptCustomerSelector/);
   assert.match(management, /Buscar cliente\.\.\./);

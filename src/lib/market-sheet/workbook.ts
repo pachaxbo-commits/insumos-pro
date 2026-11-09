@@ -160,10 +160,20 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
             ? "Revisar conversión"
             : `${quantityText(line.pendingBaseQuantity)} ${item.unit}`;
           const delivered = `Entregado ${quantityText(line.deliveredDisplayQuantity)} ${line.deliveredUnitLabel}` +
-            (line.deliveredWeightKg === null ? "" : ` · Peso real ${quantityText(line.deliveredWeightKg)} kg`);
+            (line.deliveredWeightValue !== null && line.deliveredWeightUnitSymbol
+              ? ` · Peso real entregado ${quantityText(line.deliveredWeightValue)} ${line.deliveredWeightUnitSymbol}`
+              : line.deliveredWeightKg === null
+                ? ""
+                : ` · Peso real entregado ${quantityText(line.deliveredWeightKg)} KG (normalizado; unidad original no registrada)`);
+          const preparedWeight = line.actualWeightValue !== null && line.actualWeightUnitSymbol
+            ? `Peso preparado ${quantityText(line.actualWeightValue)} ${line.actualWeightUnitSymbol}`
+            : line.actualWeightKg === null
+              ? ""
+              : `Peso preparado ${quantityText(line.actualWeightKg)} KG (normalizado; unidad original no registrada)`;
           return [
             `Solicitado ${quantityText(line.requestedQuantity)} ${line.requestedUnitLabel}`,
             delivered,
+            preparedWeight,
             `Pendiente ${pending}`,
             line.deliveredDisplayWarning,
           ].filter(Boolean).join(" · ");
@@ -196,7 +206,7 @@ export async function buildMarketWorkbook(model: MarketSheetModel) {
       const realColumn = summaryStartColumn + 5;
       if (column >= summaryStartColumn) cell.numFmt = "0.###";
       if (column === realColumn && typeof cell.value === "number") {
-        const unit = item.controlsActualWeight ? "kg" : item.unit;
+        const unit = item.controlsActualWeight ? "KG normalizado" : item.unit;
         const escapedUnit = unit.replace(/"/g, '""');
         cell.numFmt = `0.###" ${escapedUnit}"`;
       }

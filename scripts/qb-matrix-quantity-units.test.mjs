@@ -141,9 +141,11 @@ test("la unidad elegida se envía, persiste y se recupera en ambas etapas", () =
   const migration = readFileSync("supabase/migrations/20260926010000_qb_client_trial_readiness.sql", "utf8");
   assert.match(matrix, /displayUnitId: line\.preparationDisplayUnitId/);
   assert.match(matrix, /displayUnitId: line\.deliveryDisplayUnitId/);
-  assert.match(actions, /rpc\("save_qb_matrix_preparation_origin_with_unit",\s*\{/);
-  assert.match(actions, /rpc\("save_qb_matrix_delivery_origin_with_unit",\s*\{/);
+  assert.match(actions, /rpc\("save_qb_matrix_preparation_origin_with_weight_snapshot",\s*\{/);
+  assert.match(actions, /rpc\("save_qb_matrix_delivery_origin_with_weight_snapshot",\s*\{/);
   assert.match(actions, /p_display_unit_id:\s*parsed\.data\.displayUnitId/);
+  assert.match(actions, /p_actual_weight_value:\s*parsed\.data\.actualWeightValue/);
+  assert.match(actions, /p_actual_weight_unit_id:\s*parsed\.data\.actualWeightUnitId/);
   assert.match(data, /actual_quantity, actual_base_quantity, display_unit_id/);
   assert.match(data, /delivered_base_quantity, display_unit_id/);
   assert.match(data, /preparationDisplayUnitId:\s*String\(prep\?\.display_unit_id \?\? "original"\)/);
