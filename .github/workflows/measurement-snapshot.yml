@@ -6,6 +6,13 @@ on:
       - "supabase/migrations/20261107100000_qb_measurement_snapshot_and_unit_guards.sql"
       - "supabase/migrations/20261108100000_qb_preparation_check_autofill_reset.sql"
       - "scripts/qb-preparation-check-reset-assert.sql"
+      - "scripts/qb-preparation-origin-plan.test.mjs"
+      - "scripts/qb-matrix-line-state.test.mjs"
+      - "src/lib/operational-matrix/preparation-origin-plan.ts"
+      - "src/lib/operational-matrix/line-state.ts"
+      - "src/components/operational-matrix/operational-matrix.tsx"
+      - "src/types/operational-matrix.ts"
+      - "package.json"
       - "supabase/migrations/20260723130100_qb_operational_matrix_workflows.sql"
       - "supabase/migrations/20260724110000_qb_matrix_actual_weight.sql"
       - "supabase/migrations/20260725010000_qb_live_preparation_delivery_flow.sql"
@@ -68,3 +75,7 @@ jobs:
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/qb-preparation-check-reset-assert.sql
         env:
           DATABASE_URL: postgresql://postgres:isolated@localhost:5432/qb_contract
+      - name: Test shared stock allocation and preparation origin UI contract
+        run: |
+          node --experimental-strip-types scripts/qb-preparation-origin-plan.test.mjs
+          node --experimental-strip-types scripts/qb-matrix-line-state.test.mjs
