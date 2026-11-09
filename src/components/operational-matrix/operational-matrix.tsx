@@ -4,8 +4,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Check,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -137,13 +135,11 @@ function groupStatus(group: MatrixCustomerGroup) {
   return "Pendiente de preparación";
 }
 
-function lineCoverage(line: MatrixLine, phase: "preparacion" | "entrega") {
+function lineCoverage(line: MatrixLine, phase: "preparacion" | "entrega" | "resumen") {
   return comparePreparationCoverage({
     requestedBaseQuantity: line.requestedBaseQuantity,
     preparedBaseQuantity:
-      phase === "preparacion"
-        ? line.preparedBaseQuantity
-        : line.deliveredBaseQuantity,
+      phase === "preparacion" ? line.preparedBaseQuantity : line.deliveredBaseQuantity,
     requestedConversionValid: line.requestedConversionValid,
   });
 }
@@ -152,32 +148,49 @@ function CoverageStatus({
   line,
   phase,
   compact = false,
+  operationalVerified,
+  deliveryState = "pending",
 }: {
   line: MatrixLine;
-  phase: "preparacion" | "entrega";
+  phase: "preparacion" | "entrega" | "resumen";
   compact?: boolean;
+  operationalVerified?: boolean;
+  deliveryState?: "confirmed" | "pending" | "mixed";
 }) {
   const coverage = lineCoverage(line, phase);
+  const verified = operationalVerified ?? (phase === "preparacion" ? line.preparationCheck : line.deliveryCheck);
   const presentation = coveragePresentation({
     status: coverage.status,
     missingBaseQuantity: coverage.status === "short" ? coverage.missingBaseQuantity : undefined,
     excessBaseQuantity: coverage.status === "over" ? coverage.excessBaseQuantity : undefined,
     baseUnitSymbol: line.baseUnitSymbol,
+    phase,
+    operationalVerified: verified,
+    deliveryState,
   });
-  const tone =
+  const quantityTone =
     coverage.status === "complete"
-      ? "border-2 border-emerald-600 bg-emerald-50 text-emerald-900"
+      ? "border border-slate-400 bg-slate-50 text-slate-800"
       : coverage.status === "short"
         ? "border-2 border-rose-600 bg-rose-50 text-rose-900"
         : "border-2 border-amber-500 bg-amber-50 text-amber-950";
+  const verificationTone = verified
+    ? "border border-sky-700 bg-sky-50 text-sky-950"
+    : "border border-amber-600 bg-amber-50 text-amber-950";
 
   return (
     <span
       role="status"
-      aria-label={`${phase === "preparacion" ? "Preparación" : "Entrega"}: ${presentation.label}`}
-      className={`inline-flex max-w-full items-center justify-center rounded-full px-2 py-0.5 font-bold leading-tight ${tone} ${compact ? "text-[10px]" : "text-xs"}`}
+      aria-label={`${presentation.quantityLabel}; ${presentation.verificationLabel}${presentation.deliveryLabel ? `; ${presentation.deliveryLabel}` : ""}`}
+      className={`inline-flex max-w-full flex-wrap items-center justify-center gap-1 leading-tight ${compact ? "text-[10px]" : "text-xs"}`}
     >
-      {presentation.label}
+      <span className={`rounded-full px-2 py-0.5 font-bold ${quantityTone}`}>{presentation.quantityLabel}</span>
+      <span className={`rounded-full px-2 py-0.5 font-semibold ${verificationTone}`}>{presentation.verificationLabel}</span>
+      {presentation.deliveryLabel ? (
+        <span className={`rounded-full border px-2 py-0.5 font-bold ${presentation.deliveryConfirmed ? "border-emerald-700 bg-emerald-100 text-emerald-950" : "border-slate-400 bg-slate-100 text-slate-800"}`}>
+          {presentation.deliveryLabel}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -1442,7 +1455,7 @@ export function OperationalMatrix({
                                     <p role="alert" className="text-[11px] font-medium text-amber-800">Conversión física no verificable; revisar la parametrización antes de usar equivalencias.</p>
                                   )}
                                   {stage === "preparacion" || stage === "entrega" ? (
-                                    <div className="mt-1"><CoverageStatus line={line} phase={stage} /></div>
+                                    <div className="mt-1"><CoverageStatus line={line} phase={stage} operationalVerified={stage === "preparacion" ? line.preparationCheck : line.deliveryCheck} deliveryState={order.deliveryStatus === "confirmado" ? "confirmed" : "pending"} /></div>
                                   ) : null}
                                 </div>
                                 {stage === "pedido" && canAdmin ? <Button size="xs" variant="outline" onClick={() => void correctGroupedRequest([line])}>Corregir</Button> : null}
@@ -1828,6 +1841,7 @@ export function OperationalMatrix({
                           <DesktopOrderCells
                             key={group.id}
                             line={line}
+                            deliveryState={group.orders.every((order) => order.deliveryStatus === "confirmado") ? "confirmed" : group.orders.some((order) => order.deliveryStatus === "confirmado") ? "mixed" : "pending"}
                             weightUnits={data.weightUnits}
                             stage={stage}
                             canAdmin={canAdmin}
@@ -1955,6 +1969,7 @@ export function OperationalMatrix({
 
 type CellProps = {
   line: MatrixLine;
+  deliveryState: "confirmed" | "pending" | "mixed";
   weightUnits: MatrixWeightUnit[];
   stage: MatrixStage;
   canAdmin: boolean;
@@ -2600,6 +2615,7 @@ function DesktopOrderCells(props: CellProps) {
     line,
     weightUnits,
     stage,
+    deliveryState,
     canAdmin,
     focused,
     editable,
@@ -2658,7 +2674,7 @@ function DesktopOrderCells(props: CellProps) {
           </span>
         </td>
         <td style={cellStyle} className={cellClass}>
-          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "preparacion").status === "complete" ? "border-2 border-emerald-600 bg-emerald-50/80" : lineCoverage(line, "preparacion").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : "border-2 border-amber-500 bg-amber-50/80"}`}>
+          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "preparacion").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : lineCoverage(line, "preparacion").status === "over" || lineCoverage(line, "preparacion").status === "unverified" ? "border-2 border-amber-500 bg-amber-50/80" : "border border-slate-300 bg-slate-50/80"}`}>
             <CheckEditor
               label={`Preparación verificada ${line.productName}`}
               checked={line.preparationCheck}
@@ -2666,7 +2682,7 @@ function DesktopOrderCells(props: CellProps) {
               onChange={(checked) => onChange({ preparationCheck: checked })}
               onBlur={onSavePreparation}
             />
-            <CoverageStatus line={line} phase="preparacion" compact />
+            <CoverageStatus line={line} phase="preparacion" compact operationalVerified={line.preparationCheck} />
             {!line.preparationCheck && line.preparedQuantity <= 0.000001 ? (
               <Button
                 size="xs"
@@ -2756,7 +2772,7 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
-          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "entrega").status === "complete" ? "border-2 border-emerald-600 bg-emerald-50/80" : lineCoverage(line, "entrega").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : "border-2 border-amber-500 bg-amber-50/80"}`}>
+          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "entrega").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : lineCoverage(line, "entrega").status === "over" || lineCoverage(line, "entrega").status === "unverified" ? "border-2 border-amber-500 bg-amber-50/80" : "border border-slate-300 bg-slate-50/80"}`}>
             <CheckEditor
               label={`Verificación física de Entrega ${line.productName}`}
               checked={hasDeliveryCheck(line)}
@@ -2764,7 +2780,7 @@ function DesktopOrderCells(props: CellProps) {
               onChange={onToggleMissingDeliveryCheck}
               onBlur={onSaveMissingDeliveryCheck}
             />
-            <CoverageStatus line={line} phase="entrega" compact />
+            <CoverageStatus line={line} phase="entrega" compact operationalVerified={hasDeliveryCheck(line)} deliveryState={deliveryState} />
           </div>
         </td>
         <td style={cellStyle} className={cellClass}>
@@ -2847,8 +2863,6 @@ function DesktopOrderCells(props: CellProps) {
       </>
     );
   }
-  const deliveredCoverage = lineCoverage(line, "entrega");
-  const differs = deliveredCoverage.status !== "complete";
   return (
     <>
       <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
@@ -2856,16 +2870,9 @@ function DesktopOrderCells(props: CellProps) {
       </td>
       <td
         style={cellStyle}
-        className={`${cellClass} ${differs ? "text-amber-700" : "text-emerald-700"}`}
+        className={cellClass}
       >
-        <span className="inline-flex flex-col items-center gap-1">
-          {differs ? (
-            <AlertTriangle className="size-3" />
-          ) : (
-            <Check className="size-3" />
-          )}
-          <CoverageStatus line={line} phase="entrega" compact />
-        </span>
+        <CoverageStatus line={line} phase="resumen" compact operationalVerified={hasDeliveryCheck(line)} deliveryState={deliveryState} />
       </td>
       <td style={cellStyle} className={`${cellClass} font-semibold`}>
         {formatQuantity(line.deliveredQuantity)}
