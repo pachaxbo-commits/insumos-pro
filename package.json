@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:matrix": "node scripts/qb-operational-matrix.test.mjs",
     "test:grouped-order-correction": "node scripts/qb-grouped-order-correction.test.mjs",
+    "test:post-preparation-order-edit": "node scripts/qb-post-preparation-order-edit.test.mjs",
     "test:matrix-line-state": "node --experimental-strip-types scripts/qb-matrix-line-state.test.mjs",
     "test:operational-status-presentation": "node --experimental-strip-types scripts/qb-operational-status-presentation.test.mjs",
     "test:form-scope": "node --experimental-strip-types scripts/qb-operational-form-scope.test.mjs",
@@ -62,6 +63,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

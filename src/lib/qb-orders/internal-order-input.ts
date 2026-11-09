@@ -79,6 +79,8 @@ export const internalOrderItemSchema = z
       productId: z
         .string({ error: "Selecciona un producto." })
         .uuid("Selecciona un producto."),
+      orderItemId: optionalUuid("La línea del pedido no es válida."),
+      expectedVersion: z.coerce.number().int().nonnegative().optional(),
       inputMode: z
         .literal("quantity", {
           error: "El pedido debe registrar una cantidad.",

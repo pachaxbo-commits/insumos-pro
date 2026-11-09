@@ -27,6 +27,7 @@ export type QbPreparationItem = {
 
 export type QbInternalOrderItem = {
   id: string;
+  rowVersion: number;
   productId: string;
   allowedUnitId: string;
   productName: string;

@@ -3,6 +3,8 @@ export type OrderDraftLine = {
   allowedUnitId: string;
   quantity: string;
   notes: string;
+  orderItemId?: string;
+  expectedVersion?: number;
 };
 
 export function serializeOrderItems(lines: OrderDraftLine[]) {
@@ -12,5 +14,9 @@ export function serializeOrderItems(lines: OrderDraftLine[]) {
     allowedUnitId: line.allowedUnitId || null,
     quantity: line.quantity.trim() ? Number(line.quantity) : null,
     notes: line.notes,
+    ...(line.orderItemId ? { orderItemId: line.orderItemId } : {}),
+    ...(line.expectedVersion !== undefined
+      ? { expectedVersion: line.expectedVersion }
+      : {}),
   })));
 }
