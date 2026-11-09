@@ -11,9 +11,11 @@ export function comparePreparationCoverage(input: {
   requestedBaseQuantity: number;
   preparedBaseQuantity: number;
   requestedConversionValid: boolean;
+  verified?: boolean;
 }): PreparationCoverage {
   const { requestedBaseQuantity, preparedBaseQuantity } = input;
   if (
+    input.verified === false ||
     !input.requestedConversionValid ||
     !Number.isFinite(requestedBaseQuantity) ||
     !Number.isFinite(preparedBaseQuantity) ||
@@ -45,7 +47,49 @@ type PreparationQuantityLine = {
   requestedQuantity: number;
   preparedQuantity: number;
   preparationCheck: boolean;
+  preparationAutoFillPreviousQuantity?: number | null;
 };
+
+export type PreparationCheckTransition = {
+  preparedQuantity: number;
+  previousQuantity: number | null;
+  autoFill: boolean;
+  resetAutoFill: boolean;
+};
+
+/** Track only quantities inserted by the check action; manual values are never cleared. */
+export function preparationCheckTransition(
+  line: PreparationQuantityLine,
+  checked: boolean,
+  preserveZero = false,
+): PreparationCheckTransition {
+  if (checked) {
+    const nextQuantity = preparedQuantityAfterCheck(line, true, preserveZero);
+    const autoFill = !preserveZero && !line.preparationCheck &&
+      line.preparedQuantity <= QUANTITY_EPSILON &&
+      nextQuantity > line.preparedQuantity;
+    return {
+      preparedQuantity: nextQuantity,
+      previousQuantity: autoFill ? line.preparedQuantity : line.preparationAutoFillPreviousQuantity ?? null,
+      autoFill,
+      resetAutoFill: false,
+    };
+  }
+  if (line.preparationCheck && line.preparationAutoFillPreviousQuantity != null) {
+    return {
+      preparedQuantity: line.preparationAutoFillPreviousQuantity,
+      previousQuantity: null,
+      autoFill: false,
+      resetAutoFill: true,
+    };
+  }
+  return {
+    preparedQuantity: line.preparedQuantity,
+    previousQuantity: line.preparationAutoFillPreviousQuantity ?? null,
+    autoFill: false,
+    resetAutoFill: false,
+  };
+}
 
 type DeliverySuggestionLine = {
   preparedAt: string | null;

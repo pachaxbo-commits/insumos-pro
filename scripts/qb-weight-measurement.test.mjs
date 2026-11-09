@@ -57,8 +57,11 @@ const actions = await readFile(new URL("../src/lib/operational-matrix/actions.ts
 assert.match(actions, /p_actual_weight_value: parsed\.data\.actualWeightValue/);
 assert.match(actions, /p_actual_weight_unit_id: parsed\.data\.actualWeightUnitId/);
 assert.match(actions, /p_clear_actual_weight: parsed\.data\.actualWeightCleared/);
-assert.match(actions, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
+assert.match(actions, /save_qb_matrix_preparation_with_check_reset/);
 assert.match(actions, /save_qb_matrix_delivery_origin_with_weight_snapshot/);
+const checkResetMigration = await readFile(new URL("../supabase/migrations/20261108100000_qb_preparation_check_autofill_reset.sql", import.meta.url), "utf8");
+assert.match(checkResetMigration, /save_qb_matrix_preparation_origin_with_weight_snapshot/);
+assert.match(checkResetMigration, /p_actual_weight_value/);
 const receiptData = await readFile(new URL("../src/lib/qb-receipts/data.ts", import.meta.url), "utf8");
 assert.match(receiptData, /resolveWeightUnitFactor/);
 assert.match(receiptData, /commercial_quantity_snapshot/);
