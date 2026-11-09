@@ -1637,7 +1637,7 @@ export function OperationalMatrix({
                             {groupStatus(group)}
                           </span>
                           {stage === "entrega" ? (
-                            <span className="mt-1 flex max-w-full flex-wrap gap-1">
+                            <span className="mt-1 flex max-h-24 max-w-full flex-wrap gap-1 overflow-y-auto overscroll-contain">
                               {group.orders.map((order) => (
                                 <span key={order.id} className="inline-flex items-center gap-1 rounded-full border bg-white px-1.5 py-0.5">
                                   <span className="max-w-28 truncate text-[10px] font-semibold" title={order.reference}>{order.reference}</span>
