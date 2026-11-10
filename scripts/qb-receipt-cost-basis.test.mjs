@@ -36,6 +36,11 @@ const sale = calculateIndependentSale({ quantity: "8", baseUnitPrice: "3.5",
 assert.equal(sale.unitSale, "3.6750");
 assert.equal(sale.saleTotalPrecise, "29.40000000");
 
+const compoundSale = calculateIndependentSale({ quantity: "5", baseUnitPrice: "12",
+  factorsPercent: ["10", "10", "0", "0"] });
+assert.equal(compoundSale.unitSale, "14.5200");
+assert.equal(compoundSale.saleTotalPrecise, "72.60000000");
+
 const migrationUrl = new URL("../supabase/migrations/20261109110000_qb_explicit_receipt_cost_basis.sql", import.meta.url);
 const migration = readFileSync(fileURLToPath(migrationUrl), "utf8");
 assert.match(migration, /p_cost_basis not in \('commercial_unit', 'actual_weight'\)/);
@@ -44,6 +49,10 @@ assert.match(migration, /and dimension\.code='peso' and upper\(trim\(dimension\.
 assert.match(migration, /create trigger zzz_snapshot_qb_receipt_cost_rule\s+before insert on public\.qb_receipt_lines/);
 assert.match(migration, /new\.cost_source := 'configured_rule'/);
 assert.match(migration, /QB_LINE_PRICING_COST_PENDING/);
+assert.match(migration, /new\.base_price_used := null;\s+select round\(settings\.base_sale_price/);
+assert.match(migration, /reference\.id=settings\.base_price_unit_id/);
+assert.match(migration, /target\.dimension_id=reference\.dimension_id/);
+assert.match(migration, /dimension\.code<>'legacy_dump'/);
 assert.match(migration, /security_barrier=true/);
 assert.doesNotMatch(migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipt_lines")),
   /profit_total_precise|profit_unit_precise/);

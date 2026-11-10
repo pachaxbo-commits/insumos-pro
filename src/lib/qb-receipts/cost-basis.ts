@@ -68,7 +68,10 @@ export function calculateIndependentSale(input: {
     || quantity.isNegative() || base.isNegative() || factors.isNegative()) {
     throw new Error("La cantidad, el precio o el factor no es válido.");
   }
-  const unitSale = base.times(new Decimal(1).plus(factors.div(100)))
+  const unitSale = input.factorsPercent.reduce<Decimal>(
+    (price, factor) => price.times(new Decimal(1).plus(new Decimal(factor).div(100))),
+    base,
+  )
     .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
   const saleTotalPrecise = quantity.times(unitSale).toDecimalPlaces(8, Decimal.ROUND_HALF_UP);
   return { unitSale: unitSale.toFixed(4), saleTotalPrecise: saleTotalPrecise.toFixed(8), factorTotalPercent: factors.toString() };

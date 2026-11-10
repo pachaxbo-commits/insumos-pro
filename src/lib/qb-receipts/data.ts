@@ -257,8 +257,8 @@ function calculatePricePerArroba(
   if (price === null || price <= 0 || !unit || !arrobaUnit) {
     return null;
   }
-  const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
-  if (arrobaFactor <= 0) return null;
+  const arrobaFactor = arrobaUnit.code === "arroba" ? resolveWeightFactor(arrobaUnit, weightDimensionId) : null;
+  if (arrobaFactor === null) return null;
 
   const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId);
   if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
@@ -272,8 +272,8 @@ function calculateArrobaFactor(
   weightDimensionId: string | undefined,
 ): number | null {
   if (!unit || !arrobaUnit) return null;
-  const arrobaFactor = numberValue(arrobaUnit.conversion_factor_to_base);
-  if (arrobaFactor <= 0) return null;
+  const arrobaFactor = arrobaUnit.code === "arroba" ? resolveWeightFactor(arrobaUnit, weightDimensionId) : null;
+  if (arrobaFactor === null) return null;
 
   const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId);
   if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
@@ -453,7 +453,6 @@ async function getReceiptParts(
   const unitById = new Map<string, UnitSymbolRow>();
   let arrobaUnit: UnitSymbolRow | undefined;
   let weightDimensionId: string | undefined;
-  let weightUnits: UnitSymbolRow[] = [];
 
   if (productIds.length) {
     const { data: priceData } = await supabase
@@ -517,24 +516,9 @@ async function getReceiptParts(
 
     weightDimensionId = weightDimensionData?.[0]?.id as string | undefined;
 
-    if (weightDimensionId) {
-      const { data: weightUnitsData } = await supabase
-        .from("qb_units")
-        .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
-        .eq("dimension_id", weightDimensionId)
-        .eq("is_active", true);
-      weightUnits = (weightUnitsData ?? []) as UnitSymbolRow[];
-    }
-
     arrobaUnit =
       ((canonicalArrobaData ?? []) as UnitSymbolRow[]).find(
         (unit) => Boolean(weightDimensionId) && unit.dimension_id === weightDimensionId,
-      ) ??
-      weightUnits.find(
-        (u) =>
-          u.code === "arroba" ||
-          u.symbol === "@" ||
-          u.name.toLowerCase().includes("arroba"),
       );
   }
 
@@ -560,7 +544,7 @@ async function getReceiptParts(
       const currentPrice = priceByProduct.get(row.product_id);
       const items = linesByReceipt.get(row.receipt_id) ?? [];
       const lineUnit =
-        (row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined) ??
+        (!row.sale_price_independent_snapshot && row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined) ??
         (row.base_unit_id ? unitById.get(row.base_unit_id) : undefined);
       items.push({
         id: row.id,

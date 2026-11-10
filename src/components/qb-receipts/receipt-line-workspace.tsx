@@ -193,7 +193,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                         const arrobaDisplay =
                           previewUnitSale !== null && arrobaRatio !== null
                             ? Number((previewUnitSale * arrobaRatio).toFixed(2))
-                            : line.salePricePerArroba;
+                            : editable ? null : line.salePricePerArroba;
                         const input = (field: keyof Draft, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}

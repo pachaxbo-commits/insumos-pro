@@ -176,13 +176,46 @@ declare
   v_allowed_id uuid;
   v_rule public.qb_product_cost_rules%rowtype;
   v_unit public.qb_units%rowtype;
-  v_weight_dimension_code text;
+  v_commercial record;
   v_quantity numeric(20,8);
   v_total numeric(20,8);
 begin
+  if not exists (select 1 from public.qb_receipts receipt
+    where receipt.id=new.receipt_id and receipt.pricing_mode='line_cost_markup') then
+    return new;
+  end if;
   -- New receipt lines use the catalog's sale snapshot independently of cost.
   new.sale_price_independent_snapshot := true;
-  new.base_price_used := coalesce(new.base_price_used,new.original_base_price);
+  -- Earlier receipt writers may populate base_price_used from Provisión cost.
+  -- Resolve sale solely from the configured tariff and its explicit unit.
+  new.base_price_used := null;
+  select round(settings.base_sale_price * target.conversion_factor_to_base
+    / reference.conversion_factor_to_base, 4)
+  into new.base_price_used
+  from public.qb_product_unit_settings settings
+  join public.qb_units reference on reference.id=settings.base_price_unit_id
+  join public.qb_units target on target.id=new.base_unit_id
+    and target.dimension_id=reference.dimension_id
+  join public.qb_unit_dimensions dimension on dimension.id=target.dimension_id
+  where settings.product_id=new.product_id and settings.base_sale_price>0
+    and settings.base_sale_price::text not in ('NaN','Infinity','-Infinity')
+    and reference.is_active and target.is_active and dimension.is_active
+    and reference.conversion_factor_to_base>0 and target.conversion_factor_to_base>0
+    and dimension.code<>'legacy_dump';
+  select delivery.delivered_quantity, item.source_label, item.conversion_factor_to_base
+    into v_commercial
+  from public.qb_order_preparation_items preparation
+  join public.qb_order_items item on item.id=preparation.order_item_id
+  join public.qb_order_delivery_items delivery on delivery.order_item_id=item.id
+    and delivery.preparation_item_id=preparation.id
+  where preparation.id=new.preparation_item_id and item.product_id=new.product_id
+    and item.order_input_mode='quantity' and delivery.delivered_quantity>=0
+    and item.conversion_factor_to_base>0 and nullif(trim(item.source_label),'') is not null;
+  if found then
+    new.commercial_quantity_snapshot := v_commercial.delivered_quantity;
+    new.commercial_unit_label_snapshot := v_commercial.source_label;
+    new.commercial_conversion_factor_snapshot := v_commercial.conversion_factor_to_base;
+  end if;
   select order_item.allowed_unit_id into v_allowed_id
   from public.qb_order_preparation_items preparation
   join public.qb_order_items order_item on order_item.id=preparation.order_item_id
@@ -319,7 +352,8 @@ begin
         +line.weather_factor_percent+line.extraordinary_factor_percent)/100,8) end,
     sale_total_precise=case
       when line.order_input_mode='amount_bs' then line.fixed_line_amount
-      when line.sale_price_independent_snapshot and line.base_price_used is not null then round(
+      when line.sale_price_independent_snapshot and line.base_price_used is null then null
+      when line.sale_price_independent_snapshot then round(
         line.delivered_base_quantity*public.qb_compound_unit_price(line.base_price_used,
           line.distance_factor_percent,line.exigency_factor_percent,line.weather_factor_percent,
           line.extraordinary_factor_percent),8)
@@ -329,7 +363,8 @@ begin
         +line.extraordinary_factor_percent)/100),8) end,
     final_unit_price=case
       when line.order_input_mode='amount_bs' then line.final_unit_price
-      when line.sale_price_independent_snapshot and line.base_price_used is not null then
+      when line.sale_price_independent_snapshot and line.base_price_used is null then null
+      when line.sale_price_independent_snapshot then
         public.qb_compound_unit_price(line.base_price_used,line.distance_factor_percent,
           line.exigency_factor_percent,line.weather_factor_percent,line.extraordinary_factor_percent)
       when line.cost_base_unit_snapshot is null then null
@@ -338,7 +373,8 @@ begin
         +line.extraordinary_factor_percent)/100),4) end,
     line_total=case
       when line.order_input_mode='amount_bs' then line.fixed_line_amount
-      when line.sale_price_independent_snapshot and line.base_price_used is not null then round(
+      when line.sale_price_independent_snapshot and line.base_price_used is null then null
+      when line.sale_price_independent_snapshot then round(
         line.delivered_base_quantity*public.qb_compound_unit_price(line.base_price_used,
           line.distance_factor_percent,line.exigency_factor_percent,line.weather_factor_percent,
           line.extraordinary_factor_percent),2)
@@ -352,6 +388,9 @@ begin
   where line.receipt_id=p_receipt_id;
 
   update public.qb_receipt_lines line set
+    profit_unit_precise=case when line.sale_price_independent_snapshot and line.order_input_mode<>'amount_bs' then
+      round((line.sale_total_precise-line.cost_total_precise)/nullif(line.delivered_base_quantity,0),8)
+      else line.profit_unit_precise end,
     profit_total_precise=case when line.sale_total_precise is null or line.cost_total_precise is null then null
       else round(line.sale_total_precise-line.cost_total_precise,8) end
   where line.receipt_id=p_receipt_id;
