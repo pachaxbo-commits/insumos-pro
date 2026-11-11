@@ -5,6 +5,10 @@ export function linesForOrder(lines: MatrixLine[], orderId: string) {
   return lines.filter((line) => line.orderId === orderId);
 }
 
+export function canEditMatrixOrder(order: Pick<MatrixOrder, "status" | "deliveryStatus">) {
+  return order.status !== "cancelado" && order.deliveryStatus !== "confirmado";
+}
+
 export function actionableOrders(
   orders: MatrixOrder[],
   orderIds: ReadonlySet<string>,

@@ -20,7 +20,7 @@ import {
   quantityInOriginalUnit,
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
-import { actionableOrders, linesForOrder } from "@/lib/operational-matrix/form-scope";
+import { actionableOrders, canEditMatrixOrder, linesForOrder } from "@/lib/operational-matrix/form-scope";
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import {
   preparationPlanQuantities,
@@ -1566,7 +1566,7 @@ export function OperationalMatrix({
                           {stage === "entrega" && order.deliveryStatus === "confirmado" ? (
                             <span role="status" className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">✓ Pedido entregado</span>
                           ) : null}
-                          {canAdmin && order.deliveryStatus !== "confirmado" && order.status !== "cancelado" ? (
+                          {canAdmin && canEditMatrixOrder(order) ? (
                             <Button asChild type="button" size="sm" variant="outline" className="h-8 px-2.5 text-xs">
                               <Link href={`/pedidos?edit=${encodeURIComponent(order.id)}`}>Editar pedido</Link>
                             </Button>
@@ -1834,7 +1834,7 @@ export function OperationalMatrix({
                           ) : null}
                           {canAdmin ? (
                             <span className="mt-1 block">
-                              {group.orders.filter((order) => order.deliveryStatus !== "confirmado" && order.status !== "cancelado").map((order) => (
+                              {group.orders.filter(canEditMatrixOrder).map((order) => (
                                 <Link key={`edit-${order.id}`} href={`/pedidos?edit=${encodeURIComponent(order.id)}`} className="mr-1 inline-flex min-h-7 items-center rounded border bg-white px-2 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">
                                   Editar {order.reference}
                                 </Link>

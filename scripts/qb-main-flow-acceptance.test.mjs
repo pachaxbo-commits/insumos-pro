@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { canEditMatrixOrder } from "../src/lib/operational-matrix/form-scope.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -210,7 +211,18 @@ assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
 assert.doesNotMatch(matrix, /selectedMobileOrder|MobileRow/);
 assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
 assert.match(matrix, /Unidad de \$\{label\.toLowerCase\(\)\}/);
-assert.doesNotMatch(matrix, /orders\.filter/);
+const groupedOrders = [
+  { id: "preparacion", status: "en_preparacion", deliveryStatus: null },
+  { id: "preparado", status: "preparado", deliveryStatus: null },
+  { id: "entregado", status: "entregado", deliveryStatus: "confirmado" },
+  { id: "cancelado", status: "cancelado", deliveryStatus: null },
+];
+assert.deepEqual(groupedOrders.filter(canEditMatrixOrder).map(({ id }) => id), [
+  "preparacion",
+  "preparado",
+]);
+assert.match(matrix, /group\.orders\.filter\(canEditMatrixOrder\)\.map/);
+assert.match(matrix, /canAdmin && canEditMatrixOrder\(order\)/);
 assert.match(matrix, /touch-pan-x overflow-x-auto overflow-y-clip overscroll-x-contain/);
 assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /data-customer-group=\{groupDomId\(group\.id\)\}/);
