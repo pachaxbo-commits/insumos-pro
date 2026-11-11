@@ -84,6 +84,7 @@ declare
   v_total numeric(14, 2);
   v_final_unit_price numeric(14, 4);
   v_legacy_sales_before integer;
+  v_qb_receipts_before integer;
   v_legacy_payments_before integer;
   v_legacy_cash_before integer;
   v_legacy_ar_before integer;
@@ -207,6 +208,7 @@ begin
   end if;
 
   select count(*) into v_legacy_sales_before from public.sales;
+  select count(*) into v_qb_receipts_before from public.qb_receipts;
   select count(*) into v_legacy_payments_before from public.payments;
   select count(*) into v_legacy_cash_before from public.cash_movements;
   select count(*) into v_legacy_ar_before from public.accounts_receivable;
@@ -303,11 +305,24 @@ begin
     and presentation_id = v_carga_id
     and is_active;
 
-  insert into public.qb_product_allowed_units (
-    product_id, usage_context, unit_id, is_default, quantity_step, min_quantity, is_active
-  )
-  values (v_papa_grande_id, 'recepcion', v_kg_id, true, 1, 1, true)
-  returning id into v_allowed_receipt_kg_id;
+  select id into v_allowed_receipt_kg_id
+  from public.qb_product_allowed_units
+  where product_id = v_papa_grande_id and usage_context = 'recepcion'
+    and unit_id = v_kg_id and is_default and is_active;
+  if v_allowed_receipt_kg_id is null then
+    insert into public.qb_product_allowed_units (
+      product_id, usage_context, unit_id, is_default, quantity_step, min_quantity, is_active
+    )
+    values (v_papa_grande_id, 'recepcion', v_kg_id, true, 1, 1, true)
+    returning id into v_allowed_receipt_kg_id;
+  end if;
+
+  -- Product settings already provision a default KG for orders. This fixture
+  -- exposes only arrobas for ordering, so disable the automatically added KG.
+  update public.qb_product_allowed_units
+  set is_default = false, is_active = false
+  where product_id = v_papa_grande_id and usage_context = 'pedido'
+    and unit_id = v_kg_id and is_default and is_active;
 
   insert into public.qb_product_allowed_units (
     product_id,
@@ -659,7 +674,7 @@ begin
     raise exception 'QB order items unexpectedly contain price columns.';
   end if;
 
-  if (select count(*) from public.qb_receipts) <> 0
+  if (select count(*) from public.qb_receipts) <> v_qb_receipts_before
     or (select count(*) from public.sales) <> v_legacy_sales_before
     or (select count(*) from public.payments) <> v_legacy_payments_before
     or (select count(*) from public.cash_movements) <> v_legacy_cash_before then
@@ -923,12 +938,14 @@ begin
     or (select count(*) from public.qb_order_preparations where order_id in (
       select id from public.qb_orders where customer_account_id = '00000000-0000-4000-8000-000000000002'
     )) <> 1
-    or (select count(*) from public.qb_product_unit_settings) < 4
-    or (select count(*) from public.products) < 4 then
+    or (select count(*) from public.qb_operational_product_unit_settings) < 4
+    or (select count(*) from public.qb_operational_products) < 4 then
     raise exception 'Inventory role cannot read expected QB operational data.';
   end if;
 
-  if has_table_privilege('authenticated', 'public.qb_receipts', 'INSERT,UPDATE,DELETE')
+  if exists (select 1 from public.products)
+    or exists (select 1 from public.qb_product_unit_settings)
+    or has_table_privilege('authenticated', 'public.qb_receipts', 'INSERT,UPDATE,DELETE')
     or has_table_privilege('authenticated', 'public.sales', 'SELECT')
     or has_table_privilege('authenticated', 'public.payments', 'SELECT')
     or has_table_privilege('authenticated', 'public.cash_movements', 'SELECT') then
