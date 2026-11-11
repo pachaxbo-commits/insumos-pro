@@ -51,7 +51,7 @@ export function ReceiptDocument({
               ? "Documento de recepción"
               : isCustomerExport
                 ? "Recibo"
-                : "Recibo no fiscal"}
+                : "Copia interna · Recibo no fiscal"}
           </p>
           <h1 className="font-mono text-2xl font-semibold">
             {isDeliveryNote

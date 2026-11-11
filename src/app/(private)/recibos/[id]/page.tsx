@@ -20,11 +20,14 @@ function money(value: number | null) {
 
 export default async function ReceiptDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ impresion?: string }>;
 }) {
   const auth = await requireRoleAccess("/recibos");
   const { id } = await params;
+  const { impresion } = await searchParams;
   const { receipt, error } = await getQbReceiptDetailData(id, auth.user.role!);
 
   if (!receipt) {
@@ -38,6 +41,22 @@ export default async function ReceiptDetailPage({
         </Button>
         <div className="rounded-lg border bg-background p-8 text-sm text-muted-foreground">
           {error ?? "Recibo QB no disponible."}
+        </div>
+      </div>
+    );
+  }
+
+  if (auth.user.role === "administrador" && impresion === "interna") {
+    return (
+      <div className="qb-receipt-print-page mx-auto max-w-5xl space-y-5">
+        <div className="flex flex-wrap items-center gap-3 print:hidden">
+          <Button asChild variant="outline">
+            <Link href={`/recibos/${receipt.id}`}>Volver al recibo</Link>
+          </Button>
+          <PrintReceiptButton />
+        </div>
+        <div className="qb-receipt-print-only">
+          <ReceiptDocument receipt={receipt} variant="admin" />
         </div>
       </div>
     );
@@ -99,6 +118,9 @@ export default async function ReceiptDetailPage({
         </TabsContent>
 
         <TabsContent value="administracion" className="space-y-3">
+          <Button asChild variant="outline">
+            <Link href={`/recibos/${receipt.id}?impresion=interna`}>Imprimir copia interna</Link>
+          </Button>
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900 print:hidden">
             Información interna · No entregar al cliente. Esta vista contiene referencias de
             pedidos, precio de venta antes de factores y ajustes administrativos.

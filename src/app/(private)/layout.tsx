@@ -13,7 +13,7 @@ function PrivateLayoutFallback() {
 async function AuthenticatedPrivateLayout({ children }: { children: ReactNode }) {
   const [auth, appearance] = await Promise.all([requireAuthenticatedUser(), getAppAppearance()]);
   return (
-    <div className="min-h-screen bg-slate-50/60">
+    <div className="qb-app-shell min-h-screen bg-slate-50/60">
       <div className="qb-app-header"><AppHeader user={auth.user} appearance={appearance} /></div>
       <main className="qb-app-main mx-auto w-full max-w-[2200px] px-3 py-4 lg:px-5">
         {children}

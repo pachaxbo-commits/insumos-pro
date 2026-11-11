@@ -53,3 +53,12 @@ test("documentos imprimibles usan las mismas columnas descriptivas", async () =>
   assert.match(source, /formatReceiptActualWeight\(line\)/);
   assert.match(printStyles, /@page qb-receipt-page\s*\{\s*size:\s*A4 landscape;/);
 });
+
+test("la copia imprimible con costos exige Administración y la exportación del cliente conserva su vista", async () => {
+  const detail = await readFile(
+    new URL("../src/app/(private)/recibos/[id]/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(detail, /if \(auth\.user\.role === "administrador" && impresion === "interna"\)[\s\S]*?variant="admin"/);
+  assert.match(detail, /id=\{receiptTargetId\}[\s\S]*?variant="customer-export"/);
+});
