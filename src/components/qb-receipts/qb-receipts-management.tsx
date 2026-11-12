@@ -1085,7 +1085,6 @@ function ReceiptCard({
 
         {receipt.pricingMode === "line_cost_markup" ?
           <ReceiptLineWorkspace receipt={receipt} relatedReceipts={relatedReceipts}
-            userRole={isSupervisor ? "supervisor" : "administrador"}
             hideMonthlySummary={hideMonthlySummary}
             emitAction={emitAction} emitPending={emitPending}
             voidAction={voidAction} voidPending={voidPending} /> : null}

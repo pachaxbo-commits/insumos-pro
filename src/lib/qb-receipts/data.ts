@@ -166,7 +166,7 @@ type SupervisorReceiptRow = {
   pricing_mode: QbReceipt["pricingMode"]; customer_account_id: string;
   customer_name: string; customer_email: string; customer_phone: string | null;
   period_start: string | null; period_end: string | null;
-  subtotal_amount: number | string; total_amount: number | string;
+  total_amount: number | string;
   visible_note: string | null; issued_at: string | null;
   receipt_sent_at: string | null; receipt_sent_by: string | null;
   payment_status: QbReceipt["paymentStatus"]; paid_at: string | null;
@@ -182,21 +182,13 @@ type SupervisorReceiptLineRow = {
   order_input_mode: QbReceiptLine["inputMode"];
   requested_amount_bs: number | string | null; currency_snapshot: string | null;
   pricing_unit_symbol: string | null; estimated_base_quantity: number | string | null;
-  fixed_line_amount: number | string | null; base_price_used: number | string | null;
+  fixed_line_amount: number | string | null;
   final_unit_price: number | string | null; line_total: number | string | null;
-  cost_base_unit_snapshot: number | string | null; notes: string | null;
   actual_weight_value?: number | string | null; actual_weight_unit_id?: string | null;
   actual_weight_factor_to_kg?: number | string | null; actual_weight_kg?: number | string | null;
   actual_weight_unit_symbol?: string | null;
   commercial_quantity_snapshot?: number | string | null;
   commercial_unit_label_snapshot?: string | null;
-  cost_basis_snapshot?: QbReceiptLine["costBasisSnapshot"];
-  cost_rate_snapshot?: number | string | null;
-  cost_reference_unit_symbol_snapshot?: string | null;
-  cost_quantity_snapshot?: number | string | null;
-  cost_calculation_status?: QbReceiptLine["costCalculationStatus"];
-  sale_price_independent_snapshot?: boolean;
-  cost_rule_id?: string | null;
 };
 
 type SupervisorReceiptOrderRow = {
@@ -738,14 +730,14 @@ function mapSupervisorReceipt(
     exigencyFactorPercent: 0,
     weatherFactorPercent: 0,
     extraordinaryFactorPercent: 0,
-    subtotalAmount: numberValue(row.subtotal_amount),
+    subtotalAmount: 0,
     totalAmount: numberValue(row.total_amount),
     costTotalPrecise: null,
     saleTotalPrecise: nullableDecimalText(row.total_amount),
     profitTotalPrecise: null,
     hasPendingPrices: lines.some((line) =>
       line.deliveredBaseQuantity <= 0 || line.lineTotal === null || line.lineTotal <= 0 ||
-      (row.pricing_mode === "line_cost_markup" && line.costBaseUnitSnapshot === null) ||
+
       (line.inputMode === "quantity" && (line.finalUnitPrice === null || line.finalUnitPrice <= 0)) ||
       (line.inputMode === "amount_bs" && line.fixedLineAmount !== line.requestedAmountBs)),
     visibleNote: row.visible_note,
@@ -791,7 +783,7 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     originalBasePrice: null,
     currentBasePrice: null,
     currentBasePriceUnitSymbol: null,
-    basePriceUsed: nullableNumberValue(row.base_price_used),
+    basePriceUsed: null,
     basePriceEdited: false,
     saveAsNewBasePrice: false,
     finalUnitPrice: nullableNumberValue(row.final_unit_price),
@@ -803,19 +795,19 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     salePricePerArroba: null,
     arrobaFactor: null,
     purchaseCostTotal: null,
-    costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
+    costBaseUnitSnapshot: null,
     costTotalPrecise: null,
     saleTotalPrecise: null,
     profitUnitPrecise: null,
     profitTotalPrecise: null,
     costSource: null,
-    costRuleId: row.cost_rule_id ?? null,
-    costBasisSnapshot: row.cost_basis_snapshot ?? null,
-    costRateSnapshot: nullableDecimalText(row.cost_rate_snapshot),
-    costReferenceUnitSymbolSnapshot: row.cost_reference_unit_symbol_snapshot ?? null,
-    costQuantitySnapshot: nullableDecimalText(row.cost_quantity_snapshot),
-    costCalculationStatus: row.cost_calculation_status ?? "unconfigured",
-    salePriceIndependentSnapshot: row.sale_price_independent_snapshot ?? false,
+    costRuleId: null,
+    costBasisSnapshot: null,
+    costRateSnapshot: null,
+    costReferenceUnitSymbolSnapshot: null,
+    costQuantitySnapshot: null,
+    costCalculationStatus: "unconfigured",
+    salePriceIndependentSnapshot: false,
     distanceFactorPercent: 0,
     exigencyFactorPercent: 0,
     weatherFactorPercent: 0,
@@ -825,7 +817,7 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     purchaseCostReferenceValue: null,
     previousPurchaseCostReferenceUnitSymbol: null,
     previousPurchaseCostReferenceValue: null,
-    notes: row.notes,
+    notes: null,
   };
 }
 
@@ -833,15 +825,15 @@ async function getSupervisorQbReceiptsData(
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
 ): Promise<QbReceiptsData> {
   const { data: receiptData, error } = await supabase.from("qb_supervisor_receipts")
-    .select("id,receipt_number,status,pricing_mode,customer_account_id,customer_name,customer_email,customer_phone,period_start,period_end,subtotal_amount,total_amount,visible_note,issued_at,receipt_sent_at,receipt_sent_by,payment_status,paid_at,paid_by,voided_at,void_reason,created_at")
+    .select("id,receipt_number,status,pricing_mode,customer_account_id,customer_name,customer_email,customer_phone,period_start,period_end,total_amount,visible_note,issued_at,receipt_sent_at,receipt_sent_by,payment_status,paid_at,paid_by,voided_at,void_reason,created_at")
     .order("created_at", { ascending: false });
   if (error) return { receipts: [], pendingGroups: [], comparisonUnits: [], error: "No pudimos cargar la vista operativa de recibos." };
 
   const headers = (receiptData ?? []) as SupervisorReceiptRow[];
   const ids = headers.map((row) => row.id);
-  const [lineResult, orderResult, eventResult, pendingGroups] = await Promise.all([
+  const [lineResult, orderResult, eventResult] = await Promise.all([
     ids.length ? supabase.from("qb_supervisor_receipt_lines")
-      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,base_price_used,final_unit_price,line_total,cost_base_unit_snapshot,notes,actual_weight_value,actual_weight_unit_id,actual_weight_kg,actual_weight_unit_symbol,commercial_quantity_snapshot,commercial_unit_label_snapshot,cost_basis_snapshot,cost_rate_snapshot,cost_reference_unit_symbol_snapshot,cost_quantity_snapshot,cost_calculation_status,sale_price_independent_snapshot,cost_rule_id")
+      .select("id,receipt_id,order_id,order_reference,product_id,product_name_snapshot,product_code_snapshot,category_name_snapshot,delivered_base_quantity,base_unit_symbol,visible_unit_label,order_input_mode,requested_amount_bs,currency_snapshot,pricing_unit_symbol,estimated_base_quantity,fixed_line_amount,final_unit_price,line_total,actual_weight_value,actual_weight_kg,actual_weight_unit_symbol,commercial_quantity_snapshot,commercial_unit_label_snapshot")
       .in("receipt_id", ids).order("created_at", { ascending: true }) : Promise.resolve({ data: [], error: null }),
     ids.length ? supabase.from("qb_supervisor_receipt_orders")
       .select("id,receipt_id,order_id,inclusion_status,order_reference")
@@ -849,7 +841,7 @@ async function getSupervisorQbReceiptsData(
     ids.length ? supabase.from("qb_supervisor_receipt_events")
       .select("id,receipt_id,event_type,created_at")
       .in("receipt_id", ids).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    getPendingReceiptGroups(supabase),
+
   ]);
   const partError = lineResult.error ?? orderResult.error ?? eventResult.error;
   if (partError) return { receipts: [], pendingGroups: [], comparisonUnits: [], error: "No pudimos cargar los detalles operativos de recibos." };
@@ -875,7 +867,7 @@ async function getSupervisorQbReceiptsData(
 
   return {
     receipts: headers.map((row) => mapSupervisorReceipt(row, orders.get(row.id) ?? [], lines.get(row.id) ?? [], events.get(row.id) ?? [])),
-    pendingGroups,
+    pendingGroups: [],
     comparisonUnits: [],
   };
 }
