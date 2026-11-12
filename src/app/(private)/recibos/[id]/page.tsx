@@ -86,11 +86,16 @@ export default async function ReceiptDetailPage({
             </Button>
           ) : null}
           {receipt.status === "emitido" ? (
+            <>
+            <Button asChild variant="outline">
+              <a href={`/recibos/${receipt.id}/excel`}>Excel para cliente</a>
+            </Button>
             <ReceiptImageActions
               receiptNumber={receipt.number}
               targetId={receiptTargetId}
               totalText={receiptTotalText}
             />
+            </>
           ) : null}
           <PrintReceiptButton />
         </div>
@@ -118,6 +123,9 @@ export default async function ReceiptDetailPage({
         </TabsContent>
 
         <TabsContent value="administracion" className="space-y-3">
+          <Button asChild variant="outline">
+            <a href={`/recibos/${receipt.id}/excel?copia=interna`}>Excel interno</a>
+          </Button>
           <Button asChild variant="outline">
             <Link href={`/recibos/${receipt.id}?impresion=interna`}>Imprimir copia interna</Link>
           </Button>

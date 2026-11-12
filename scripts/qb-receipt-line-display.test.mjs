@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ExcelJS from "exceljs";
+import { buildReceiptWorkbook } from "../src/lib/qb-receipts/workbook.ts";
 
 import {
   formatReceiptActualWeight,
@@ -61,4 +63,30 @@ test("la copia imprimible con costos exige Administración y la exportación del
   );
   assert.match(detail, /if \(auth\.user\.role === "administrador" && impresion === "interna"\)[\s\S]*?variant="admin"/);
   assert.match(detail, /id=\{receiptTargetId\}[\s\S]*?variant="customer-export"/);
+});
+
+test("el Excel conserva snapshots y reserva costo y margen para la copia interna", async () => {
+  const receipt = {
+    number: "QA-1", status: "emitido", customerName: "Cliente QA",
+    periodStart: "2026-11-12", periodEnd: "2026-11-12", totalAmount: 80,
+    lines: [{
+      productName: "Pimentón QA", commercialQuantitySnapshot: 8,
+      commercialUnitLabelSnapshot: "UNIDAD", deliveredBaseQuantity: 8,
+      baseUnitSymbol: "UNIDAD", actualWeightValue: 12, actualWeightUnitSymbol: "LIBRA",
+      actualWeightKilograms: 5.443108, inputMode: "quantity", finalUnitPrice: 10,
+      lineTotal: 80, costTotalPrecise: "54.43108", profitTotalPrecise: "25.56892",
+    }],
+  };
+  for (const internal of [true, false]) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await buildReceiptWorkbook(receipt, internal));
+    const sheet = workbook.worksheets[0];
+    assert.deepEqual(sheet.getRow(5).values.slice(1, 11), [
+      "Pimentón QA", 8, "UNIDAD", 8, "UNIDAD", 12, "LIBRA", 5.443108, 10, 80,
+    ]);
+    assert.equal(sheet.getCell("K4").value, internal ? "Costo total (Bs)" : null);
+    assert.equal(sheet.getCell("L4").value, internal ? "Margen total (Bs)" : null);
+    assert.equal(sheet.getCell("K5").value, internal ? 54.43108 : null);
+    assert.equal(sheet.getCell("L5").value, internal ? 25.56892 : null);
+  }
 });
