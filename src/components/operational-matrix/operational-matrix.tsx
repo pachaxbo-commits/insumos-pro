@@ -20,7 +20,7 @@ import {
   quantityInOriginalUnit,
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
-import { actionableOrders, canEditMatrixOrder, linesForOrder } from "@/lib/operational-matrix/form-scope";
+import { actionableOrders, canEditMatrixGroupLines, canEditMatrixOrder, linesForOrder } from "@/lib/operational-matrix/form-scope";
 import { summarizeVisibleProductChecks } from "@/lib/operational-matrix/visible-check-counts";
 import {
   preparationPlanQuantities,
@@ -1988,25 +1988,9 @@ export function OperationalMatrix({
                           ? aggregateLines(groupedLines)
                           : null;
                         const focused = group.id === focusedCustomerId;
-                        const editable =
-                          stage === "preparacion"
-                            ? group.orders.every((order) =>
-                                [
-                                  "pendiente_preparacion",
-                                  "en_preparacion",
-                                ].includes(order.status),
-                              )
-                            : stage === "entrega"
-                              ? group.orders.every(
-                                  (order) =>
-                                    [
-                                      "pendiente_preparacion",
-                                      "en_preparacion",
-                                      "preparado",
-                                    ].includes(order.status) &&
-                                    order.deliveryStatus !== "confirmado",
-                                )
-                              : true;
+                        const editable = stage === "preparacion" || stage === "entrega"
+                          ? canEditMatrixGroupLines(groupedLines, group.orders, stage)
+                          : true;
                         return line ? (
                           <DesktopOrderCells
                             key={group.id}

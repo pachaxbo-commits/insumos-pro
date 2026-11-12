@@ -9,6 +9,19 @@ export function canEditMatrixOrder(order: Pick<MatrixOrder, "status" | "delivery
   return order.status !== "cancelado" && order.deliveryStatus !== "confirmado";
 }
 
+export function canEditMatrixGroupLines(
+  lines: Pick<MatrixLine, "orderId">[],
+  orders: Pick<MatrixOrder, "id" | "status" | "deliveryStatus">[],
+  stage: "preparacion" | "entrega",
+) {
+  return lines.length > 0 && lines.every(({ orderId }) => {
+    const order = orders.find(({ id }) => id === orderId);
+    if (!order || order.deliveryStatus === "confirmado") return false;
+    return order.status === "pendiente_preparacion" || order.status === "en_preparacion" ||
+      (stage === "entrega" && order.status === "preparado");
+  });
+}
+
 export function actionableOrders(
   orders: MatrixOrder[],
   orderIds: ReadonlySet<string>,
