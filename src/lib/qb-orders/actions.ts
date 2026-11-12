@@ -19,7 +19,7 @@ const actionState = (
 });
 
 const uuidSchema = z.string().uuid();
-const INTERNAL_ORDER_BATCH_SIZE = 30;
+const MAX_EDITABLE_ORDER_ITEMS = 30;
 const updateOrderTargetSchema = z.object({
   orderId: z.string().uuid(),
   expectedUpdatedAt: z.string().trim().min(1),
@@ -108,6 +108,12 @@ function internalOrderRpcErrorMessage(error: unknown) {
       ? String((error as { message?: unknown }).message ?? "")
       : "";
 
+  if (message.includes("QB_ORDER_CREATE_IDEMPOTENCY_CONFLICT")) {
+    return "Este envío ya se usó con otros datos. Revisa Pedidos antes de iniciar un nuevo envío.";
+  }
+  if (message.includes("QB_ORDER_CREATE_LEGACY_REPLAY_REQUIRES_REFRESH")) {
+    return "Este envío ya tiene un registro anterior. Revisa Pedidos antes de volver a enviarlo.";
+  }
   if (message.includes("QB17_AMOUNT_UNAVAILABLE")) {
     return "El producto no está disponible para pedidos por importe.";
   }
@@ -175,70 +181,49 @@ export async function createQbInternalOrderAction(
     );
   }
 
-  const batches = Array.from(
-    { length: Math.ceil(parsed.data.items.length / INTERNAL_ORDER_BATCH_SIZE) },
-    (_, index) =>
-      parsed.data.items.slice(
-        index * INTERNAL_ORDER_BATCH_SIZE,
-        (index + 1) * INTERNAL_ORDER_BATCH_SIZE,
-      ),
+  const { data, error } = await supabase.rpc(
+    "create_qb17_internal_catalog_order_with_date",
+    {
+      p_order_mode: "registered",
+      p_customer_account_id: parsed.data.customerAccountId,
+      p_customer_location_id: parsed.data.customerLocationId,
+      p_business_name: parsed.data.businessName || null,
+      p_full_name: parsed.data.responsibleName || null,
+      p_phone: parsed.data.phone || null,
+      p_email: parsed.data.email || null,
+      p_address: parsed.data.address || null,
+      p_location_label: parsed.data.locationLabel || null,
+      p_location_reference: parsed.data.locationReference || null,
+      p_customer_notes: parsed.data.customerNotes || null,
+      p_operational_date: parsed.data.operationalDate,
+      p_items: parsed.data.items.map((item) => ({
+        product_id: item.productId,
+        input_mode: "quantity",
+        allowed_unit_id: item.allowedUnitId,
+        quantity: item.quantity,
+        notes: item.notes || null,
+      })),
+      p_idempotency_key: parsed.data.idempotencyKey,
+    },
   );
-  const createdOrders: Array<{
-    id: string;
-    reference: string;
-    resultCode: string;
-  }> = [];
 
-  for (const [index, items] of batches.entries()) {
-    const batchKey =
-      batches.length === 1
-        ? parsed.data.idempotencyKey
-        : `${parsed.data.idempotencyKey}-${String(index + 1).padStart(2, "0")}`;
-    const { data, error } = await supabase.rpc(
-      "create_qb17_internal_catalog_order_with_date",
-      {
-        p_order_mode: "registered",
-        p_customer_account_id: parsed.data.customerAccountId,
-        p_customer_location_id: parsed.data.customerLocationId,
-        p_business_name: parsed.data.businessName || null,
-        p_full_name: parsed.data.responsibleName || null,
-        p_phone: parsed.data.phone || null,
-        p_email: parsed.data.email || null,
-        p_address: parsed.data.address || null,
-        p_location_label: parsed.data.locationLabel || null,
-        p_location_reference: parsed.data.locationReference || null,
-        p_customer_notes: parsed.data.customerNotes || null,
-        p_operational_date: parsed.data.operationalDate,
-        p_items: items.map((item) => ({
-          product_id: item.productId,
-          input_mode: "quantity",
-          allowed_unit_id: item.allowedUnitId,
-          quantity: item.quantity,
-          notes: item.notes || null,
-        })),
-        p_idempotency_key: batchKey,
-      },
-    );
+  if (error) {
+    return actionState(false, internalOrderRpcErrorMessage(error));
+  }
 
-    if (error) {
-      return actionState(false, internalOrderRpcErrorMessage(error));
-    }
+  const results = (data ?? []) as Array<{
+    created_order_id: string | null;
+    order_reference: string | null;
+    result_code: string;
+  }>;
+  if (!results.length) {
+    return actionState(false, internalOrderResultMessage(""));
+  }
 
-    const result = (
-      (data ?? []) as Array<{
-        created_order_id: string | null;
-        order_reference: string | null;
-        result_code: string;
-      }>
-    )[0];
-    if (
-      !result ||
-      !["created", "already_created"].includes(result.result_code)
-    ) {
-      return actionState(
-        false,
-        internalOrderResultMessage(result?.result_code ?? ""),
-      );
+  const createdOrders: Array<{ id: string; reference: string; resultCode: string }> = [];
+  for (const result of results) {
+    if (!["created", "already_created"].includes(result.result_code)) {
+      return actionState(false, internalOrderResultMessage(result.result_code));
     }
 
     const orderId = uuidSchema.safeParse(result.created_order_id);
@@ -249,11 +234,7 @@ export async function createQbInternalOrderAction(
         "No pudimos confirmar la creación del pedido. Inténtalo nuevamente sin cambiar los datos.",
       );
     }
-    createdOrders.push({
-      id: orderId.data,
-      reference,
-      resultCode: result.result_code,
-    });
+    createdOrders.push({ id: orderId.data, reference, resultCode: result.result_code });
   }
 
   revalidatePath("/pedidos");
@@ -265,8 +246,8 @@ export async function createQbInternalOrderAction(
     success: true,
     message: alreadyCreated
       ? "El pedido ya había sido recibido."
-      : batches.length > 1
-        ? `Pedido creado en ${batches.length} partes para entrega el ${parsed.data.operationalDate} y enviado a preparación.`
+      : createdOrders.length > 1
+        ? `Pedido creado en ${createdOrders.length} partes para entrega el ${parsed.data.operationalDate} y enviado a preparación.`
         : `Pedido creado para entrega el ${parsed.data.operationalDate} y enviado a preparación.`,
     reference: createdOrders.map((order) => order.reference).join(", "),
     orderId: createdOrders[0].id,
@@ -359,10 +340,10 @@ export async function updateQbInternalOrderAction(
     return { ...actionState(true, "Cambios guardados. Las líneas modificadas deben revisarse nuevamente."), orderId: target.data.orderId };
   }
 
-  if (parsed.data.items.length > INTERNAL_ORDER_BATCH_SIZE) {
+  if (parsed.data.items.length > MAX_EDITABLE_ORDER_ITEMS) {
     return actionState(
       false,
-      `Un pedido editable antes de Preparación admite hasta ${INTERNAL_ORDER_BATCH_SIZE} productos.`,
+      `Un pedido editable antes de Preparación admite hasta ${MAX_EDITABLE_ORDER_ITEMS} productos.`,
     );
   }
 

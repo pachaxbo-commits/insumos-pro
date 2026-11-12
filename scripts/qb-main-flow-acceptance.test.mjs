@@ -119,10 +119,9 @@ assert.match(bsQuantityMigration, /QB_BS_QUANTITY_GUARD_NOT_FOUND/);
 
 // Una plantilla grande se divide de forma idempotente sin perder productos.
 assert.match(orderInput, /\.max\(100,/);
-assert.match(orderActions, /INTERNAL_ORDER_BATCH_SIZE = 30/);
-assert.match(orderActions, /Math\.ceil\(parsed\.data\.items\.length/);
-assert.match(orderActions, /String\(index \+ 1\)\.padStart\(2, "0"\)/);
-assert.match(orderActions, /Pedido creado en \$\{batches\.length\} partes/);
+assert.match(orderActions, /p_items: parsed\.data\.items\.map/);
+assert.match(orderActions, /p_idempotency_key: parsed\.data\.idempotencyKey/);
+assert.match(orderActions, /Pedido creado en \$\{createdOrders\.length\} partes/);
 
 // Precarga sólo intención editable: cantidad, unidad y nota.
 for (const field of [
