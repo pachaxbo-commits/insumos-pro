@@ -10,6 +10,10 @@ declare
   actor uuid;
   rule public.qb_product_cost_rules%rowtype;
   target public.qb_orders%rowtype;
+  customer_id uuid;
+  location_id uuid;
+  order_id_new uuid;
+  item_id uuid;
   items jsonb;
   reply jsonb;
   edit_key text := gen_random_uuid()::text;
@@ -23,10 +27,18 @@ begin
 
   select r.* into strict rule from public.qb_product_cost_rules r join public.products p on p.id=r.product_id
   where p.sku like 'QA-papa-%' limit 1;
-  select o.* into strict target from public.qb_orders o join public.customer_accounts c on c.id=o.customer_account_id
-  where c.email like 'qa-customer-%@example.test' and o.customer_notes='QA edición'
-    and o.status='en_preparacion' and o.operational_date >= (now() at time zone 'America/La_Paz')::date
-  order by o.created_at desc limit 1;
+  select c.id,l.id into strict customer_id,location_id
+  from public.customer_accounts c join public.qb_customer_locations l on l.customer_account_id=c.id
+  where c.email like 'qa-customer-%@example.test' and c.is_active and l.is_active limit 1;
+  perform set_config('request.jwt.claim.sub',admin_id::text,true);
+  select created_order_id into strict order_id_new from public.create_qb_internal_catalog_order(
+    'registered',customer_id,location_id,null,null,null,null,null,null,null,
+    'Pedido ficticio de reauditoría',jsonb_build_array(jsonb_build_object(
+      'product_id',rule.product_id,'allowed_unit_id',rule.order_allowed_unit_id,'quantity',4)),
+    gen_random_uuid()::text);
+  select id into strict item_id from public.qb_order_items where order_id=order_id_new;
+  perform public.save_qb_matrix_preparation_item(item_id,0,2,false,null,'audit-prep-'||gen_random_uuid());
+  select * into strict target from public.qb_orders where id=order_id_new;
   select jsonb_agg(jsonb_build_object('order_item_id',i.id,'expected_version',i.row_version,
     'product_id',i.product_id,'allowed_unit_id',i.allowed_unit_id,'quantity',i.requested_quantity))
   into items from public.qb_order_items i where i.order_id=target.id;
