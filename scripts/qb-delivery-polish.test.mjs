@@ -41,9 +41,12 @@ test("entrega sugiere peso de preparación solo para una entrega nueva sin confi
   assert.equal(exported.applyAutomaticDeliveryValues([{ ...base, deliveredAt: "saved", deliveredQuantity: 3 }])[0].deliveredQuantity, 3);
 });
 
-test("Entrega muestra la cobertura preparada por equivalencia base sin marcar su propio check", () => {
-  assert.match(matrix, /comparePreparationCoverage\(\{[\s\S]*requestedBaseQuantity: line\.requestedBaseQuantity,[\s\S]*preparedBaseQuantity: line\.preparedBaseQuantity,[\s\S]*requestedConversionValid: line\.requestedConversionValid/);
-  assert.match(matrix, /coveragePresentation\(\{[\s\S]*baseUnitSymbol: line\.baseUnitSymbol/);
+test("Entrega muestra la cobertura preparada por cantidad comercial sin marcar su propio check", () => {
+  assert.match(matrix, /compareCommercialCoverage\(line\.requestedQuantity,/);
+  assert.match(matrix, /baseUnitSymbol: line\.sourceLabel/);
+  assert.match(matrix, /<CustomerChecks lines=\{customerLines\} stage=\{stage\}/);
+  const deliveryCheckCell = matrix.slice(matrix.indexOf("Verificación física de Entrega"), matrix.indexOf("<PreparedMeasurementDisplay", matrix.indexOf("Verificación física de Entrega")));
+  assert.doesNotMatch(deliveryCheckCell, /CoverageStatus|ENTREGA PENDIENTE/);
   assert.match(matrix, /label=\{`Verificación física de Entrega \$\{line\.productName\}`\}/);
   assert.match(matrix, /checked=\{hasDeliveryCheck\(line\)\}/);
   assert.match(matrix, /onChange=\{onToggleMissingDeliveryCheck\}/);

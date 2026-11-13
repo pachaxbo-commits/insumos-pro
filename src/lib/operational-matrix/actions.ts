@@ -296,3 +296,30 @@ export async function reorderMatrixOrdersAction(input: unknown) {
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador"]);
 }
+
+
+export async function reviewHistoricalMatrixEquivalence(input: unknown): Promise<MatrixActionResult> {
+  const version = z.number().int().nonnegative();
+  const parsed = z.object({
+    itemId: id, unitId: id, version,
+    confirmation: z.object({
+      factor: z.number().finite().positive(),
+      preparationVersion: version.nullable(),
+      deliveryVersion: version.nullable(),
+      reason: z.string().trim().min(3).max(500),
+      approved: z.literal(true),
+    }).optional(),
+  }).safeParse(input);
+  if (!parsed.success) return { success: false, message: "Revisa la unidad, el motivo y la confirmación." };
+  const { itemId, unitId, version: itemVersion, confirmation } = parsed.data;
+  return rpc("review_qb_historical_order_equivalence", {
+    p_order_item_id: itemId,
+    p_allowed_unit_id: unitId,
+    p_expected_version: itemVersion,
+    p_reason: confirmation?.reason ?? null,
+    p_apply: Boolean(confirmation),
+    p_expected_factor: confirmation?.factor ?? null,
+    p_expected_preparation_version: confirmation?.preparationVersion ?? null,
+    p_expected_delivery_version: confirmation?.deliveryVersion ?? null,
+  }, ["administrador"], Boolean(confirmation));
+}

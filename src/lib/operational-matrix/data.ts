@@ -3,7 +3,7 @@ import "server-only";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { quantityUnitOptions, resolveRequestedBasePerSourceQuantity } from "@/lib/operational-matrix/quantity-units";
+import { hasPhysicalOrderBasis, quantityUnitOptions, resolveRequestedBasePerSourceQuantity } from "@/lib/operational-matrix/quantity-units";
 import { resolveDeliveryOrigin } from "@/lib/operational-matrix/origin-distribution";
 import type {
   MatrixLine,
@@ -170,10 +170,18 @@ export async function getOperationalMatrixData(
           .in("product_id", productIds).eq("is_active", true).order("sort_order")
       : Promise.resolve({ data: [], error: null }),
   ]);
-  const productSettingsResult = role === "administrador" && productIds.length
-    ? await supabase.from("qb_product_unit_settings")
+  const productSettingsResult = productIds.length
+    ? role === "administrador"
+      ? await supabase.from("qb_product_unit_settings")
         .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price")
         .in("product_id", productIds)
+      : await supabase.from("qb_operational_product_unit_settings")
+        .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id")
+        .in("product_id", productIds)
+    : { data: [], error: null };
+  const allowedResult = role === "administrador" && productIds.length
+    ? await supabase.from("qb_product_allowed_units").select("id,product_id,unit_id")
+        .in("product_id", productIds).eq("usage_context", "pedido").eq("is_active", true)
     : { data: [], error: null };
   const preparationCostsResult = await supabase.from("qb_operational_preparation_costs")
     .select("order_item_id, provision_cost_unit")
@@ -182,7 +190,7 @@ export async function getOperationalMatrixData(
     preparationItemsResult.error ||
     deliveryItemsResult.error ||
     deliveryMovementsResult.error ||
-    productSettingsResult.error || preparationCostsResult.error ||
+    allowedResult.error || productSettingsResult.error || preparationCostsResult.error ||
     unitsResult.error ||
     unitDimensionsResult.error || presentationsResult.error
   ) {
@@ -191,7 +199,7 @@ export async function getOperationalMatrixData(
         preparationItemsResult.error?.message ??
         deliveryItemsResult.error?.message ??
         deliveryMovementsResult.error?.message ??
-        productSettingsResult.error?.message ?? preparationCostsResult.error?.message ??
+        allowedResult.error?.message ?? productSettingsResult.error?.message ?? preparationCostsResult.error?.message ??
         unitsResult.error?.message ??
         unitDimensionsResult.error?.message ?? presentationsResult.error?.message
       }`,
@@ -302,6 +310,10 @@ export async function getOperationalMatrixData(
     })
     .sort((a, b) => a.position - b.position);
 
+  const physicalDimensionIds = (unitDimensionsResult.data ?? [])
+    .filter((dimension) => dimension.is_active && dimension.code !== "legacy_dump")
+    .map((dimension) => String(dimension.id));
+
   const lines: MatrixLine[] = itemsWithProducts.map((item) => {
     const product = Array.isArray(item.product)
       ? item.product[0]
@@ -327,8 +339,9 @@ export async function getOperationalMatrixData(
         ?.controls_actual_weight,
     );
     const productSetting = productSettings.get(String(item.product_id));
-    const priceUnit = productSetting?.base_price_unit_id
-      ? units.get(String(productSetting.base_price_unit_id))
+    const priceSetting = productSetting && "base_price_unit_id" in productSetting && "base_sale_price" in productSetting ? productSetting : null;
+    const priceUnit = priceSetting?.base_price_unit_id
+      ? units.get(String(priceSetting.base_price_unit_id))
       : undefined;
     const weightPriceUnit = findWeightUnit(
       weightUnits,
@@ -342,7 +355,7 @@ export async function getOperationalMatrixData(
     const hasWeightBasedPrice = Boolean(
       priceUnitSymbol &&
         weightPriceUnit &&
-        Number(productSetting?.base_sale_price) > 0,
+        Number(priceSetting?.base_sale_price) > 0,
     );
     const requestedQuantity = numberOr(item.requested_quantity);
     const requestedBaseQuantity = numberOr(item.base_quantity);
@@ -352,28 +365,32 @@ export async function getOperationalMatrixData(
       numberOr(item.conversion_factor_to_base),
     );
     const basePerSourceQuantity = requestedConversion.basePerSourceQuantity;
-    const requestedWeightUnit = findWeightUnit(
-      weightUnits,
-      item.source_label,
+    const requestedConversionValid = requestedConversion.valid && hasPhysicalOrderBasis(
+      units.get(String(item.base_unit_id)), units.get(String(item.source_unit_id)),
+      item.product_presentation_id, physicalDimensionIds,
+      { sourceLabel: String(item.source_label), factor: numberOr(item.conversion_factor_to_base) },
     );
+    const inventoryId = productSetting
+      ? String(productSetting.base_inventory_unit_id ?? productSetting.inventory_unit_id ?? productSetting.base_unit_id ?? "")
+      : "";
+    const inventoryUnit = units.get(inventoryId);
+    const base = units.get(String(item.base_unit_id));
+    const legacyKgInventory = inventoryUnit?.symbol.trim().toUpperCase() === "KG" &&
+      Number(inventoryUnit.conversion_factor_to_base) === 1 &&
+      (unitDimensionsResult.data ?? []).some((dimension) => dimension.id === inventoryUnit.dimension_id && dimension.code === "legacy_dump");
+    const physicalKg = weightUnits.find((unit) => unit.code === "kg" && unit.kilograms === 1);
+    const historicalOptions = role !== "administrador" || requestedConversionValid || !base ||
+      physicalDimensionIds.includes(String(base.dimension_id)) ? undefined :
+      (legacyKgInventory && physicalKg
+        ? weightUnits.map((unit) => ({ id: unit.id, label: unit.symbol }))
+        : (allowedResult.data ?? []).filter((unit) => unit.product_id === item.product_id)
+          .map((allowed) => ({ id: String(allowed.id), label: units.get(String(allowed.unit_id))?.symbol ?? "" })))
+        .filter((option) => option.label.trim().toUpperCase() === String(item.source_label).trim().toUpperCase());
     const preparationCheck = Boolean(prep?.preparation_check);
     const rawPreparedQuantity = numberOr(prep?.actual_quantity);
     const preparedQuantity = rawPreparedQuantity;
-    const rawPreparationWeight =
-      prep?.actual_weight_kg === null ||
-      typeof prep?.actual_weight_kg === "undefined"
-        ? null
-        : numberOr(prep.actual_weight_kg);
-    const preparationActualWeightKg =
-      preparationCheck &&
-      rawPreparedQuantity > 0.000001 &&
-      controlsActualWeight &&
-      requestedWeightUnit &&
-      rawPreparationWeight === null
-        ? Number(
-            (rawPreparedQuantity * requestedWeightUnit.kilograms).toFixed(6),
-          )
-        : rawPreparationWeight;
+    const preparationActualWeightKg = prep?.actual_weight_kg == null
+      ? null : numberOr(prep.actual_weight_kg);
     const deliveryCheck = Boolean(delivery?.delivery_check);
     const rawDeliveredQuantity = numberOr(delivery?.delivered_quantity);
     const deliveredQuantity = rawDeliveredQuantity;
@@ -428,25 +445,23 @@ export async function getOperationalMatrixData(
         (category as { name?: unknown } | null)?.name ?? "Sin categoría",
       ),
       sourceLabel: String(item.source_label),
-      quantityUnits: quantityUnitOptions(
-        item, unitsResult.data ?? [], presentationsResult.data ?? [],
-        (unitDimensionsResult.data ?? [])
-          .filter((dimension) => dimension.is_active && dimension.code !== "legacy_dump")
-          .map((dimension) => String(dimension.id)),
-      ),
+      quantityUnits: requestedConversionValid
+        ? quantityUnitOptions(item, unitsResult.data ?? [], presentationsResult.data ?? [], physicalDimensionIds)
+        : [{ id: "original", label: String(item.source_label), sourceQuantity: 1 }],
       baseUnitId: String(item.base_unit_id),
-      inventoryBaseUnitId: productSetting
-        ? String(productSetting.base_inventory_unit_id ?? productSetting.inventory_unit_id ?? productSetting.base_unit_id ?? "") || null
-        : null,
+      inventoryBaseUnitId: legacyKgInventory && physicalKg && physicalKg.id === item.base_unit_id
+        ? physicalKg.id : inventoryId || null,
+      historicalOptions,
       baseUnitSymbol: String(item.base_unit_symbol),
+      baseWeightFactorToKg: weightUnits.find((unit) => unit.id === item.base_unit_id)?.kilograms ?? null,
       priceUnitSymbol,
       baseSalePrice:
-        productSetting?.base_sale_price !== null &&
-        typeof productSetting?.base_sale_price !== "undefined"
-          ? numberOr(productSetting.base_sale_price)
+        priceSetting?.base_sale_price !== null &&
+        typeof priceSetting?.base_sale_price !== "undefined"
+          ? numberOr(priceSetting.base_sale_price)
           : null,
-      basePriceUnitId: productSetting?.base_price_unit_id
-        ? String(productSetting.base_price_unit_id)
+      basePriceUnitId: priceSetting?.base_price_unit_id
+        ? String(priceSetting.base_price_unit_id)
         : null,
       hasWeightBasedPrice,
       provisionCostUnit:
@@ -457,7 +472,7 @@ export async function getOperationalMatrixData(
       requestedQuantity,
       requestedBaseQuantity,
       basePerSourceQuantity,
-      requestedConversionValid: requestedConversion.valid,
+      requestedConversionValid,
       requestedNote: String(item.customer_notes ?? ""),
       requestedVersion: numberOr(item.row_version),
       preparedQuantity,

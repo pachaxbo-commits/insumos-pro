@@ -39,6 +39,24 @@ export function resolveRequestedBasePerSourceQuantity(
   };
 }
 
+export function hasPhysicalOrderBasis(
+  base: Unit | undefined,
+  source: Unit | undefined,
+  presentationId: string | null,
+  physicalDimensionIds: readonly string[],
+  snapshot?: { sourceLabel: string; factor: number },
+) {
+  if (!base) return false;
+  if (!physicalDimensionIds.includes(base.dimension_id)) {
+    // Identity is meaningful even for a legacy label. It permits no conversion
+    // to another unit, and stock allocation still requires the same unit ID.
+    return presentationId === null && source?.id === base.id && snapshot?.factor === 1 &&
+      snapshot.sourceLabel.trim().toLocaleLowerCase("es") === base.symbol.trim().toLocaleLowerCase("es");
+  }
+  // A product presentation has its own immutable order snapshot.
+  return presentationId !== null || source?.dimension_id === base.dimension_id;
+}
+
 export function quantityUnitOptions(
   item: {
     product_id: string;
@@ -54,22 +72,8 @@ export function quantityUnitOptions(
 ): MatrixQuantityUnit[] {
   const options = [{ id: "original", label: item.source_label, sourceQuantity: 1 }];
   const base = units.find((unit) => unit.id === item.base_unit_id);
-  // Legacy imports put CAJA, KG, UNIDAD, etc. in a single dimension with
-  // placeholder factors of 1. Those are labels, NOT valid equivalences.
-  if (base && !physicalDimensionIds.includes(base.dimension_id)) {
-    const normalize = (label: string) => label.trim().toLocaleLowerCase("es");
-    const source = units.find((unit) => unit.is_active && physicalDimensionIds.includes(unit.dimension_id)
-      && [unit.symbol, unit.name].some((label) => normalize(label) === normalize(item.source_label)));
-    if (!source) return options;
-    for (const unit of units) {
-      if (!unit.is_active || unit.dimension_id !== source.dimension_id || unit.id === source.id) continue;
-      const sourceQuantity = Number(unit.conversion_factor_to_base) / Number(source.conversion_factor_to_base);
-      if (sourceQuantity > 0 && Number.isFinite(sourceQuantity)) {
-        options.push({ id: `unit:${unit.id}`, label: unit.symbol || unit.name, sourceQuantity });
-      }
-    }
-    return options;
-  }
+  if (!hasPhysicalOrderBasis(base, units.find((unit) => unit.id === item.source_unit_id),
+    item.product_presentation_id, physicalDimensionIds)) return options;
   const originalFactor = Number(item.conversion_factor_to_base);
   if (!base || !(originalFactor > 0) || !Number.isFinite(originalFactor)) return options;
   const baseFactor = Number(base.conversion_factor_to_base);

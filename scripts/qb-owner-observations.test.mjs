@@ -69,15 +69,12 @@ test("delivery denial reports product and available quantity while server stock 
 });
 
 test("origin choices explain their inventory effect and same-day rule", () => {
-  assert.match(matrix, /Origen de la mercadería · este pedido/);
-  assert.match(matrix, /warehouse: "Todos los productos entregados en este pedido salen del almacén\. Al confirmar, se descuenta únicamente la cantidad realmente entregada/);
-  assert.match(matrix, /pending: "La mercadería se entregó físicamente, pero su ingreso al almacén todavía no está registrado\./);
-  assert.match(matrix, /external: "La mercadería se compró directamente por fuera para ese cliente\. Se registra la entrega normalmente, sin descontar inventario\./);
-  assert.match(matrix, /<option value="warehouse">Desde almacén<\/option>/);
-  assert.match(matrix, /<option value="pending">Ingreso pendiente de hoy<\/option>/);
-  assert.match(matrix, /<option value="external">Venta externa<\/option>/);
-  assert.match(matrix, /Origen mixto/);
-  assert.match(matrix, /Antes de confirmar la entrega, indica de dónde salió la mercadería\./);
+  assert.match(matrix, /Ajustar origen por producto/);
+  assert.match(matrix, /se descuenta solo lo asignado a almacén/);
+  assert.match(matrix, /ingreso pendiente se concilia durante la jornada/);
+  assert.match(matrix, /compra externa no descuenta stock/);
+  assert.match(matrix, /Guardar origen de \{line\.productName\}/);
+  assert.doesNotMatch(matrix, /<option value="warehouse">/);
 });
 
 test("receipt summary counts sending and payment state without inventing ledger movements", () => {
@@ -108,7 +105,7 @@ test("delivery exposes preparation review separately from physical delivery and 
   assert.match(matrix, /id="delivery-order-select"[\s\S]*Confirmar · \{selectedConfirmationOrder\.reference\}/);
   assert.match(matrix, /Origen por producto · \{selectedConfirmationOrder\.customerName\} · \{selectedConfirmationOrder\.reference\}/);
   assert.match(matrix, /orderFormStatus\(order\)/);
-  assert.match(matrix, /aria-label="Origen de la mercadería · este pedido"|Origen de la mercadería · este pedido/);
+  assert.match(matrix, /Ajustar origen por producto/);
   assert.match(matrix, /checked=\{stage === "preparacion" \? line\.preparationCheck : line\.deliveryCheck\}/);
   assert.match(matrix, /else updateMissingDeliveryChecks\(\[line\], checked\)/);
   assert.match(matrix, /!line\.deliverySourceConfirmed \|\| line\.deliveryVersion === 0/);

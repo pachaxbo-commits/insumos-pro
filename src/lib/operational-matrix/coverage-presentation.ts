@@ -27,7 +27,7 @@ export function coveragePresentation(input: {
   } else if (input.status === "over") {
     const excess = new Intl.NumberFormat("es-BO", { maximumFractionDigits: 3 }).format(input.excessBaseQuantity ?? 0);
     quantityLabel = `REVISAR · excede ${excess} ${input.baseUnitSymbol}`;
-  } else quantityLabel = "REVISAR · conversión no verificable";
+  } else quantityLabel = "Revisar equivalencia histórica";
 
   const deliveryConfirmed = input.phase !== "preparacion" && input.deliveryState === "confirmed";
   const deliveryLabel = input.phase === "preparacion" ? null

@@ -1092,9 +1092,9 @@ function ReceiptCard({
           <div className="overflow-x-auto rounded-lg border">
             <table className={`w-full ${isSupervisor ? "min-w-[900px]" : "min-w-[1240px]"} text-xs`}>
               <thead className="bg-slate-100 text-left">
-                <tr>{(isSupervisor ? ["Pedido", "Producto", "UD", "Cantidad", "Costo base/UD", "Precio venta/UD", "Venta Bs", "Estado"] : [
+                <tr>{(isSupervisor ? ["Pedido", "Producto", "UD", "Cantidad", "Costo por unidad base", "Tarifa de venta", "Venta Bs", "Estado"] : [
                   "Pedido", "Producto", "UD", "Cantidad", "Dist. %", "Exig. %", "Clima %", "Extra. %",
-                  "Costo base/UD", "Precio anterior", "Precio venta/UD", "Precio ref. / @",
+                  "Costo por unidad base", "Precio anterior", "Tarifa de venta", "Precio ref. / @",
                   "Costo total Bs", "Venta Bs", "Utilidad Bs", "Estado"
                 ]).map((label) =>
                   <th key={label} className="whitespace-nowrap px-2 py-2">{label}</th>)}</tr>
@@ -1108,9 +1108,9 @@ function ReceiptCard({
                     <td className="px-2 py-2 text-right">{quantity(line.deliveredBaseQuantity)}</td>
                     {!isSupervisor ? [line.distanceFactorPercent, line.exigencyFactorPercent, line.weatherFactorPercent, line.extraordinaryFactorPercent].map((factor, index) =>
                       <td key={index} className="px-2 py-2 text-right">{factor}%</td>) : null}
-                    <td className="px-2 py-2 text-right">{line.costBaseUnitSnapshot === null ? "—" : money(Number(line.costBaseUnitSnapshot))}</td>
+                    <td className="px-2 py-2 text-right">{line.costBaseUnitSnapshot === null ? "—" : money(Number(line.costBaseUnitSnapshot)) + "/" + line.baseUnitSymbol}</td>
                     {!isSupervisor ? <td className="px-2 py-2 text-right font-mono text-slate-600">{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}</td> : null}
-                    <td className="px-2 py-2 text-right font-semibold">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice)}</td>
+                    <td className="px-2 py-2 text-right font-semibold">{line.finalUnitPrice === null ? "—" : money(line.finalUnitPrice) + "/" + line.baseUnitSymbol}</td>
                     {!isSupervisor ? <>
                       <td className="px-2 py-2 text-right font-mono text-slate-600">{line.salePricePerArroba !== null ? money(line.salePricePerArroba) : "Sin equivalencia"}</td>
                       <td className="px-2 py-2 text-right">{line.costTotalPrecise === null ? "—" : money(Number(line.costTotalPrecise))}</td>

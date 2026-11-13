@@ -159,59 +159,7 @@ function baseUnitKey(line: MatrixLine) {
   return line.baseUnitId?.trim() || `symbol:${line.baseUnitSymbol.trim().toLocaleLowerCase("es")}`;
 }
 
-function displayUnitLabel(line: MatrixLine, unitId: string, fallback: string) {
-  if (!unitId || unitId === "original") return fallback;
-  return line.quantityUnits?.find((unit) => unit.id === unitId)?.label ?? fallback;
-}
 
-function resolveDeliveredDisplay(line: MatrixLine) {
-  const original = {
-    quantity: line.deliveredQuantity,
-    unitLabel: line.sourceLabel,
-    warning: null as string | null,
-  };
-  const selectedUnitId = line.deliveryDisplayUnitId;
-  if (!selectedUnitId || selectedUnitId === "original") return original;
-
-  const selectedUnit = line.quantityUnits.find((unit) => unit.id === selectedUnitId);
-  const basePerSource = line.requestedQuantity > 0
-    ? line.requestedBaseQuantity / line.requestedQuantity
-    : 0;
-  // Actual-weight items keep commercial delivery quantity and measured weight
-  // separate. Their base quantity can represent a pricing weight, not a unit
-  // conversion of the delivered commercial quantity.
-  if (!selectedUnit || line.controlsActualWeight || !line.requestedConversionValid ||
-    !(selectedUnit.sourceQuantity > 0) || !(basePerSource > 0) ||
-    !Number.isFinite(selectedUnit.sourceQuantity) || !Number.isFinite(basePerSource)) {
-    return {
-      ...original,
-      warning: `No se pudo verificar la conversión a ${displayUnitLabel(line, selectedUnitId, selectedUnitId)}; se conserva la cantidad comercial original.`,
-    };
-  }
-
-  const tolerance = Math.max(0.00001, Math.abs(line.deliveredBaseQuantity) * 0.000001);
-  const sourceBaseQuantity = line.deliveredQuantity * basePerSource;
-  const selectedBasePerUnit = selectedUnit.sourceQuantity * basePerSource;
-  const isSelectedBaseUnit = selectedUnitId === `unit:${line.baseUnitId}`;
-  if (!Number.isFinite(sourceBaseQuantity) ||
-    Math.abs(sourceBaseQuantity - line.deliveredBaseQuantity) > tolerance ||
-    !Number.isFinite(selectedBasePerUnit) || selectedBasePerUnit <= 0 ||
-    (isSelectedBaseUnit && Math.abs(selectedBasePerUnit - 1) > 0.000001)) {
-    return {
-      ...original,
-      warning: `La equivalencia a ${selectedUnit.label} no coincide con el snapshot físico; se conserva la cantidad comercial original.`,
-    };
-  }
-
-  const displayQuantity = Number((line.deliveredBaseQuantity / selectedBasePerUnit).toFixed(6));
-  if (!Number.isFinite(displayQuantity)) return original;
-
-  return {
-    quantity: displayQuantity,
-    unitLabel: selectedUnit.label,
-    warning: null,
-  };
-}
 
 function roundQuantity(value: number) {
   return Number(value.toFixed(6));
@@ -338,7 +286,6 @@ export function buildMarketSheetModel(
       }
 
       const lineRefs: MarketSheetLineRef[] = lines.map((l) => {
-        const deliveredDisplay = resolveDeliveredDisplay(l);
         return {
           orderItemId: l.orderItemId,
           orderId: l.orderId,
@@ -350,9 +297,9 @@ export function buildMarketSheetModel(
             ? roundQuantity(Math.max(l.requestedBaseQuantity - l.deliveredBaseQuantity, 0))
             : null,
           deliveredQuantity: l.deliveredQuantity,
-          deliveredDisplayQuantity: deliveredDisplay.quantity,
-          deliveredUnitLabel: deliveredDisplay.unitLabel,
-          deliveredDisplayWarning: deliveredDisplay.warning,
+          deliveredDisplayQuantity: l.deliveredQuantity,
+          deliveredUnitLabel: l.sourceLabel,
+          deliveredDisplayWarning: l.requestedConversionValid === false ? "Revisar equivalencia histórica" : null,
           deliveredBaseQuantity: l.deliveredBaseQuantity,
           deliveredWeightValue: l.deliveryActualWeightValue,
           deliveredWeightUnitSymbol: l.deliveryActualWeightUnitSymbol,

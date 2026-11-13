@@ -258,9 +258,9 @@ test("delivery display units never relabel an original commercial quantity witho
         controlsActualWeight: true,
         requestedBaseQuantity: 8,
         deliveredQuantity: 8,
-        deliveredBaseQuantity: 3.40194,
-        deliveryActualWeightKg: 3.40194,
-        deliveryActualWeightValue: 7.5,
+        deliveredBaseQuantity: 8,
+        deliveryActualWeightKg: 5.443104,
+        deliveryActualWeightValue: 12,
         deliveryActualWeightUnitSymbol: "LB",
         deliveryDisplayUnitId: "unit:kg",
         quantityUnits: [
@@ -302,25 +302,25 @@ test("delivery display units never relabel an original commercial quantity witho
   assert.ok(potatoLine && pepperLine && quarterLine && staleFactorLine);
 
   assert.equal(potatoLine.deliveredQuantity, 1, "Stored commercial quantity remains one arroba");
-  assert.equal(potatoLine.deliveredDisplayQuantity, 11.25);
-  assert.equal(potatoLine.deliveredUnitLabel, "KG");
+  assert.equal(potatoLine.deliveredDisplayQuantity, 1);
+  assert.equal(potatoLine.deliveredUnitLabel, "ARROBA");
   assert.equal(potatoLine.deliveredDisplayWarning, null);
   assert.equal(potatoLine.deliveredBaseQuantity, 11.25);
 
   assert.equal(pepperLine.deliveredQuantity, 8, "Commercial units stay separate from measured weight");
   assert.equal(pepperLine.deliveredDisplayQuantity, 8);
   assert.equal(pepperLine.deliveredUnitLabel, "UNIDAD");
-  assert.equal(pepperLine.deliveredWeightKg, 3.40194);
-  assert.equal(pepperLine.deliveredWeightValue, 7.5);
+  assert.equal(pepperLine.deliveredWeightKg, 5.443104);
+  assert.equal(pepperLine.deliveredWeightValue, 12);
   assert.equal(pepperLine.deliveredWeightUnitSymbol, "LB");
-  assert.match(pepperLine.deliveredDisplayWarning, /cantidad comercial original/);
+  assert.equal(pepperLine.deliveredDisplayWarning, null);
 
   assert.equal(quarterLine.deliveredDisplayQuantity, 0.5);
   assert.equal(quarterLine.deliveredUnitLabel, "CUARTILLA");
-  assert.match(quarterLine.deliveredDisplayWarning, /conserva la cantidad comercial original/);
+  assert.match(quarterLine.deliveredDisplayWarning, /Revisar equivalencia histórica/);
   assert.equal(staleFactorLine.deliveredDisplayQuantity, 1);
   assert.equal(staleFactorLine.deliveredUnitLabel, "ARROBA");
-  assert.match(staleFactorLine.deliveredDisplayWarning, /snapshot físico/);
+  assert.equal(staleFactorLine.deliveredDisplayWarning, null);
 
   const originalDisplay = buildMarketSheetModel({
     ...displayCases,
@@ -338,13 +338,13 @@ test("delivery display units never relabel an original commercial quantity witho
     await workbook.xlsx.load(buffer);
     const sheet = workbook.getWorksheet("Provisiones");
     assert.ok(sheet);
-    assert.match(String(sheet.getCell("D6").value), /Entregado 11,25 KG/);
+    assert.match(String(sheet.getCell("D6").value), /Entregado 1 ARROBA/);
     const quarterRow = model.rows.findIndex((row) => row.productId === "potato-quarter") + 6;
     assert.match(String(sheet.getCell(`H${quarterRow}`).value), /CUARTILLA/);
-    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /conserva la cantidad comercial original/);
+    assert.match(String(sheet.getCell(`H${quarterRow}`).value), /Revisar equivalencia histórica/);
     const pepperRow = model.rows.findIndex((row) => row.productId === "pepper") + 6;
     assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Entregado 8 UNIDAD/);
-    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real entregado 7,5 LB/);
+    assert.match(String(sheet.getCell(`F${pepperRow}`).value), /Peso real entregado 12 LB/);
   });
 });
 
