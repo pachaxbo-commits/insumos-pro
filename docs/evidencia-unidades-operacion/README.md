@@ -38,3 +38,13 @@ Las capturas usan clientes y pedidos ficticios. Las pruebas visuales ejercitan e
 - La matriz autenticada se comprobó a 1440, 768 y 390 px. Las entradas de cantidad y peso mantienen 16 px también en tableta. El tamaño de las casillas quedó intacto. Se comprobó el indicador al final de la tabla.
 - Con datos ficticios creados por el contrato SQL, se abrió el recibo en el navegador con 8 UNIDAD y 12 LIBRA, se descargó el Excel interno y se generó un PDF. Las capturas del entorno restaurado se conservan localmente por contener datos de la copia.
 - Falta ejecutar desde el navegador las escrituras de Pedido, Preparación y Entrega de un pedido nuevo, y comprobar el ajuste excepcional del origen durante esa misma secuencia. Las pruebas autenticadas de lectura y el contrato SQL cubren partes distintas.
+
+## Resultado final de escritura en navegador
+
+PASS en QA aislado de 131 versiones. El pedido ficticio QB-20261113-C12478 se creó con el formulario real. Preparación guardó 1 CUARTILLA, 8 UNIDAD y 20 de 25 KG. Los 5 KG restantes se clasificaron como compra externa. Los dos productos con existencias suficientes quedaron asignados a almacén. El pie mostró 3 productos y 3 checks con el indicador de cantidad parcial.
+
+El navegador reprodujo y permitió corregir un fallo: salir de un campo decimal sin editarlo disparaba un cambio y desmarcaba la preparación. Se repitió Preparación sobre el mismo pedido y persistieron las tres marcas.
+
+Entrega recuperó el plan. Se abrió el ajuste excepcional de la línea parcial y se guardaron 19 KG de almacén y 6 KG externos. La confirmación generó una sola confirmación y tres movimientos distintos, de 2,7 KG, 8 unidades y 19 KG de almacén. Se verificó Resumen y se creó el recibo con los controles de la aplicación.
+
+El recibo conservó 1 CUARTILLA, 8 UNIDAD, 12 LIBRA y 25 KG. Los costos de QA (8,10; 24; 75 Bs) quedaron separados de las ventas (27; 80; 250 Bs). Se generó PDF, se descargó y leyó el Excel interno y se recargó el recibo para confirmar persistencia. SQL se usó para cotejar los resultados del pedido, no para ejecutar el flujo.

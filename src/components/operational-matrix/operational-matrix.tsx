@@ -2328,7 +2328,7 @@ function DecimalInput({
 
   const emitValue = (next: string) => {
     const parsed = parseDecimalInput(next);
-    if (parsed !== undefined) onChange(parsed);
+    if (parsed !== undefined && parsed !== value) onChange(parsed);
     return parsed;
   };
 
