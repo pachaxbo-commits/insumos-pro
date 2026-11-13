@@ -60,6 +60,7 @@ export type MatrixLine = {
   basePerSourceQuantity: number;
   /** False when stored order quantity/factor snapshots disagree or are incomplete. */
   requestedConversionValid: boolean;
+  historicalOptions?: { id: string; label: string }[];
   requestedNote: string;
   requestedVersion: number;
   preparedQuantity: number;

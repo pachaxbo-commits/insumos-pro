@@ -41,8 +41,11 @@ assert.equal(allocationForDeliveryOrigin("external", -1).deliveryExternalBaseQua
 
 assert.match(selector, /Ajustar origen por producto/);
 assert.match(selector, /Guardar origen de \{line\.productName\}/);
-assert.match(selector, /!line\.deliverySourceConfirmed && !readOnly/);
+assert.match(selector, /!line\.deliverySourceConfirmed && line\.requestedConversionValid && !readOnly/);
 assert.doesNotMatch(selector, /<select|Todos los productos/);
+assert.match(selector, /pending\.map\(editor\)/);
+assert.match(selector, /Cambió el origen de un producto/);
+assert.match(selector, /editing === line\.orderItemId \? editor\(line\)/);
 assert.match(matrix, /deliverySourceConfirmed = false/);
 assert.match(matrix, /DeliveryOriginControl[\s\S]*selectedConfirmationOrder/);
 assert.doesNotMatch(matrix, /actionForCustomer\(group, "confirm"\)/);

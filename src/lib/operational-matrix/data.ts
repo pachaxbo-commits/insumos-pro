@@ -179,6 +179,10 @@ export async function getOperationalMatrixData(
         .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id")
         .in("product_id", productIds)
     : { data: [], error: null };
+  const allowedResult = role === "administrador" && productIds.length
+    ? await supabase.from("qb_product_allowed_units").select("id,product_id,unit_id")
+        .in("product_id", productIds).eq("usage_context", "pedido").eq("is_active", true)
+    : { data: [], error: null };
   const preparationCostsResult = await supabase.from("qb_operational_preparation_costs")
     .select("order_item_id, provision_cost_unit")
     .in("order_item_id", itemIds);
@@ -186,7 +190,7 @@ export async function getOperationalMatrixData(
     preparationItemsResult.error ||
     deliveryItemsResult.error ||
     deliveryMovementsResult.error ||
-    productSettingsResult.error || preparationCostsResult.error ||
+    allowedResult.error || productSettingsResult.error || preparationCostsResult.error ||
     unitsResult.error ||
     unitDimensionsResult.error || presentationsResult.error
   ) {
@@ -195,7 +199,7 @@ export async function getOperationalMatrixData(
         preparationItemsResult.error?.message ??
         deliveryItemsResult.error?.message ??
         deliveryMovementsResult.error?.message ??
-        productSettingsResult.error?.message ?? preparationCostsResult.error?.message ??
+        allowedResult.error?.message ?? productSettingsResult.error?.message ?? preparationCostsResult.error?.message ??
         unitsResult.error?.message ??
         unitDimensionsResult.error?.message ?? presentationsResult.error?.message
       }`,
@@ -366,6 +370,22 @@ export async function getOperationalMatrixData(
       item.product_presentation_id, physicalDimensionIds,
       { sourceLabel: String(item.source_label), factor: numberOr(item.conversion_factor_to_base) },
     );
+    const inventoryId = productSetting
+      ? String(productSetting.base_inventory_unit_id ?? productSetting.inventory_unit_id ?? productSetting.base_unit_id ?? "")
+      : "";
+    const inventoryUnit = units.get(inventoryId);
+    const base = units.get(String(item.base_unit_id));
+    const legacyKgInventory = inventoryUnit?.symbol.trim().toUpperCase() === "KG" &&
+      Number(inventoryUnit.conversion_factor_to_base) === 1 &&
+      (unitDimensionsResult.data ?? []).some((dimension) => dimension.id === inventoryUnit.dimension_id && dimension.code === "legacy_dump");
+    const physicalKg = weightUnits.find((unit) => unit.code === "kg" && unit.kilograms === 1);
+    const historicalOptions = role !== "administrador" || requestedConversionValid || !base ||
+      physicalDimensionIds.includes(String(base.dimension_id)) ? undefined :
+      (legacyKgInventory && physicalKg
+        ? weightUnits.map((unit) => ({ id: unit.id, label: unit.symbol }))
+        : (allowedResult.data ?? []).filter((unit) => unit.product_id === item.product_id)
+          .map((allowed) => ({ id: String(allowed.id), label: units.get(String(allowed.unit_id))?.symbol ?? "" })))
+        .filter((option) => option.label.trim().toUpperCase() === String(item.source_label).trim().toUpperCase());
     const preparationCheck = Boolean(prep?.preparation_check);
     const rawPreparedQuantity = numberOr(prep?.actual_quantity);
     const preparedQuantity = rawPreparedQuantity;
@@ -429,9 +449,9 @@ export async function getOperationalMatrixData(
         ? quantityUnitOptions(item, unitsResult.data ?? [], presentationsResult.data ?? [], physicalDimensionIds)
         : [{ id: "original", label: String(item.source_label), sourceQuantity: 1 }],
       baseUnitId: String(item.base_unit_id),
-      inventoryBaseUnitId: productSetting
-        ? String(productSetting.base_inventory_unit_id ?? productSetting.inventory_unit_id ?? productSetting.base_unit_id ?? "") || null
-        : null,
+      inventoryBaseUnitId: legacyKgInventory && physicalKg && physicalKg.id === item.base_unit_id
+        ? physicalKg.id : inventoryId || null,
+      historicalOptions,
       baseUnitSymbol: String(item.base_unit_symbol),
       baseWeightFactorToKg: weightUnits.find((unit) => unit.id === item.base_unit_id)?.kilograms ?? null,
       priceUnitSymbol,

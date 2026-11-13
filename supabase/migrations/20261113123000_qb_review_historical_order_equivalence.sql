@@ -13,6 +13,8 @@ declare
   v_delivery public.qb_order_delivery_items%rowtype;
   v_base public.qb_units%rowtype;
   v_source public.qb_units%rowtype;
+  v_inventory public.qb_units%rowtype;
+  v_allowed uuid;
   v_factor numeric(18,9);
   v_snapshot uuid;
   v_before jsonb;
@@ -46,6 +48,25 @@ begin
     join public.qb_units u on u.id=a.unit_id and u.is_active and u.dimension_id=v_base.dimension_id
     where a.id=p_allowed_unit_id and a.product_id=v_item.product_id and a.is_active and a.usage_context='pedido'
       and upper(trim(u.symbol))=upper(trim(v_item.source_label)) for share of a,u;
+  if v_base.id is not null and v_source.id is not null then
+    v_allowed := p_allowed_unit_id;
+  else
+    -- Existing inventory in legacy KG needs no numeric conversion to physical KG.
+    -- Only the selected open order is corrected; inventory and product settings stay intact.
+    select u.* into v_inventory from public.qb_product_unit_settings s
+    join public.qb_units u on u.id=coalesce(s.base_inventory_unit_id,s.inventory_unit_id,s.base_unit_id)
+    join public.qb_unit_dimensions d on d.id=u.dimension_id
+    where s.product_id=v_item.product_id and d.code='legacy_dump' and d.is_active and u.is_active
+      and upper(trim(u.symbol))='KG' and u.conversion_factor_to_base=1 for share of s,u,d;
+    if v_inventory.id is not null then
+      select u.* into v_base from public.qb_units u join public.qb_unit_dimensions d on d.id=u.dimension_id
+      where d.code='peso' and d.is_active and u.code='kg' and u.is_active and u.conversion_factor_to_base=1;
+      select u.* into v_source from public.qb_units u
+      where u.id=p_allowed_unit_id and u.dimension_id=v_base.dimension_id and u.is_active
+        and upper(trim(u.symbol))=upper(trim(v_item.source_label)) for share;
+      v_allowed := v_item.allowed_unit_id;
+    end if;
+  end if;
   if v_source.id is null or v_base.id is null then
     raise exception 'El producto debe tener la misma unidad comercial habilitada y una base física compatible con inventario.';
   end if;
@@ -59,7 +80,10 @@ begin
   v_before := jsonb_build_object('order',to_jsonb(v_item),'preparation',to_jsonb(v_prep),'delivery',to_jsonb(v_delivery));
   v_after := jsonb_build_object('commercial_quantity',v_item.requested_quantity,'commercial_unit',v_item.source_label,
     'factor',v_factor,'base_unit',v_base.symbol,'ordered_base',round(v_item.requested_quantity*v_factor,6),
-    'prepared_base',round(v_prep.actual_quantity*v_factor,6),'delivery_base',round(v_delivery.delivered_quantity*v_factor,6));
+    'prepared_base',round(v_prep.actual_quantity*v_factor,6),'delivery_base',
+    case when v_delivery.actual_weight_kg is not null and v_base.code='kg'
+      and exists(select 1 from public.products p where p.id=v_item.product_id and p.controls_actual_weight)
+      then v_delivery.actual_weight_kg else round(v_delivery.delivered_quantity*v_factor,6) end);
   if not coalesce(p_apply,false) then
     return jsonb_build_object('applied',false,'previous_factor',v_item.conversion_factor_to_base,
       'previous_ordered_base',v_item.base_quantity,'proposed',v_after,
@@ -77,12 +101,12 @@ begin
   values('qb_order_items',v_item.id,v_item.product_id,'pedido','universal_unit',v_source.id,v_item.source_label,
     v_item.requested_quantity,v_base.id,v_base.symbol,round(v_item.requested_quantity*v_factor,6),v_factor,v_after,auth.uid())
   returning id into v_snapshot;
-  update public.qb_order_items set allowed_unit_id=p_allowed_unit_id,source_unit_id=v_source.id,
+  update public.qb_order_items set allowed_unit_id=v_allowed,source_unit_id=v_source.id,
     base_unit_id=v_base.id,base_unit_symbol=v_base.symbol,base_quantity=round(requested_quantity*v_factor,6),
     conversion_factor_to_base=v_factor,conversion_snapshot_id=v_snapshot,row_version=row_version+1 where id=v_item.id;
   update public.qb_order_preparation_items set requested_base_unit_id=v_base.id,requested_base_unit_symbol=v_base.symbol,
     requested_base_quantity=round(requested_quantity*v_factor,6),
-    actual_allowed_unit_id=case when actual_quantity>0 then p_allowed_unit_id else actual_allowed_unit_id end,
+    actual_allowed_unit_id=case when actual_quantity>0 then v_allowed else actual_allowed_unit_id end,
     actual_source_unit_id=case when actual_quantity>0 then v_source.id else actual_source_unit_id end,
     actual_base_unit_id=case when actual_quantity>0 then v_base.id else actual_base_unit_id end,
     actual_base_unit_symbol=case when actual_quantity>0 then v_base.symbol else actual_base_unit_symbol end,
@@ -94,10 +118,10 @@ begin
     preparation_check=false,row_version=row_version+1 where id=v_prep.id;
   update public.qb_order_delivery_items set base_unit_id=v_base.id,base_unit_symbol=v_base.symbol,
     conversion_factor_to_base=v_factor,prepared_base_quantity_snapshot=round(prepared_quantity_snapshot*v_factor,6),
-    delivered_base_quantity=round(delivered_quantity*v_factor,6),
+    delivered_base_quantity=(v_after->>'delivery_base')::numeric,
     externally_sourced_quantity=0,externally_sourced_base_quantity=0,
     warehouse_used_base_quantity=0,pending_incoming_base_quantity=0,external_definitive_base_quantity=0,
-    origin_review_base_quantity=round(delivered_quantity*v_factor,6),source_origin_confirmed=false,
+    origin_review_base_quantity=(v_after->>'delivery_base')::numeric,source_origin_confirmed=false,
     delivery_check=false,row_version=row_version+1 where id=v_delivery.id;
   update public.qb_orders set status=case when v_prep.id is null then status else 'en_preparacion' end where id=v_order.id;
   update public.qb_order_preparations set status='en_preparacion' where id=v_prep.preparation_id;
