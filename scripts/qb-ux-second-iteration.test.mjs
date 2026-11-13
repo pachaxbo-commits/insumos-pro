@@ -31,7 +31,7 @@ test("Formulario y Tabla usan las mismas líneas y el mismo estado", () => {
   const matrix = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
   assert.match(matrix, /linesForOrder\(lines, order\.id\)/);
   assert.match(matrix, /groupLineMap\.get/);
-  assert.match(matrix, /const showForm = viewMode === "formulario"/);
+  assert.match(matrix, /const showForm = \(viewMode \?\? \(mobileViewport \? "formulario" : "tabla"\)\) === "formulario"/);
   assert.match(matrix, /updateGroupedLines\(\[line\]/);
 });
 

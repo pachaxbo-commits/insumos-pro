@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,7 +17,6 @@ import { operationalDateHref } from "@/lib/operational-matrix/date-navigation";
 import { PendingWorkBar } from "@/components/operational-matrix/pending-work-bar";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
-  quantityInOriginalUnit,
   quantityInSelectedUnit,
 } from "@/lib/operational-matrix/quantity-units";
 import { actionableOrders, canEditMatrixGroupLines, canEditMatrixOrder, linesForOrder } from "@/lib/operational-matrix/form-scope";
@@ -27,12 +26,10 @@ import {
   preparationStockCapacityByLine,
 } from "@/lib/operational-matrix/preparation-origin-plan";
 import type { PreparationStockCapacity } from "@/lib/operational-matrix/preparation-origin-plan";
-import { allocationForDeliveryOrigin } from "@/lib/operational-matrix/delivery-origin-choice";
 import { createWeightMeasurementSnapshot, formatWeightMeasurement } from "@/lib/operational-matrix/weight-measurement";
-import type { DeliveryOriginChoice } from "@/lib/operational-matrix/delivery-origin-choice";
 import {
   applyAutomaticDeliveryValues,
-  comparePreparationCoverage,
+  compareCommercialCoverage,
   preparationCheckTransition,
   updateDeliveryChecks,
 } from "@/lib/operational-matrix/line-state";
@@ -91,6 +88,20 @@ function allowedStage(
   return requested ?? "preparacion";
 }
 
+function subscribeToMobileViewport(onChange: () => void) {
+  const query = window.matchMedia("(max-width: 767px)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function defaultDesktopViewport() {
+  return false;
+}
+
 function rowKey(line: MatrixLine) {
   return `${line.productId}:${line.sourceLabel}`;
 }
@@ -141,12 +152,52 @@ function groupStatus(group: MatrixCustomerGroup) {
 }
 
 function lineCoverage(line: MatrixLine, phase: "preparacion" | "entrega" | "resumen") {
-  return comparePreparationCoverage({
-    requestedBaseQuantity: line.requestedBaseQuantity,
-    preparedBaseQuantity:
-      phase === "preparacion" ? line.preparedBaseQuantity : line.deliveredBaseQuantity,
-    requestedConversionValid: line.requestedConversionValid,
+  // Delivery's base amount can be the measured weight used for stock.
+  // Commercial coverage compares quantities expressed in the order's unit.
+  return compareCommercialCoverage(line.requestedQuantity,
+    phase === "preparacion" ? line.preparedQuantity : line.deliveredQuantity, line.requestedConversionValid);
+}
+
+function deliveryOriginIsReady(line: MatrixLine) {
+  return line.requestedConversionValid && line.deliverySourceConfirmed && originDistributionIsResolved({
+    warehouse: line.deliveryWarehouseBaseQuantity,
+    pendingToday: line.deliveryPendingBaseQuantity,
+    externalDefinitive: line.deliveryExternalBaseQuantity,
+    review: line.deliveryReviewBaseQuantity,
+  }, expectedDeliveryBaseQuantity(line));
+}
+
+function CustomerChecks({ lines, stage }: { lines: MatrixLine[]; stage: "preparacion" | "entrega" }) {
+  const checked = (line: MatrixLine) => stage === "entrega" ? hasDeliveryCheck(line) : line.preparationCheck;
+  const counts = summarizeVisibleProductChecks(lines, rowKey, rowKey, checked);
+  const pending = lines.flatMap((line) => {
+    const coverage = lineCoverage(line, stage);
+    const problems = [
+      coverage.status === "unverified" ? "Revisar equivalencia histórica" :
+        coverage.status === "short" ? `faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.sourceLabel}` :
+        coverage.status === "over" ? `excede ${formatQuantity(coverage.excessBaseQuantity)} ${line.sourceLabel}` : null,
+      checked(line) ? null : "verificación pendiente",
+      stage === "entrega" && !deliveryOriginIsReady(line) ? "origen pendiente" : null,
+      stage === "preparacion" && !line.originPlanConfirmed ? "plan de origen pendiente" : null,
+    ].filter(Boolean);
+    return problems.length ? [`${line.productName}: ${problems.join(", ")}`] : [];
   });
+  const complete = lines.length > 0 && pending.length === 0;
+  const description = complete ? "Cantidades y verificaciones completas." : pending.join(" · ") || "Sin productos.";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {counts.products} productos · {counts.checks} checks
+      <details className="group relative inline-block">
+        <summary aria-label={description} title={description}
+          className={`grid size-4 cursor-pointer list-none place-items-center rounded-sm text-[10px] font-bold leading-none text-white marker:hidden focus-visible:ring-2 focus-visible:ring-slate-900 ${complete ? "bg-emerald-700" : "bg-red-700"}`}>
+          <span aria-hidden="true">{complete ? "✓" : "!"}</span>
+        </summary>
+        <span className="absolute bottom-full left-0 z-50 mb-1 w-52 rounded bg-slate-900 p-2 text-left text-xs font-normal text-white">
+          {description}
+        </span>
+      </details>
+    </span>
+  );
 }
 
 function CoverageStatus({
@@ -168,7 +219,7 @@ function CoverageStatus({
     status: coverage.status,
     missingBaseQuantity: coverage.status === "short" ? coverage.missingBaseQuantity : undefined,
     excessBaseQuantity: coverage.status === "over" ? coverage.excessBaseQuantity : undefined,
-    baseUnitSymbol: line.baseUnitSymbol,
+    baseUnitSymbol: line.sourceLabel,
     phase,
     operationalVerified: verified,
     deliveryState,
@@ -299,12 +350,14 @@ function measuredWeightPatch(
   if (stage === "preparacion") return {
     preparationActualWeightValue: snapshot?.value ?? null,
     preparationActualWeightUnitId: snapshot?.unitId ?? null,
+    preparationActualWeightUnitSymbol: snapshot ? unit?.symbol ?? null : null,
     preparationActualWeightFactorToKg: snapshot?.factorToKg ?? null,
     preparationActualWeightKg: snapshot?.kilograms ?? null,
   };
   return {
     deliveryActualWeightValue: snapshot?.value ?? null,
     deliveryActualWeightUnitId: snapshot?.unitId ?? null,
+    deliveryActualWeightUnitSymbol: snapshot ? unit?.symbol ?? null : null,
     deliveryActualWeightFactorToKg: snapshot?.factorToKg ?? null,
     deliveryActualWeightKg: snapshot?.kilograms ?? null,
   };
@@ -316,6 +369,9 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     ...first,
     requestedQuantity: sumLines(lines, "requestedQuantity"),
     requestedBaseQuantity: sumLines(lines, "requestedBaseQuantity"),
+    requestedConversionValid: lines.every((line) => line.requestedConversionValid),
+    quantityUnits: first.quantityUnits.filter((unit) => unit.id === "original" || lines.every((line) =>
+      line.quantityUnits.some((option) => option.id === unit.id && option.sourceQuantity === unit.sourceQuantity))),
     basePerSourceQuantity: sumLines(lines, "requestedQuantity") > 0
       ? sumLines(lines, "requestedBaseQuantity") / sumLines(lines, "requestedQuantity")
       : first.basePerSourceQuantity,
@@ -328,6 +384,8 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     preparationActualWeightKg: sumNullable(lines, "preparationActualWeightKg"),
     preparationActualWeightValue: lines.every((line) => line.preparationActualWeightUnitId === first.preparationActualWeightUnitId)
       ? sumNullable(lines, "preparationActualWeightValue") : null,
+    preparationActualWeightUnitSymbol: lines.every((line) => line.preparationActualWeightUnitId === first.preparationActualWeightUnitId)
+      ? first.preparationActualWeightUnitSymbol : null,
     preparationActualWeightUnitId: lines.every((line) => line.preparationActualWeightUnitId === first.preparationActualWeightUnitId)
       ? first.preparationActualWeightUnitId : null,
     preparationActualWeightFactorToKg: lines.every((line) => line.preparationActualWeightFactorToKg === first.preparationActualWeightFactorToKg)
@@ -349,6 +407,8 @@ function aggregateLines(lines: MatrixLine[]): MatrixLine {
     deliveryActualWeightKg: sumNullable(lines, "deliveryActualWeightKg"),
     deliveryActualWeightValue: lines.every((line) => line.deliveryActualWeightUnitId === first.deliveryActualWeightUnitId)
       ? sumNullable(lines, "deliveryActualWeightValue") : null,
+    deliveryActualWeightUnitSymbol: lines.every((line) => line.deliveryActualWeightUnitId === first.deliveryActualWeightUnitId)
+      ? first.deliveryActualWeightUnitSymbol : null,
     deliveryActualWeightUnitId: lines.every((line) => line.deliveryActualWeightUnitId === first.deliveryActualWeightUnitId)
       ? first.deliveryActualWeightUnitId : null,
     deliveryActualWeightFactorToKg: lines.every((line) => line.deliveryActualWeightFactorToKg === first.deliveryActualWeightFactorToKg)
@@ -461,9 +521,8 @@ export function OperationalMatrix({
   const [stage, setStage] = useState<MatrixStage>(() =>
     allowedStage(data.role, initialStage),
   );
-  const [viewMode, setViewMode] = useState<"formulario" | "tabla">("tabla");
+  const [viewMode, setViewMode] = useState<"formulario" | "tabla" | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState(initialOrderId ?? data.orders[0]?.id ?? "");
-  const [deliveryOriginByOrder, setDeliveryOriginByOrder] = useState<Record<string, DeliveryOriginChoice | null>>({});
   const [selectedConfirmationOrderId, setSelectedConfirmationOrderId] = useState("");
   const [formStatus, setFormStatus] = useState<"guardado" | "pendiente" | "guardando" | "error">("guardado");
   const formSaveSequence = useRef(0);
@@ -566,7 +625,6 @@ export function OperationalMatrix({
     setLines(refreshedLines);
     ordersRef.current = data.orders;
     setOrders(data.orders);
-    setDeliveryOriginByOrder({});
     const frame = requestAnimationFrame(() => {
       matrixScrollRef.current?.scrollTo({
         left: scrollLeft,
@@ -771,7 +829,7 @@ export function OperationalMatrix({
         changed ||= next.preparedQuantity !== line.preparedQuantity;
       } else if (typeof patch.preparationCheck === "boolean") {
         const transition = preparationTransitions[index];
-        if (transition) {
+        if (transition && line.requestedConversionValid) {
           const capacity = preparationCapacityByLine.get(line.orderItemId);
           const suggestedQuantity = transition.autoFill && capacity?.known && line.basePerSourceQuantity > 0
             ? Math.min(transition.preparedQuantity, (capacity.allocatedBaseQuantity ?? 0) / line.basePerSourceQuantity)
@@ -779,7 +837,7 @@ export function OperationalMatrix({
           next.preparedQuantity = Number(suggestedQuantity.toFixed(6));
           next.preparedBaseQuantity = Number((next.preparedQuantity * line.basePerSourceQuantity).toFixed(6));
           next.preparationAutoFillPreviousQuantity = transition.previousQuantity;
-          next.preparationAutoFillRequested = transition.autoFill;
+          next.preparationAutoFillRequested = transition.autoFill && next.preparedQuantity > 0;
           next.preparationAutoFillResetRequested = transition.resetAutoFill;
           if (Math.abs(next.preparedQuantity - line.preparedQuantity) > 0.000001) {
             next.plannedPendingBaseQuantity = 0;
@@ -831,6 +889,7 @@ export function OperationalMatrix({
       if (Object.hasOwn(patch, "preparationActualWeightValue")) {
         next.preparationActualWeightValue = patch.preparationActualWeightValue === null ? null : preparationWeightValues[index];
         next.preparationActualWeightUnitId = patch.preparationActualWeightUnitId ?? null;
+        next.preparationActualWeightUnitSymbol = patch.preparationActualWeightUnitSymbol ?? null;
         next.preparationActualWeightFactorToKg = patch.preparationActualWeightFactorToKg ?? null;
         changed ||= next.preparationActualWeightValue !== line.preparationActualWeightValue
           || next.preparationActualWeightUnitId !== line.preparationActualWeightUnitId
@@ -870,10 +929,25 @@ export function OperationalMatrix({
       if (Object.hasOwn(patch, "deliveryActualWeightValue")) {
         next.deliveryActualWeightValue = patch.deliveryActualWeightValue === null ? null : deliveryWeightValues[index];
         next.deliveryActualWeightUnitId = patch.deliveryActualWeightUnitId ?? null;
+        next.deliveryActualWeightUnitSymbol = patch.deliveryActualWeightUnitSymbol ?? null;
         next.deliveryActualWeightFactorToKg = patch.deliveryActualWeightFactorToKg ?? null;
         changed ||= next.deliveryActualWeightValue !== line.deliveryActualWeightValue
           || next.deliveryActualWeightUnitId !== line.deliveryActualWeightUnitId
           || next.deliveryActualWeightFactorToKg !== line.deliveryActualWeightFactorToKg;
+      }
+      if ((Object.hasOwn(patch, "deliveryActualWeightKg") || Object.hasOwn(patch, "deliveredQuantity"))
+        && line.requestedConversionValid && line.controlsActualWeight && line.baseWeightFactorToKg) {
+        const physical = next.deliveryActualWeightKg === null
+          ? next.deliveredQuantity * line.basePerSourceQuantity
+          : next.deliveryActualWeightKg / line.baseWeightFactorToKg;
+        next.deliveredBaseQuantity = Number(physical.toFixed(6));
+        if (Math.abs(next.deliveredBaseQuantity - line.deliveredBaseQuantity) > 0.000001) {
+          next.deliverySourceConfirmed = false;
+          next.deliveryWarehouseBaseQuantity = 0;
+          next.deliveryPendingBaseQuantity = 0;
+          next.deliveryExternalBaseQuantity = 0;
+          next.deliveryReviewBaseQuantity = next.deliveredBaseQuantity;
+        }
       }
       for (const [field, values] of distributedBaseFields) {
         (next[field as keyof MatrixLine] as number) = values[index] ?? 0;
@@ -891,14 +965,7 @@ export function OperationalMatrix({
     if (anyChanged) setFormStatus("pendiente");
     linesRef.current = updatedLines;
     setLines(updatedLines);
-    if (Object.hasOwn(patch, "deliveredQuantity")) {
-      const affectedOrders = new Set(updatedLines.filter((line) => ids.has(line.orderItemId)).map((line) => line.orderId));
-      setDeliveryOriginByOrder((current) => {
-        const next = { ...current };
-        for (const orderId of affectedOrders) next[orderId] = null;
-        return next;
-      });
-    }
+
   };
 
   const verifyZeroPreparation = (groupedLines: MatrixLine[]) => {
@@ -909,35 +976,16 @@ export function OperationalMatrix({
     );
   };
 
-  const selectDeliveryOrigin = (orderId: string, choice: DeliveryOriginChoice) => {
-    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: choice }));
-    const orderLines = linesRef.current.filter((line) => line.orderId === orderId);
-    for (const line of orderLines) {
-      const quantity = expectedDeliveryBaseQuantity(line);
-      updateGroupedLines([line], allocationForDeliveryOrigin(choice, quantity));
-    }
+  const updateDeliveryOriginLine = (line: MatrixLine, patch: Partial<MatrixLine>) => {
+    const current = linesRef.current.find((item) => item.orderItemId === line.orderItemId);
+    if (current) updateGroupedLines([current], { ...patch, deliverySourceConfirmed: false });
   };
 
-  const updateMixedDeliveryOrigin = (orderId: string, line: MatrixLine, patch: Partial<MatrixLine>) => {
-    updateGroupedLines([line], { ...patch, deliverySourceConfirmed: false });
-    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: "mixed" }));
-  };
-
-  const confirmMixedDeliveryOrigin = (orderId: string) => {
-    const orderLines = linesRef.current.filter((line) => line.orderId === orderId);
-    const unresolved = orderLines.find((line) => !originDistributionIsResolved({
-      warehouse: line.deliveryWarehouseBaseQuantity,
-      pendingToday: line.deliveryPendingBaseQuantity,
-      externalDefinitive: line.deliveryExternalBaseQuantity,
-      review: line.deliveryReviewBaseQuantity,
-    }, expectedDeliveryBaseQuantity(line)));
-    if (unresolved) {
-      setMessage(`Completa el origen de ${unresolved.productName}; las cantidades deben coincidir con lo entregado y no puede quedar origen por verificar.`);
-      return;
-    }
-    for (const line of orderLines) updateGroupedLines([line], { deliverySourceConfirmed: true });
-    setDeliveryOriginByOrder((current) => ({ ...current, [orderId]: "mixed" }));
-    setMessage("Distribución mixta confirmada para este pedido.");
+  const confirmDeliveryOriginLine = async (orderItemId: string) => {
+    const line = linesRef.current.find((item) => item.orderItemId === orderItemId);
+    if (!line || !line.requestedConversionValid || !deliveryOriginIsReady({ ...line, deliverySourceConfirmed: true })) return;
+    updateGroupedLines([line], { deliverySourceConfirmed: true });
+    await saveGroupedDelivery([orderItemId]);
   };
 
   const updateMissingDeliveryChecks = (
@@ -1051,6 +1099,11 @@ export function OperationalMatrix({
             result: { success: false, message: "Línea no disponible." },
           };
         }
+        if (!line.requestedConversionValid) {
+          const result = { success: false, message: "Revisar equivalencia histórica antes de guardar." };
+          setMessage(result.message);
+          return { line, result };
+        }
         const result = await saveMatrixPreparationAction({
           orderItemId: line.orderItemId,
           expectedVersion: line.preparationVersion,
@@ -1120,6 +1173,11 @@ export function OperationalMatrix({
         }
         const externalQuantity = Math.max(line.deliveredQuantity - line.preparedQuantity, 0);
         const effectiveDeliveryCheck = hasDeliveryCheck(line);
+        if (!line.requestedConversionValid) {
+          const result = { success: false, message: "Revisar equivalencia histórica antes de guardar." };
+          setMessage(result.message);
+          return { line, externalQuantity, effectiveDeliveryCheck, result };
+        }
         const result = await saveMatrixDeliveryAction({
           orderItemId: line.orderItemId,
           expectedVersion: line.deliveryVersion,
@@ -1266,13 +1324,12 @@ export function OperationalMatrix({
         );
         return;
       }
-      const unresolvedOrigin = groupLines.find((line) => !line.deliverySourceConfirmed ||
-        !originDistributionIsResolved({
-          warehouse: line.deliveryWarehouseBaseQuantity,
-          pendingToday: line.deliveryPendingBaseQuantity,
-          externalDefinitive: line.deliveryExternalBaseQuantity,
-          review: line.deliveryReviewBaseQuantity,
-        }, expectedDeliveryBaseQuantity(line)));
+      const historical = groupLines.find((line) => !line.requestedConversionValid);
+      if (historical) {
+        setMessage('Revisar equivalencia histórica de ' + historical.productName + ' antes de confirmar la entrega.');
+        return;
+      }
+      const unresolvedOrigin = groupLines.find((line) => !deliveryOriginIsReady(line));
       if (unresolvedOrigin) {
         setMessage(
           `Confirma el origen real de ${unresolvedOrigin.productName}: almacén, pendiente de ingreso hoy y externo deben sumar exactamente lo entregado; no puede quedar cantidad por revisar.`,
@@ -1365,15 +1422,10 @@ export function OperationalMatrix({
   const pendingDeliveryOrders = actionableOrders(orders, new Set(orders.map((order) => order.id)), "confirm");
   const selectedConfirmationOrder = pendingDeliveryOrders.find((order) => order.id === selectedConfirmationOrderId) ?? pendingDeliveryOrders[0] ?? null;
   const selectedOrderNeedsOrigin = selectedConfirmationOrder
-    ? lines.some((line) => line.orderId === selectedConfirmationOrder.id &&
-      (!line.deliverySourceConfirmed || !originDistributionIsResolved({
-        warehouse: line.deliveryWarehouseBaseQuantity,
-        pendingToday: line.deliveryPendingBaseQuantity,
-        externalDefinitive: line.deliveryExternalBaseQuantity,
-        review: line.deliveryReviewBaseQuantity,
-      }, expectedDeliveryBaseQuantity(line))))
+    ? lines.some((line) => line.orderId === selectedConfirmationOrder.id && !deliveryOriginIsReady(line))
     : false;
-  const showForm = viewMode === "formulario";
+  const mobileViewport = useSyncExternalStore(subscribeToMobileViewport, isMobileViewport, defaultDesktopViewport);
+  const showForm = (viewMode ?? (mobileViewport ? "formulario" : "tabla")) === "formulario";
   const saveFormLine = async (id: string) => {
     if (!dirty.current.has(id)) return true;
     const sequence = ++formSaveSequence.current;
@@ -1514,14 +1566,11 @@ export function OperationalMatrix({
           </summary>
           <div className="pt-2">
             <DeliveryOriginControl
-              orderId={selectedConfirmationOrder.id}
+
               lines={lines.filter((line) => line.orderId === selectedConfirmationOrder.id)}
-              choice={deliveryOriginByOrder[selectedConfirmationOrder.id] ?? null}
               disabled={Boolean(actionPending)}
-              onChoiceChange={(choice) => selectDeliveryOrigin(selectedConfirmationOrder.id, choice)}
-              onMixedChange={(line, patch) => updateMixedDeliveryOrigin(selectedConfirmationOrder.id, line, patch)}
-              onConfirmMixed={() => confirmMixedDeliveryOrigin(selectedConfirmationOrder.id)}
-              message={message}
+              onChange={updateDeliveryOriginLine}
+              onConfirm={(id) => void confirmDeliveryOriginLine(id)}
             />
           </div>
         </details>
@@ -1547,12 +1596,7 @@ export function OperationalMatrix({
                     : order.deliveryStatus !== "confirmado";
                   const pending = orderLines.filter((line) => stage === "preparacion"
                     ? !line.preparationCheck : !hasDeliveryCheck(line) || !line.deliverySourceConfirmed || line.deliveryVersion === 0).length;
-                  const orderNeedsOrigin = orderLines.some((line) => !line.deliverySourceConfirmed || !originDistributionIsResolved({
-                    warehouse: line.deliveryWarehouseBaseQuantity,
-                    pendingToday: line.deliveryPendingBaseQuantity,
-                    externalDefinitive: line.deliveryExternalBaseQuantity,
-                    review: line.deliveryReviewBaseQuantity,
-                  }, expectedDeliveryBaseQuantity(line)));
+                  const orderNeedsOrigin = orderLines.some((line) => !deliveryOriginIsReady(line));
                   return (
                     <article key={order.id} className="rounded-md border">
                       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2 py-1.5">
@@ -1596,7 +1640,7 @@ export function OperationalMatrix({
                                   {line.requestedConversionValid ? (
                                     <p className="text-[11px] text-muted-foreground">Equivale según el pedido guardado: {formatQuantity(line.requestedBaseQuantity)} {line.baseUnitSymbol}</p>
                                   ) : (
-                                    <p role="alert" className="text-[11px] font-medium text-amber-800">Conversión física no verificable; revisar la parametrización antes de usar equivalencias.</p>
+                                    <p role="alert" className="text-[11px] font-medium text-amber-800">Revisar equivalencia histórica</p>
                                   )}
                                   {stage === "preparacion" || stage === "entrega" ? (
                                     <div className="mt-1"><CoverageStatus line={line} phase={stage} operationalVerified={stage === "preparacion" ? line.preparationCheck : line.deliveryCheck} deliveryState={order.deliveryStatus === "confirmado" ? "confirmed" : "pending"} /></div>
@@ -1642,9 +1686,9 @@ export function OperationalMatrix({
                                     actualWeightValue={stage === "preparacion" ? line.preparationActualWeightValue : line.deliveryActualWeightValue}
                                     actualWeightUnitId={stage === "preparacion" ? line.preparationActualWeightUnitId : line.deliveryActualWeightUnitId}
                                     sourceLabel={line.sourceLabel}
-                                    sourceUnitHint={line.baseUnitSymbol}
+
                                     weightUnits={data.weightUnits}
-                                    disabled={!editable}
+                                    disabled={!editable || !line.requestedConversionValid}
                                     onQuantityChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparedQuantity: value ?? 0, preparationCheck: false } : { deliveredQuantity: value ?? 0, deliverySourceConfirmed: false })}
                                     onUnitChange={(value) => updateGroupedLines([line], stage === "preparacion" ? { preparationDisplayUnitId: value } : { deliveryDisplayUnitId: value })}
                                     onWeightChange={(value, unit) => updateGroupedLines([line], measuredWeightPatch(stage, value, unit))}
@@ -1676,9 +1720,7 @@ export function OperationalMatrix({
                                     <CheckEditor
                                       label={stage === "preparacion" ? "Preparación verificada" : "Entrega física verificada"}
                                       checked={stage === "preparacion" ? line.preparationCheck : line.deliveryCheck}
-                                      disabled={stage === "preparacion"
-                                        ? !editable
-                                        : !editable}
+                                      disabled={!editable || !line.requestedConversionValid}
                                       onChange={(checked) => {
                                         if (stage === "preparacion") updateGroupedLines([line], { preparationCheck: checked });
                                         else updateMissingDeliveryChecks([line], checked);
@@ -1710,14 +1752,11 @@ export function OperationalMatrix({
                             </summary>
                             <div className="pt-2">
                               <DeliveryOriginControl
-                                orderId={order.id}
-                                lines={linesRef.current.filter((line) => line.orderId === order.id)}
-                                choice={deliveryOriginByOrder[order.id] ?? null}
+
+                                lines={orderLines}
                                 disabled={!editable || Boolean(actionPending)}
-                                onChoiceChange={(choice) => selectDeliveryOrigin(order.id, choice)}
-                                onMixedChange={(line, patch) => updateMixedDeliveryOrigin(order.id, line, patch)}
-                                onConfirmMixed={() => confirmMixedDeliveryOrigin(order.id)}
-                                message={message}
+                                onChange={updateDeliveryOriginLine}
+                                onConfirm={(id) => void confirmDeliveryOriginLine(id)}
                               />
                             </div>
                           </details>
@@ -1744,6 +1783,11 @@ export function OperationalMatrix({
                   );
                 })}
               </div>
+              {stage === "preparacion" || stage === "entrega" ? (
+                <footer className="mt-2 border-t px-2 py-1 text-xs">
+                  <CustomerChecks lines={lines.filter((line) => group.orders.some((order) => order.id === line.orderId))} stage={stage} />
+                </footer>
+              ) : null}
             </div>
           ))}
           {message ? <p role="status" className="text-sm text-muted-foreground">{message} {message.includes("entregado") ? <Link href="/recibos" className="font-semibold text-emerald-800 underline">Ir a Recibos</Link> : null}</p> : null}
@@ -2089,17 +2133,6 @@ export function OperationalMatrix({
                   const customerLines = lines.filter((line) =>
                     orderIds.has(line.orderId),
                   );
-                  // The table consolidates repeated product lines for a customer
-                  // into one cell; that cell is checked only when every source
-                  // line is checked.
-                  const counts = summarizeVisibleProductChecks(
-                    customerLines,
-                    rowKey,
-                    rowKey,
-                    (line) => stage === "entrega"
-                      ? hasDeliveryCheck(line) && line.deliverySourceConfirmed
-                      : line.preparationCheck,
-                  );
                   return (
                     <th
                       key={group.id}
@@ -2110,10 +2143,9 @@ export function OperationalMatrix({
                           : "bg-slate-100"
                       }`}
                     >
-                      {counts.products} productos
                       {stage === "preparacion" || stage === "entrega"
-                        ? ` · ${counts.checks} checks`
-                        : ""}
+                        ? <CustomerChecks lines={customerLines} stage={stage} />
+                        : `${new Set(customerLines.map(rowKey)).size} productos`}
                     </th>
                   );
                 })}
@@ -2338,7 +2370,7 @@ function MeasuredQuantityEditor({
   actualWeightValue,
   actualWeightUnitId,
   sourceLabel,
-  sourceUnitHint,
+
   weightUnits,
   quantityUnits,
   selectedUnitId,
@@ -2356,7 +2388,7 @@ function MeasuredQuantityEditor({
   actualWeightValue: number | null;
   actualWeightUnitId: string | null;
   sourceLabel: string;
-  sourceUnitHint: string;
+
   weightUnits: MatrixWeightUnit[];
   quantityUnits: MatrixQuantityUnit[];
   selectedUnitId: string;
@@ -2370,7 +2402,6 @@ function MeasuredQuantityEditor({
   const sourceWeightUnit = findWeightUnit(
     weightUnits,
     sourceLabel,
-    sourceUnitHint,
   );
   const kilogramWeightUnit = weightUnits.find((option) => option.code === "kg") ??
     findWeightUnit(weightUnits, "kg", "kilogramo");
@@ -2379,12 +2410,13 @@ function MeasuredQuantityEditor({
   const defaultWeightUnit = actualWeightKg !== null && !actualWeightUnitId
     ? (kilogramWeightUnit ?? weightUnits[0])
     : sourceWeightUnit ?? kilogramWeightUnit ?? weightUnits[0];
-  const [weightUnitId, setWeightUnitId] = useState(() => actualWeightUnitId ?? defaultWeightUnit?.id ?? "");
+  const [weightUnitId, setWeightUnitId] = useState("");
   const selectedWeightUnit =
-    weightUnits.find((option) => option.id === weightUnitId) ??
+    weightUnits.find((option) => option.id === (actualWeightUnitId ?? weightUnitId)) ??
     defaultWeightUnit;
   const displayWeight = selectedWeightUnit
-    ? actualWeightValue ?? weightFromKilograms(actualWeightKg, selectedWeightUnit)
+    ? actualWeightUnitId === selectedWeightUnit.id && actualWeightValue !== null
+      ? actualWeightValue : weightFromKilograms(actualWeightKg, selectedWeightUnit)
     : null;
 
   return (
@@ -2444,11 +2476,7 @@ function MeasuredQuantityEditor({
             ))}
           </select>
         </div>
-        {actualWeightKg === null && sourceWeightUnit && quantityValue !== null && quantityValue > 0 ? (
-          <span className="mt-1 block text-[9px] text-slate-600">
-            Equivalencia configurada: {formatQuantity(quantityValue * sourceWeightUnit.kilograms)} kg (estimación; no es peso medido).
-          </span>
-        ) : null}
+
       </div>
     </div>
   );
@@ -2477,21 +2505,7 @@ function PreparedMeasurementDisplay({
     line.preparationActualWeightUnitSymbol,
     line.preparationActualWeightKg,
   );
-  const preparedUnit = selectedQuantityUnit(
-    line.quantityUnits,
-    line.preparationDisplayUnitId,
-    line.sourceLabel,
-  );
-  const preparedQuantity = quantityInSelectedUnit(
-    line.preparedQuantity,
-    preparedUnit,
-  );
-  const coverage = comparePreparationCoverage({
-    requestedBaseQuantity: line.requestedBaseQuantity,
-    preparedBaseQuantity: line.preparedBaseQuantity,
-    requestedConversionValid: line.requestedConversionValid,
-    verified: line.preparationCheck,
-  });
+  const coverage = lineCoverage(line, "preparacion");
 
   return (
     <div
@@ -2502,7 +2516,7 @@ function PreparedMeasurementDisplay({
         Cantidad preparada
       </span>
       <span className="block font-semibold">
-        {formatQuantity(preparedQuantity ?? 0)} {preparedUnit.label}
+        {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
       </span>
       {line.controlsActualWeight || line.preparationActualWeightKg !== null ? (
         <>
@@ -2526,13 +2540,13 @@ function PreparedMeasurementDisplay({
               : "border-amber-200 text-amber-900"
         }`}
       >
-        {coverage.status === "complete"
-          ? `Preparación completa · ${formatQuantity(line.requestedBaseQuantity)} ${line.baseUnitSymbol}`
+        {!line.requestedConversionValid ? "Revisar equivalencia histórica" : !line.preparationCheck ? "Pendiente de verificación" : coverage.status === "complete"
+          ? `Preparación completa · ${formatQuantity(line.requestedQuantity)} ${line.sourceLabel}`
           : coverage.status === "short"
-            ? `Preparación incompleta · Faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.baseUnitSymbol}`
+            ? `Preparación incompleta · Faltan ${formatQuantity(coverage.missingBaseQuantity)} ${line.sourceLabel}`
             : coverage.status === "over"
-              ? `Advertencia · Excede lo solicitado por ${formatQuantity(coverage.excessBaseQuantity)} ${line.baseUnitSymbol}`
-              : "Pendiente de verificación o conversión física no verificable."}
+              ? `Advertencia · Excede lo solicitado por ${formatQuantity(coverage.excessBaseQuantity)} ${line.sourceLabel}`
+              : "Revisar equivalencia histórica"}
       </div>
     </div>
   );
@@ -2585,32 +2599,31 @@ function QuantityEditor({
       <div className="flex items-center gap-1">
         <DecimalInput
           label={label}
-          value={quantityInSelectedUnit(value, selectedUnit)}
+          value={value}
           disabled={disabled}
           attention={attention}
-          onChange={(nextValue) => onChange(quantityInOriginalUnit(nextValue, selectedUnit))}
+          onChange={onChange}
           onBlur={onBlur}
         />
-        <select
-          aria-label={`Unidad de ${label.toLowerCase()}`}
-          title={quantityUnits.length < 2
-            ? "La unidad queda guardada; no hay conversiones adicionales configuradas."
-            : "La unidad elegida queda guardada para preparación o entrega."}
-          className="h-8 max-w-28 rounded-md border-2 border-slate-400 bg-background px-1.5 text-xs font-bold uppercase"
-          value={selectedUnit.id}
-          disabled={disabled}
-          onChange={(event) => onUnitChange(event.target.value)}
-          onBlur={onBlur}
-        >
-          {quantityUnits.map((unit) => (
-            <option key={unit.id} value={unit.id}>{unit.label}</option>
-          ))}
-        </select>
+        <span className="shrink-0 text-xs font-bold">{unitLabel}</span>
       </div>
-      {selectedUnit.id !== "original" ? (
-        <span className="mt-1 block text-[11px] font-medium text-slate-700">
-          Equivale a {formatQuantity(value ?? 0)} {unitLabel} del pedido
-        </span>
+      {quantityUnits.length > 1 ? (
+        <label className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-700">
+          Equivalencia
+          <select aria-label={'Equivalencia de ' + label.toLowerCase()}
+            className="max-w-28 rounded border bg-background"
+            value={selectedUnit.id}
+            disabled={disabled}
+            onChange={(event) => onUnitChange(event.target.value)}
+            onBlur={onBlur}>
+            {quantityUnits.map((unit) => (
+              <option key={unit.id} value={unit.id}>{unit.label}</option>
+            ))}
+          </select>
+          {selectedUnit.id !== "original" && value !== null
+            ? <output>{formatQuantity(quantityInSelectedUnit(value, selectedUnit) ?? 0)} {selectedUnit.label}</output>
+            : null}
+        </label>
       ) : null}
     </div>
   );
@@ -2751,81 +2764,38 @@ function PreparationOriginPlanEditor({
   );
 }
 
-function DeliveryOriginControl({
-  orderId,
-  lines,
-  choice,
-  disabled,
-  onChoiceChange,
-  onMixedChange,
-  onConfirmMixed,
-  message,
-}: {
-  orderId: string;
+function DeliveryOriginControl({ lines, disabled, onChange, onConfirm }: {
   lines: MatrixLine[];
-  choice: DeliveryOriginChoice | null;
   disabled: boolean;
-  onChoiceChange: (choice: DeliveryOriginChoice) => void;
-  onMixedChange: (line: MatrixLine, patch: Partial<MatrixLine>) => void;
-  onConfirmMixed: () => void;
-  message: string | null;
+  onChange: (line: MatrixLine, patch: Partial<MatrixLine>) => void;
+  onConfirm: (id: string) => void;
 }) {
-  const descriptions: Record<DeliveryOriginChoice, string> = {
-    warehouse: "Todos los productos entregados en este pedido salen del almacén. Al confirmar, se descuenta únicamente la cantidad realmente entregada, después de verificar existencias.",
-    pending: "La mercadería se entregó físicamente, pero su ingreso al almacén todavía no está registrado. El sistema la concilia con ingresos físicos confirmados durante esa misma jornada, sin permitir saldos negativos.",
-    external: "La mercadería se compró directamente por fuera para ese cliente. Se registra la entrega normalmente, sin descontar inventario.",
-    mixed: "Indica el origen real de cada producto. Las cantidades deben coincidir con lo entregado y no puede quedar una parte por verificar.",
-  };
-  const isMissingSelection = !choice && message === "Antes de confirmar la entrega, indica de dónde salió la mercadería.";
-  const orderLines = lines.filter((line) => line.orderId === orderId);
-  const unresolvedMixed = orderLines.some((line) => !originDistributionIsResolved({
-    warehouse: line.deliveryWarehouseBaseQuantity,
-    pendingToday: line.deliveryPendingBaseQuantity,
-    externalDefinitive: line.deliveryExternalBaseQuantity,
-    review: line.deliveryReviewBaseQuantity,
-  }, expectedDeliveryBaseQuantity(line)));
   return (
-    <fieldset className={`rounded-lg border p-3 ${isMissingSelection ? "border-rose-400 bg-rose-50" : "border-slate-200 bg-slate-50"}`} aria-invalid={isMissingSelection}>
-      <legend className="px-1 text-sm font-semibold text-slate-900">Origen de la mercadería · este pedido</legend>
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-        <label className="block space-y-1 text-sm font-medium">
-          Origen de entrega
-          <select
-            className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-            value={choice && choice !== "mixed" ? choice : ""}
-            disabled={disabled}
-            aria-label={`Origen de mercadería del pedido ${orderId}`}
-            aria-invalid={isMissingSelection}
-            onChange={(event) => {
-              const value = event.target.value as DeliveryOriginChoice | "";
-              if (value) onChoiceChange(value);
-            }}
-          >
-            <option value="">Selecciona el origen real</option>
-            <option value="warehouse">Desde almacén</option>
-            <option value="pending">Ingreso pendiente de hoy</option>
-            <option value="external">Venta externa</option>
-          </select>
-        </label>
-        <Button type="button" size="sm" variant={choice === "mixed" ? "default" : "outline"} disabled={disabled} onClick={() => onChoiceChange("mixed")}>
-          Origen mixto
-        </Button>
-      </div>
-      {choice ? <p className="mt-2 text-xs leading-5 text-slate-700">{descriptions[choice]}</p> : <p className="mt-2 text-xs text-muted-foreground">Selecciona el origen comprobado antes de confirmar. No se asignará automáticamente.</p>}
-      {choice === "mixed" ? (
-        <div className="mt-3 space-y-3 border-t pt-3">
-          {orderLines.map((line) => (
-            <OriginSplitEditor key={line.orderItemId} line={line} disabled={disabled || Boolean(line.deliveredAt)} onChange={(patch) => onMixedChange(line, patch)} />
-          ))}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-700">La distribución se guarda por producto, dentro de este pedido.</p>
-            <Button type="button" size="sm" variant="outline" disabled={disabled || unresolvedMixed} onClick={onConfirmMixed}>
-              Confirmar distribución mixta
-            </Button>
+    <fieldset className="space-y-2 rounded-lg border bg-slate-50 p-3">
+      <legend className="px-1 text-sm font-semibold">Ajustar origen por producto</legend>
+      <p className="text-xs text-slate-700">
+        Al confirmar se descuenta solo lo asignado a almacén. El ingreso pendiente se concilia durante la jornada y la compra externa no descuenta stock.
+      </p>
+      {lines.map((line) => {
+        const resolved = deliveryOriginIsReady({ ...line, deliverySourceConfirmed: true });
+        const readOnly = disabled || Boolean(line.deliveryMovementId) || !line.requestedConversionValid;
+        return (
+          <div key={line.orderItemId}>
+            {!line.requestedConversionValid ? (
+              <p className="text-xs font-semibold text-amber-900">{line.productName} · Revisar equivalencia histórica</p>
+            ) : (
+              <OriginSplitEditor line={line} disabled={readOnly}
+                onChange={(patch) => onChange(line, patch)} />
+            )}
+            {!line.deliverySourceConfirmed && !readOnly ? (
+              <Button className="mt-1" type="button" size="sm" variant="outline" disabled={!resolved}
+                onClick={() => onConfirm(line.orderItemId)}>
+                Guardar origen de {line.productName}
+              </Button>
+            ) : null}
           </div>
-        </div>
-      ) : null}
-      {isMissingSelection ? <p role="alert" className="mt-2 text-sm font-medium text-rose-800">Selecciona el origen real para poder confirmar.</p> : null}
+        );
+      })}
     </fieldset>
   );
 }
@@ -2895,7 +2865,7 @@ function OriginSplitEditor({ line, disabled, onChange }: {
 function expectedDeliveryBaseQuantity(line: MatrixLine) {
   return line.deliveredBaseQuantity > 0
     ? line.deliveredBaseQuantity
-    : line.deliveredQuantity * line.basePerSourceQuantity;
+    : line.requestedConversionValid ? line.deliveredQuantity * line.basePerSourceQuantity : 0;
 }
 
 function DesktopOrderCells(props: CellProps) {
@@ -2966,15 +2936,14 @@ function DesktopOrderCells(props: CellProps) {
           </span>
         </td>
         <td style={cellStyle} className={cellClass}>
-          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "preparacion").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : lineCoverage(line, "preparacion").status === "over" || lineCoverage(line, "preparacion").status === "unverified" ? "border-2 border-amber-500 bg-amber-50/80" : "border border-slate-300 bg-slate-50/80"}`}>
+          <div className="flex items-center justify-center gap-1">
             <CheckEditor
               label={`Preparación verificada ${line.productName}`}
               checked={line.preparationCheck}
-              disabled={!editable}
+              disabled={!editable || !line.requestedConversionValid}
               onChange={(checked) => onChange({ preparationCheck: checked })}
               onBlur={onSavePreparation}
             />
-            <CoverageStatus line={line} phase="preparacion" compact operationalVerified={line.preparationCheck} />
             {!line.preparationCheck && line.preparedQuantity <= 0.000001 ? (
               <Button
                 size="xs"
@@ -2999,10 +2968,10 @@ function DesktopOrderCells(props: CellProps) {
             actualWeightValue={line.preparationActualWeightValue}
             actualWeightUnitId={line.preparationActualWeightUnitId}
             sourceLabel={line.sourceLabel}
-            sourceUnitHint={line.baseUnitSymbol}
+
             weightUnits={weightUnits}
-            disabled={!editable}
-            attention={!line.preparedAt}
+            disabled={!editable || !line.requestedConversionValid}
+            attention={!line.preparedAt || lineCoverage(line, "preparacion").status === "short"}
             onQuantityChange={(value) =>
               onChange({
                 preparedQuantity: value ?? 0,
@@ -3061,7 +3030,7 @@ function DesktopOrderCells(props: CellProps) {
         line.preparationActualWeightKg;
     const noteMissingForShortfall =
       lowerThanPrepared && line.deliveryNote.trim().length < 3;
-    const deliveryDisabled = !editable;
+    const deliveryDisabled = !editable || !line.requestedConversionValid;
     return (
       <>
         <td style={cellStyle} className={`${cellClass} ${customerDividerClass(focused)}`}>
@@ -3075,7 +3044,7 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
-          <div className={`flex flex-col items-center gap-1 rounded-md px-1 py-1 ${lineCoverage(line, "entrega").status === "short" ? "border-2 border-rose-600 bg-rose-50/80" : lineCoverage(line, "entrega").status === "over" || lineCoverage(line, "entrega").status === "unverified" ? "border-2 border-amber-500 bg-amber-50/80" : "border border-slate-300 bg-slate-50/80"}`}>
+          <div className="flex items-center justify-center gap-1">
             <CheckEditor
               label={`Verificación física de Entrega ${line.productName}`}
               checked={hasDeliveryCheck(line)}
@@ -3083,7 +3052,6 @@ function DesktopOrderCells(props: CellProps) {
               onChange={onToggleMissingDeliveryCheck}
               onBlur={onSaveMissingDeliveryCheck}
             />
-            <CoverageStatus line={line} phase="entrega" compact operationalVerified={hasDeliveryCheck(line)} deliveryState={deliveryState} />
           </div>
         </td>
         <td style={cellStyle} className={cellClass}>
@@ -3095,7 +3063,7 @@ function DesktopOrderCells(props: CellProps) {
         <td
           style={cellStyle}
           className={`${cellClass} ${
-            !deliveryReady || needsDeliveryReview
+            !deliveryReady || needsDeliveryReview || lineCoverage(line, "entrega").status === "short"
               ? "bg-rose-50/90 ring-1 ring-inset ring-rose-300"
               : ""
           }`}
@@ -3109,10 +3077,10 @@ function DesktopOrderCells(props: CellProps) {
             actualWeightValue={line.deliveryActualWeightValue}
             actualWeightUnitId={line.deliveryActualWeightUnitId}
             sourceLabel={line.sourceLabel}
-            sourceUnitHint={line.baseUnitSymbol}
+
             weightUnits={weightUnits}
             disabled={deliveryDisabled}
-            attention={!deliveryReady || needsDeliveryReview}
+            attention={!deliveryReady || needsDeliveryReview || lineCoverage(line, "entrega").status === "short"}
             onQuantityChange={(value) =>
               onChange({
                 deliveredQuantity: value ?? 0,

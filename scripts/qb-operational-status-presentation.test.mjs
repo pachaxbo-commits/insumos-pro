@@ -31,7 +31,7 @@ assert.equal(confirmed.deliveryConfirmed, true);
 assert.equal(make("short", "entrega", false, "pending", 12).quantityLabel, "FALTA 12 KG");
 assert.equal(make("short", "entrega", false, "pending", 20).quantityLabel, "FALTA 20 KG");
 assert.equal(make("over", "entrega", false, "pending", 2).quantityLabel, "REVISAR · excede 2 KG");
-assert.equal(make("unverified").quantityLabel, "REVISAR · conversión no verificable");
+assert.equal(make("unverified").quantityLabel, "Revisar equivalencia histórica");
 assert.equal(make("complete", "resumen", true, "mixed").deliveryLabel, "CONFIRMACIÓN MIXTA · ver cada pedido");
 assert.match(matrix, /coverage\.status === "complete"\s*\? "border border-slate-400 bg-slate-50 text-slate-800"/);
 assert.match(matrix, /verified\s*\? "border border-sky-700 bg-sky-50 text-sky-950"/);

@@ -48,6 +48,7 @@ export type MatrixLine = {
   /** Current unit that stock_current is stored in. Null means it is unknown. */
   inventoryBaseUnitId: string | null;
   baseUnitSymbol: string;
+  baseWeightFactorToKg?: number | null;
   priceUnitSymbol: string | null;
   baseSalePrice: number | null;
   basePriceUnitId: string | null;

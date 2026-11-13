@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
-import { quantityUnitOptions, quantityInOriginalUnit, quantityInSelectedUnit, resolveRequestedBasePerSourceQuantity } from "../src/lib/operational-matrix/quantity-units.ts";
+import { quantityUnitOptions, quantityInOriginalUnit, quantityInSelectedUnit, hasPhysicalOrderBasis, resolveRequestedBasePerSourceQuantity } from "../src/lib/operational-matrix/quantity-units.ts";
 
 const unit = (id, symbol, factor, dimension_id = "peso", is_active = true) => ({
   id, symbol, name: symbol, conversion_factor_to_base: factor, dimension_id, is_active,
@@ -53,7 +53,7 @@ test("usa la equivalencia histórica del pedido y presentaciones del mismo produ
 });
 
 test("una caja se convierte según su contenido, no como si fuera 1 kg", () => {
-  const options = quantityUnitOptions({ ...item, source_unit_id: null, source_label: "CAJA", conversion_factor_to_base: 20 }, units, []);
+  const options = quantityUnitOptions({ ...item, source_unit_id: null, product_presentation_id: "approved-box", source_label: "CAJA", conversion_factor_to_base: 20 }, units, []);
   const kg = options.find(x => x.id === "unit:kg");
   assert.equal(quantityInSelectedUnit(2, kg), 40);
   assert.equal(quantityInOriginalUnit(10, kg), 0.5);
@@ -83,8 +83,13 @@ test("la conversión del pedido usa el snapshot de cantidad física y nunca inve
 test("unidades importadas antiguas no se tratan como equivalencias 1:1", () => {
   const importedUnits = [...units, unit("legacy-cuartilla", "CUARTILLA", 1, "legacy"), unit("legacy-caja", "CAJA", 1, "legacy")];
   const options = quantityUnitOptions({ ...item, base_unit_id: "legacy-cuartilla", source_unit_id: "legacy-cuartilla", conversion_factor_to_base: 1 }, importedUnits, [], ["peso", "conteo", "volumen"]);
-  assert.deepEqual(options.map(x => x.label), ["CUARTILLA", "KG", "GR", "ARROBA"]);
-  assert.equal(quantityInSelectedUnit(1, options.find(x => x.id === "unit:kg")), 2.7);
+  assert.deepEqual(options.map(x => x.label), ["CUARTILLA"]);
+  assert.equal(hasPhysicalOrderBasis(importedUnits.find(x => x.id === "legacy-cuartilla"),
+    importedUnits.find(x => x.id === "legacy-cuartilla"), null, ["peso"]), false);
+  const legacy = importedUnits.find(x => x.id === "legacy-cuartilla");
+  assert.equal(hasPhysicalOrderBasis(legacy, legacy, null, ["peso"], { sourceLabel: "CUARTILLA", factor: 1 }), true);
+  assert.equal(hasPhysicalOrderBasis(legacy, importedUnits.at(-1), null, ["peso"], { sourceLabel: "CAJA", factor: 1 }), false);
+  assert.equal(hasPhysicalOrderBasis(units[0], units[2], null, ["peso"]), true);
   const unknown = quantityUnitOptions({ ...item, base_unit_id: "legacy-caja", source_label: "CAJA" }, importedUnits, [], ["peso", "conteo", "volumen"]);
   assert.equal(unknown.length, 1);
 });
@@ -94,12 +99,12 @@ test("ambas etapas usan el selector con y sin control de peso", () => {
   assert.equal(matrix.match(/quantityUnits=\{line\.quantityUnits\}/g)?.length, 3);
   const editor = matrix.split("function QuantityEditor(")[1].split("function DesktopOrderCells")[0];
   assert.match(editor, /<select/);
-  assert.match(editor, /quantityInOriginalUnit\(nextValue, selectedUnit\)/);
+  assert.match(editor, /value=\{value\}[\s\S]*onChange=\{onChange\}/);
   assert.match(editor, /disabled=\{disabled\}/);
   assert.doesNotMatch(editor, /controlsActualWeight/);
 });
 
-test("el selector real cambia la visualización y convierte la edición sin modificar CANT", () => {
+test("el selector muestra una equivalencia sin sustituir la edición comercial", () => {
   const source = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
   const helper = source.slice(source.indexOf("function selectedQuantityUnit("), source.indexOf("function aggregateLines("));
   const component = source.slice(source.indexOf("function QuantityEditor("), source.indexOf("function DesktopOrderCells("));
@@ -126,8 +131,9 @@ test("el selector real cambia la visualización y convierte la edición sin modi
     find(tree, "select").props.onChange({ target: { value: "unit:kg" } });
     assert.equal(changes, 0, "elegir unidad no altera lo preparado o entregado");
     tree = exported.QuantityEditor({ ...props, selectedUnitId: selected });
-    assert.equal(find(tree, DecimalInput).props.value, 2.7);
-    find(tree, DecimalInput).props.onChange(5.4);
+    assert.equal(find(tree, DecimalInput).props.value, 1);
+    assert.equal(find(tree, "output").props.children[0], "2.7");
+    find(tree, DecimalInput).props.onChange(2);
     assert.equal(saved, 2);
     assert.equal(props.value, 1, "la cantidad original no se muta");
     assert.equal(find(exported.QuantityEditor({ ...props, selectedUnitId: selected, disabled: true }), "select").props.disabled, true);

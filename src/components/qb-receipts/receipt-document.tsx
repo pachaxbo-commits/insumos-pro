@@ -155,7 +155,7 @@ export function ReceiptDocument({
               <th className="py-2 pr-3 text-right">Entregado (base)</th>
               <th className="py-2 pr-3 text-right">Peso real</th>
               {!isExternalDocument ? (
-                <th className="py-2 pr-3 text-right">{receipt.pricingMode === "line_cost_markup" ? "Costo base/UD" : "Venta antes de ajustes"}</th>
+                <th className="py-2 pr-3 text-right">{receipt.pricingMode === "line_cost_markup" ? "Costo aplicado por unidad base" : "Venta antes de ajustes"}</th>
               ) : null}
               {!isExternalDocument && receipt.pricingMode === "line_cost_markup" ? (
                 <th className="py-2 pr-3 text-right">D/E/C/X %</th>
@@ -191,7 +191,7 @@ export function ReceiptDocument({
                 {!isExternalDocument ? (
                   <td className="py-3 pr-3 text-right">
                     {receipt.pricingMode === "line_cost_markup"
-                      ? money(line.costBaseUnitSnapshot)
+                      ? line.costBaseUnitSnapshot === null ? "Pendiente" : money(line.costBaseUnitSnapshot) + "/" + line.baseUnitSymbol
                       : line.inputMode === "amount_bs"
                       ? `${money(line.originalBasePrice)} (referencia)`
                       : money(line.basePriceUsed)}
@@ -207,7 +207,7 @@ export function ReceiptDocument({
                     <td className="py-3 pr-3 text-right">
                       {line.inputMode === "amount_bs"
                         ? `Importe fijo ${money(line.requestedAmountBs)}`
-                        : money(line.finalUnitPrice)}
+                        : line.finalUnitPrice === null ? "Precio pendiente" : money(line.finalUnitPrice) + "/" + line.baseUnitSymbol}
                     </td>
                     <td className="py-3 text-right font-semibold">
                       {money(line.lineTotal)}

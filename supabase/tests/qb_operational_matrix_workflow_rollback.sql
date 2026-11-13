@@ -132,8 +132,20 @@ begin
   if not coalesce(v_denied, false) then raise exception 'QB_MATRIX_DELIVERY_PREPARED'; end if;
 
   perform set_config('request.jwt.claim.sub', v_inventory::text, true);
+  v_origin_result := public.save_qb_matrix_preparation_with_check_reset(
+    v_item,0,3,true,null,null,null,false,'original',null,0,2,0,true,true,false,'qa-partial-autofill');
+  if not exists(select 1 from public.qb_order_preparation_items where order_item_id=v_item
+    and actual_quantity=3 and auto_completed_before_quantity=0 and preparation_check) then
+    raise exception 'Partial automatic preparation did not retain previous amount';
+  end if;
+  perform public.save_qb_matrix_preparation_with_check_reset(
+    v_item,1,0,false,null,null,null,false,'original',null,0,0,5,false,false,true,'qa-partial-undo');
+  if not exists(select 1 from public.qb_order_preparation_items where order_item_id=v_item
+    and actual_quantity=0 and auto_completed_before_quantity is null and not preparation_check) then
+    raise exception 'Partial preparation did not restore previous amount';
+  end if;
   v_origin_result := public.save_qb_matrix_preparation_origin_with_unit(
-    v_item, 0, 3, false, null, 'original', null,
+    v_item, 2, 3, false, null, 'original', null,
     0, 2, 0, true, 'prepare-origin-contract'
   );
   if coalesce((v_origin_result->>'origin_plan_confirmed')::boolean,false) is not true then

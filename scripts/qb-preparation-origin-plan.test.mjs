@@ -85,6 +85,6 @@ assert.match(matrix, /pendingBaseQuantity: line\.plannedPendingBaseQuantity/);
 assert.match(matrix, /externalBaseQuantity: line\.plannedExternalBaseQuantity/);
 assert.match(actions, /p_origin_plan_confirmed: parsed\.data\.originPlanConfirmed/);
 assert.match(lineState, /deliverySourceConfirmed: usePreparationPlan/);
-assert.match(matrix, /const unresolvedOrigin = groupLines\.find\(\(line\) => !line\.deliverySourceConfirmed/);
+assert.match(matrix, /const unresolvedOrigin = groupLines\.find\(\(line\) => !deliveryOriginIsReady\(line\)\)/);
 assert.doesNotMatch(matrix, /if \(targetOrders\.some\(\(order\) => !deliveryOriginByOrder\[order\.id\]\)\)/);
 console.log("PASS: preparation form/table save per-line plans and delivery inherits a valid plan");

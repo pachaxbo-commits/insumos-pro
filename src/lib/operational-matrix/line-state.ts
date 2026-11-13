@@ -7,6 +7,16 @@ export type PreparationCoverage =
   | { status: "unverified" };
 
 /** Compare the immutable base-unit snapshots; source labels can differ (e.g. CUARTILLA vs KG). */
+export function compareCommercialCoverage(
+  requestedQuantity: number, actualQuantity: number, physicalBasisVerified: boolean,
+): PreparationCoverage {
+  return comparePreparationCoverage({
+    requestedBaseQuantity: requestedQuantity,
+    preparedBaseQuantity: actualQuantity,
+    requestedConversionValid: physicalBasisVerified,
+  });
+}
+
 export function comparePreparationCoverage(input: {
   requestedBaseQuantity: number;
   preparedBaseQuantity: number;
@@ -103,12 +113,20 @@ type DeliverySuggestionLine = {
   plannedExternalBaseQuantity: number;
   preparationDisplayUnitId: string | null;
   preparationActualWeightKg: number | null;
+  preparationActualWeightValue?: number | null;
+  preparationActualWeightUnitId?: string | null;
+  preparationActualWeightUnitSymbol?: string | null;
+  preparationActualWeightFactorToKg?: number | null;
   deliveredAt: string | null;
   deliveryVersion: number;
   deliveredQuantity: number;
   deliveredBaseQuantity: number;
   deliveryDisplayUnitId: string | null;
   deliveryActualWeightKg: number | null;
+  deliveryActualWeightValue?: number | null;
+  deliveryActualWeightUnitId?: string | null;
+  deliveryActualWeightUnitSymbol?: string | null;
+  deliveryActualWeightFactorToKg?: number | null;
   deliveryCheck: boolean;
   deliveryWarehouseBaseQuantity: number;
   deliveryPendingBaseQuantity: number;
@@ -160,6 +178,12 @@ export function applyAutomaticDeliveryValues<T extends DeliverySuggestionLine>(
       deliveryDisplayUnitId: line.preparationDisplayUnitId,
       deliveryActualWeightKg:
         line.deliveryActualWeightKg ?? line.preparationActualWeightKg,
+      ...(line.deliveryActualWeightKg === null && line.preparationActualWeightValue != null ? {
+        deliveryActualWeightValue: line.preparationActualWeightValue,
+        deliveryActualWeightUnitId: line.preparationActualWeightUnitId,
+        deliveryActualWeightUnitSymbol: line.preparationActualWeightUnitSymbol,
+        deliveryActualWeightFactorToKg: line.preparationActualWeightFactorToKg,
+      } : {}),
       deliveryWarehouseBaseQuantity: usePreparationPlan ? line.preparedBaseQuantity : 0,
       deliveryPendingBaseQuantity: usePreparationPlan ? line.plannedPendingBaseQuantity : 0,
       deliveryExternalBaseQuantity: usePreparationPlan ? line.plannedExternalBaseQuantity : 0,

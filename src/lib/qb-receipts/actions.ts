@@ -269,6 +269,35 @@ export async function setQbReceiptLinePricingAction(
   return { success: true, message: "Productos y factores guardados." };
 }
 
+export async function reviewQbLegacyReceiptCostAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  await requireRoleAccess("/recibos");
+  const parsed = z.object({
+    receiptId: uuidSchema,
+    lineId: uuidSchema,
+    cost: z.string().regex(/^\d+(?:\.\d{1,8})?$/),
+    oldCost: z.string().regex(/^\d+(?:\.\d{1,8})?$/),
+    oldSale: z.string().regex(/^\d+(?:\.\d{1,8})?$/),
+    tariff: z.string().regex(/^\d+(?:\.\d{1,8})?$/),
+    reason: z.string().trim().min(3).max(500),
+    confirmed: z.literal("on"),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return initialFailure("Revisa el costo, el motivo y confirma la diferencia.");
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+  const { receiptId, lineId, cost, oldCost, oldSale, tariff, reason } = parsed.data;
+  const { error } = await supabase.rpc("review_qb_legacy_receipt_cost", {
+    p_receipt_id: receiptId, p_line_id: lineId, p_expected_cost: oldCost,
+    p_expected_sale: oldSale, p_new_cost: cost, p_approved_tariff: tariff, p_reason: reason,
+  });
+  if (error) return initialFailure(errorMessage(error, "No se pudo corregir el costo del borrador."));
+  revalidatePath("/recibos");
+  revalidatePath('/recibos/' + receiptId);
+  return { success: true, message: "Corrección guardada en el borrador con su motivo." };
+}
+
 export async function updateQbReceiptDraftAction(
   _previous: QbReceiptActionState,
   formData: FormData,

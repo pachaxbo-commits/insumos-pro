@@ -229,3 +229,11 @@ test("delivery verification stays independent from preparation and round-trips i
   assert.match(data, /const deliveryCheck = Boolean\(delivery\?\.delivery_check\)/);
   assert.match(actions, /p_delivery_check:\s*parsed\.data\.deliveryCheck/);
 });
+
+test("commercial coverage keeps a cuartilla separate from its measured 2.7 KG", async () => {
+  const { compareCommercialCoverage } = await import("../src/lib/operational-matrix/line-state.ts");
+  assert.deepEqual(compareCommercialCoverage(1, 1, true), { status: "complete" });
+  assert.deepEqual(compareCommercialCoverage(1, 1, false), { status: "unverified" });
+  assert.deepEqual(compareCommercialCoverage(8, 8, true), { status: "complete" });
+  assert.deepEqual(compareCommercialCoverage(5, 4, true), { status: "short", missingBaseQuantity: 1 });
+});

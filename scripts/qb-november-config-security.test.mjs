@@ -42,7 +42,7 @@ test("Supervisor recibe campos operativos y costo base permitido, sin precios de
   const operationalReceiptPage = read("../src/app/(private)/recibos/operativo/page.tsx");
   assert.match(orders, /role === "supervisor"[\s\S]*qb_operational_order_items/);
   assert.match(orders, /requested_amount_bs: role === "supervisor" \? null/);
-  assert.match(matrix, /role === "administrador" && productIds\.length/);
+  assert.match(matrix, /role === "administrador"[\s\S]*?from\("qb_product_unit_settings"\)[\s\S]*?base_sale_price[\s\S]*?: await supabase\.from\("qb_operational_product_unit_settings"\)\s*\.select\("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id"\)/);
   assert.match(matrix, /qb_operational_preparation_costs/);
   assert.match(operationalReceiptPage, /requireRoleAccess\("\/recibos\/operativo"\)/);
   assert.match(operationalReceiptPage, /cost_base_unit/);
