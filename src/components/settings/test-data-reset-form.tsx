@@ -19,7 +19,9 @@ export function TestDataResetForm({ previews }: { previews: Record<ResetMode, Re
     <fieldset className="space-y-2 text-sm">
       <legend className="font-medium">Datos operativos</legend>
       <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "receipts"} onChange={() => { setMode("receipts"); setOpen(false); }} /> Solo Recibos</label>
-      <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "orders"} onChange={() => { setMode("orders"); setOpen(false); }} /> Pedidos, preparación, entregas y recibos</label>
+      <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "orders"} onChange={() => { setMode("orders"); setOpen(false); }} /> Pedidos y operación</label>
+      <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "stock"} onChange={() => { setMode("stock"); setOpen(false); }} /> Solo stock</label>
+      <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "orders_stock"} onChange={() => { setMode("orders_stock"); setOpen(false); }} /> Pedidos y stock</label>
     </fieldset>
     {mode === "receipts" ? <fieldset className="max-h-60 space-y-2 overflow-auto rounded border p-3 text-sm">
       <legend>Recibos a borrar</legend>
@@ -28,18 +30,22 @@ export function TestDataResetForm({ previews }: { previews: Record<ResetMode, Re
           setSelected((current) => event.target.checked ? [...current, receipt.id] : current.filter((id) => id !== receipt.id))} />
         {receipt.label} · {receipt.status}
       </label>)}
-    </fieldset> : <p className="text-sm font-semibold text-rose-800">Este modo elimina todos los pedidos y recibos de la base.</p>}
+    </fieldset> : <p className="text-sm font-semibold text-rose-800">{mode === "stock" ? "Este modo deja el stock en cero y elimina movimientos e ingresos de inventario." : "Este modo elimina pedidos y sus derivados."}</p>}
     <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-sm sm:grid-cols-2">
       <p>Recibos: <strong>{receiptCount}</strong></p><p>Pedidos: <strong>{preview.orders}</strong></p>
       <p>Preparaciones: <strong>{preview.preparations}</strong></p><p>Confirmaciones de entrega: <strong>{preview.deliveries}</strong></p>
-      <p>Movimientos de stock que se revertirán: <strong>{preview.delivery_stock_movements}</strong></p>
+      <p>Movimientos relacionados: <strong>{preview.delivery_stock_movements}</strong></p>
+      <p>Productos cuyo stock quedará en cero: <strong>{preview.products_stock_zeroed}</strong></p>
+      <p>Movimientos a eliminar: <strong>{preview.inventory_movements}</strong></p>
+      <p>Ingresos de mercadería: <strong>{preview.merchandise_receipts}</strong></p>
+      <p>Lotes FIFO: <strong>{preview.inventory_lots}</strong></p>
     </div>
     <p className="text-sm text-emerald-800">Se conservan clientes ({preview.customers_preserved}), productos ({preview.products_preserved}), perfiles ({preview.profiles_preserved}) y configuración. También se conservan los ingresos y movimientos de inventario independientes.</p>
-    {!open ? <button type="button" disabled={receiptCount === 0 && preview.orders === 0} onClick={() => { setConfirmation(""); setOpen(true); }} className="rounded border border-rose-500 px-4 py-2 text-rose-800 disabled:opacity-50">Borrar datos seleccionados</button> : null}
+    {!open ? <button type="button" disabled={receiptCount === 0 && preview.orders === 0 && preview.inventory_movements === 0} onClick={() => { setConfirmation(""); setOpen(true); }} className="rounded border border-rose-500 px-4 py-2 text-rose-800 disabled:opacity-50">Borrar datos seleccionados</button> : null}
     {open ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4">
       <div role="dialog" aria-modal="true" aria-label="Confirmar borrado" className="w-full max-w-lg rounded-lg border border-rose-300 bg-white p-5 shadow-xl">
       <h2 className="font-semibold text-rose-900">Confirmar limpieza de datos de prueba</h2>
-      <p className="my-2 text-sm">Se borrarán {receiptCount} recibos y {preview.orders} pedidos. Esta acción no se puede deshacer desde la aplicación.</p>
+      <p className="my-2 text-sm">Se borrarán {receiptCount} recibos y {preview.orders} pedidos, con {preview.inventory_movements} movimientos. Esta acción no se puede deshacer desde la aplicación.</p>
       <form action={action} className="space-y-3">
         <input type="hidden" name="mode" value={mode} />
         <input type="hidden" name="revision" value={preview.revision} />

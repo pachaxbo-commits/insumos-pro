@@ -6,26 +6,30 @@ begin
   if auth.uid() is null or not coalesce(public.current_user_role() in ('admin','administrador'),false) then
     raise exception 'Acceso denegado.' using errcode='42501';
   end if;
-  if p_mode is null or p_mode not in ('receipts','orders') then raise exception 'Alcance inválido.'; end if;
+  if p_mode is null or p_mode not in ('receipts','orders','stock','orders_stock') then raise exception 'Alcance inválido.'; end if;
   return jsonb_build_object(
     'receipts',(select count(*) from public.qb_receipts),
     'receipt_options',(select coalesce(jsonb_agg(jsonb_build_object('id',id,'label',receipt_number,'status',status) order by created_at desc),'[]') from public.qb_receipts),
-    'orders',case when p_mode='orders' then (select count(*) from public.qb_orders)+(select count(*) from public.orders) else 0 end,
-    'preparations',case when p_mode='orders' then (select count(*) from public.qb_order_preparations) else 0 end,
-    'deliveries',case when p_mode='orders' then (select count(*) from public.qb_order_delivery_confirmations) else 0 end,
-    'delivery_stock_movements',case when p_mode='orders' then (
+    'orders',case when p_mode in ('orders','orders_stock') then (select count(*) from public.qb_orders)+(select count(*) from public.orders) else 0 end,
+    'preparations',case when p_mode in ('orders','orders_stock') then (select count(*) from public.qb_order_preparations) else 0 end,
+    'deliveries',case when p_mode in ('orders','orders_stock') then (select count(*) from public.qb_order_delivery_confirmations) else 0 end,
+    'delivery_stock_movements',case when p_mode in ('orders','orders_stock','stock') then (
       select count(*) from (
         select inventory_movement_id from public.qb_order_delivery_movements where inventory_movement_id is not null
         union select inventory_movement_id from public.qb_same_day_reconciliation_allocations
       ) m) else 0 end,
     'products_preserved',(select count(*) from public.products),
+    'products_stock_zeroed',case when p_mode in ('stock','orders_stock') then (select count(*) from public.products) else 0 end,
+    'inventory_movements',case when p_mode in ('stock','orders_stock') then (select count(*) from public.inventory_movements) else 0 end,
+    'merchandise_receipts',case when p_mode in ('stock','orders_stock') then (select count(*) from public.qb_merchandise_receipts) else 0 end,
+    'inventory_lots',case when p_mode in ('stock','orders_stock') then (select count(*) from public.inventory_lots) else 0 end,
     'customers_preserved',(select count(*) from public.customer_accounts),
     'profiles_preserved',(select count(*) from public.profiles),
     'revision',md5(concat_ws('|',p_mode,
       (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_receipts),
-      case when p_mode='orders' then (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_orders) end,
-      case when p_mode='orders' then (select string_agg(id::text||updated_at::text,',' order by id) from public.orders) end,
-      case when p_mode='orders' then (select string_agg(id::text,',' order by id) from public.qb_same_day_reconciliation_allocations) end)));
+      case when p_mode in ('orders','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_orders) end,
+      case when p_mode in ('orders','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.orders) end,
+      case when p_mode in ('orders','orders_stock') then (select string_agg(id::text,',' order by id) from public.qb_same_day_reconciliation_allocations) end)));
 end;
 $$;
 
@@ -70,24 +74,28 @@ begin
   if v_actor is null or not coalesce(public.current_user_role() in ('admin','administrador'),false) then
     raise exception 'Acceso denegado.' using errcode='42501';
   end if;
-  if p_confirmation is distinct from 'BORRAR DATOS' or p_mode is null or p_mode not in ('receipts','orders') then
+  if p_confirmation is distinct from 'BORRAR DATOS' or p_mode is null or p_mode not in ('receipts','orders','stock','orders_stock') then
     raise exception 'Confirma el alcance con BORRAR DATOS.';
   end if;
   -- Serializes against creation and writes. On conflicting active operations
   -- PostgreSQL rolls the cleanup back, and the owner can obtain a new preview.
   lock table public.qb_orders, public.orders, public.qb_receipts, public.qb_receipt_orders,
     public.qb_receipt_lines in share row exclusive mode;
-  if p_mode='orders' then
+  if p_mode in ('orders','orders_stock') then
     lock table public.qb_order_items, public.qb_order_preparations, public.qb_order_preparation_items,
       public.qb_order_delivery_items, public.qb_order_delivery_movements,
       public.qb_order_delivery_confirmations,public.qb_same_day_reconciliation_requests,
       public.qb_same_day_reconciliation_allocations, public.products, public.inventory_movements,
       public.inventory_lots,public.inventory_lot_consumptions in share row exclusive mode;
   end if;
+  if p_mode='stock' and (exists(select 1 from public.qb_orders) or exists(select 1 from public.orders)
+    or exists(select 1 from public.qb_order_delivery_movements)) then
+    raise exception 'Hay pedidos o entregas dependientes. Selecciona Pedidos y Stock.';
+  end if;
   v_preview:=public.preview_qb_owner_cleanup(p_mode);
   if v_preview->>'revision' is distinct from p_revision then raise exception 'Los datos cambiaron. Actualiza la vista previa.'; end if;
 
-  select coalesce(array_agg(id),'{}') into v_receipts from public.qb_receipts where p_mode='orders' or id=any(p_receipts);
+  select coalesce(array_agg(id),'{}') into v_receipts from public.qb_receipts where p_mode in ('orders','orders_stock') or id=any(p_receipts);
   if p_mode='receipts' and (cardinality(v_receipts)=0 or cardinality(v_receipts) is distinct from cardinality(p_receipts)) then
     raise exception 'Selecciona los recibos de la vista previa.';
   end if;
@@ -109,7 +117,7 @@ begin
   delete from public.qb_receipts where id=any(v_receipts);
   perform set_config('qb.owner_cleanup','',true);
 
-  if p_mode='orders' then
+  if p_mode in ('orders','orders_stock') then
     select coalesce(array_agg(id),'{}') into v_orders from public.qb_orders;
     select coalesce(array_agg(id),'{}') into v_delivery from public.qb_order_delivery_movements where order_id=any(v_orders);
     select coalesce(array_agg(id),'{}') into v_movements from (
@@ -167,6 +175,20 @@ begin
     delete from public.qb_order_delivery_items where order_id=any(v_orders);
     delete from public.qb_orders where id=any(v_orders);
     delete from public.orders;
+  end if;
+  if p_mode in ('stock','orders_stock') then
+    if exists(select 1 from public.qb_order_delivery_movements where inventory_movement_id is not null)
+      and p_mode='stock' then raise exception 'Hay movimientos de entrega dependientes. Selecciona Pedidos y Stock.'; end if;
+    delete from public.inventory_lot_consumptions;
+    delete from public.inventory_fifo_consumption_runs;
+    delete from public.inventory_lot_writeoffs;
+    delete from public.inventory_lots;
+    delete from public.qb_merchandise_receipt_movements;
+    delete from public.qb_merchandise_receipt_classification_results;
+    delete from public.qb_merchandise_receipt_lines;
+    delete from public.qb_merchandise_receipts;
+    delete from public.inventory_movements;
+    update public.products set stock_current=0, updated_at=now() where stock_current is distinct from 0;
   end if;
   delete from public.qb_conversion_snapshots where source_id=any(v_audit_ids)
     and source_table in ('qb_orders','qb_order_items','qb_order_preparations','qb_order_preparation_items',

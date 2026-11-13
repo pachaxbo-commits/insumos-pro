@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireRoleAccess } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export type ResetMode = "receipts" | "orders";
+export type ResetMode = "receipts" | "orders" | "stock" | "orders_stock";
 export type ResetActionState = { success: boolean; message: string };
 export type ResetPreview = {
   receipts: number;
@@ -14,6 +14,10 @@ export type ResetPreview = {
   preparations: number;
   deliveries: number;
   delivery_stock_movements: number;
+  products_stock_zeroed: number;
+  inventory_movements: number;
+  merchandise_receipts: number;
+  inventory_lots: number;
   customers_preserved: number;
   products_preserved: number;
   profiles_preserved: number;
