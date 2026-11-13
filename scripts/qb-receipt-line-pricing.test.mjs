@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { calculateReceiptLine, sumReceiptAmounts, summarizeReceipts } from
+import { calculateReceiptLine, resolveReceiptArrobaFactor, sumReceiptAmounts, summarizeReceipts } from
   "../src/lib/qb-receipts/line-pricing.ts";
 import { resolveReceiptCostSnapshot } from "../src/lib/qb-receipts/cost-source.ts";
 
@@ -144,4 +144,14 @@ test("borradores nuevos aceptan entregas históricas sin depender del editor leg
   assert.doesNotMatch(sql, /product\.is_active = false/);
   assert.match(sql, /left join public\.qb_product_unit_settings settings/);
   assert.match(sql, /perform public\.recalculate_qb_receipt_totals\(v_receipt_id\)/);
+});
+
+test("referencia de venta por arroba usa unidad física o peso medido", () => {
+  const base = { isArroba: false, arrobaKilograms: 11.5, unitKilograms: null,
+    measuredKilograms: null, deliveredQuantity: 2 };
+  assert.equal(resolveReceiptArrobaFactor({ ...base, unitKilograms: 1 }) * 22, 253);
+  assert.equal(resolveReceiptArrobaFactor({ ...base, unitKilograms: 0.5 }) * 22, 506);
+  assert.equal(resolveReceiptArrobaFactor({ ...base, isArroba: true }) * 22, 22);
+  assert.equal(resolveReceiptArrobaFactor(base), null);
+  assert.equal(resolveReceiptArrobaFactor({ ...base, measuredKilograms: 4 }) * 22, 126.5);
 });

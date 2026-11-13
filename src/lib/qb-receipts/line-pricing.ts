@@ -46,6 +46,24 @@ export function calculateReceiptLine(input: LinePricingInput) {
   };
 }
 
+export function resolveReceiptArrobaFactor(input: {
+  isArroba: boolean;
+  arrobaKilograms: number | null;
+  unitKilograms: number | null;
+  measuredKilograms: number | null;
+  deliveredQuantity: number;
+}): number | null {
+  if (input.isArroba) return 1;
+  if (input.arrobaKilograms === null || input.arrobaKilograms <= 0) return null;
+  if (input.unitKilograms !== null && input.unitKilograms > 0) {
+    return input.arrobaKilograms / input.unitKilograms;
+  }
+  if (input.measuredKilograms === null || input.measuredKilograms <= 0 || input.deliveredQuantity <= 0) {
+    return null;
+  }
+  return input.arrobaKilograms * input.deliveredQuantity / input.measuredKilograms;
+}
+
 export type ReceiptAmounts = { costTotal: Decimal.Value; saleTotal: Decimal.Value };
 
 export function sumReceiptAmounts(lines: ReceiptAmounts[]) {

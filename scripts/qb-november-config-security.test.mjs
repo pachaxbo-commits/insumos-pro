@@ -162,10 +162,10 @@ test("la contraseña inicial solo se envía a Supabase Auth y nunca a perfil ni 
   assert.match(form, /<UserPlus className="size-4" \/>\s*Crear usuario/);
 });
 
-test("los resets heredados permanecen bloqueados y su acción no puede borrar datos", () => {
-  const config = read("../src/lib/test-data-reset/config.ts");
+test("la limpieza usa una RPC transaccional con la sesión del administrador", () => {
   const actions = read("../src/lib/test-data-reset/actions.ts");
-  assert.match(config, /return false/);
-  assert.match(actions, /if \(!testDataResetEnabled\(\)\) return/);
-  assert.match(actions, /if \(!testDataResetEnabled\(\)\) return \{ success: false/);
+  assert.match(actions, /auth\.user\.role !== "administrador"/);
+  assert.match(actions, /execute_qb_owner_cleanup/);
+  assert.match(actions, /z\.literal\("BORRAR DATOS"\)/);
+  assert.doesNotMatch(actions, /createSupabaseAdminClient|\.delete\(/);
 });

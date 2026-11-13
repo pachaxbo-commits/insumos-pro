@@ -19,11 +19,11 @@ test("legacy reset is unavailable in Production and blocked at the database API"
   assert.match(archiveGuardMigration, /session_user in \('postgres','supabase_admin'\)/);
   assert.match(archiveGuardMigration, /current_user in \('postgres','supabase_admin'\)/);
   assert.match(archiveGuardMigration, /current_setting\('qb\.prepublication_cleanup_run_id'/);
-  assert.match(actions, /if \(!testDataResetEnabled\(\)\)/);
+  assert.doesNotMatch(actions, /reset_qb_stock_test_data|execute_qb_test_data_reset/);
   assert.match(actions, /auth\.user\.role !== "administrador"/);
   assert.match(config, /return false/);
   assert.doesNotMatch(config, /ALLOW_TEST_DATA_RESET ===/);
-  assert.ok(page.indexOf("if (!enabled)") < page.indexOf("Promise.all"));
+  assert.match(page, /requireRoleAccess\("\/configuracion\/datos-prueba"\)/);
 });
 
 test("stock reset is atomic and clears FIFO, receipts, ledger before balances", () => {
@@ -53,12 +53,12 @@ test("catalog, customers, users and configuration are never selected for deletio
   assert.match(migration, /where stock_current <> 0/);
 });
 
-test("preview and UI expose the stock-only scope", () => {
+test("legacy stock-only scope is absent from the owner UI", () => {
   assert.match(migration, /stock_products_nonzero/);
   assert.match(migration, /stock_movements/);
   assert.match(migration, /stock_receipts/);
   assert.match(migration, /stock_lots/);
-  assert.match(page, /getTestDataResetPreview\("stock"\)/);
-  assert.match(form, /setMode\("stock"\)/);
-  assert.match(form, /preview\.stock_dependencies > 0/);
+  assert.doesNotMatch(page, /getTestDataResetPreview\("stock"\)/);
+  assert.doesNotMatch(form, /setMode\("stock"\)/);
+  assert.match(form, /delivery_stock_movements/);
 });

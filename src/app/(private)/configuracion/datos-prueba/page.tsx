@@ -2,26 +2,19 @@ import { PageHeader } from "@/components/layout/page-header";
 import { SettingsNav } from "@/components/settings/settings-nav";
 import { TestDataResetForm } from "@/components/settings/test-data-reset-form";
 import { getTestDataResetPreview } from "@/lib/test-data-reset/actions";
-import { testDataResetEnabled } from "@/lib/test-data-reset/config";
+import { requireRoleAccess } from "@/lib/auth/session";
 
 export default async function DatosPruebaPage() {
-  const enabled = testDataResetEnabled();
-  if (!enabled) return <div className="space-y-4">
-    <PageHeader eyebrow="Configuración" title="Datos de prueba" description="La limpieza antigua de grupos de prueba fue retirada para proteger las operaciones y auditorías." />
-    <SettingsNav current="/configuracion/datos-prueba" />
-    <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      La limpieza no está disponible mientras su vista previa transaccional y sus pruebas aisladas estén pendientes. Los resets heredados permanecen bloqueados. No se ha modificado ningún dato.
-    </p>
-  </div>;
-
-  const [receipts, orders, stock] = await Promise.all([
-    getTestDataResetPreview("receipts"), getTestDataResetPreview("orders"), getTestDataResetPreview("stock"),
+  await requireRoleAccess("/configuracion/datos-prueba");
+  const [receipts, orders] = await Promise.all([
+    getTestDataResetPreview("receipts"), getTestDataResetPreview("orders"),
   ]);
-  const error = receipts.error ?? orders.error ?? stock.error;
   return <div className="space-y-4">
-    <PageHeader eyebrow="Configuración" title="Datos de prueba" description="Revisa los conteos antes de limpiar operaciones de QA. Los datos maestros permanecen intactos." />
+    <PageHeader eyebrow="Configuración" title="Datos de prueba" description="Revisa el alcance antes de borrar operaciones de prueba." />
     <SettingsNav current="/configuracion/datos-prueba" />
-    {error || !receipts.data || !orders.data || !stock.data ? <p role="alert" className="text-sm text-rose-700">{error ?? "No se pudo obtener la vista previa."}</p> :
-      <TestDataResetForm previews={{ receipts: receipts.data, orders: orders.data, stock: stock.data }} enabled={enabled} />}
+    {receipts.data && orders.data
+      ? <TestDataResetForm key={receipts.data.revision + orders.data.revision}
+          previews={{ receipts: receipts.data, orders: orders.data }} />
+      : <p role="alert">{receipts.error ?? orders.error ?? "No se pudo obtener la vista previa."}</p>}
   </div>;
 }

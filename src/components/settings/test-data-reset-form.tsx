@@ -6,40 +6,44 @@ import { resetTestDataAction, type ResetActionState, type ResetMode, type ResetP
 
 const initialState: ResetActionState = { success: false, message: "" };
 
-export function TestDataResetForm({ previews, enabled }: { previews: Record<ResetMode, ResetPreview>; enabled: boolean }) {
+export function TestDataResetForm({ previews }: { previews: Record<ResetMode, ResetPreview> }) {
   const [mode, setMode] = useState<ResetMode>("receipts");
+  const [selected, setSelected] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [state, action, pending] = useActionState(resetTestDataAction, initialState);
   const preview = previews[mode];
+  const receiptCount = mode === "receipts" ? selected.length : preview.receipts;
   return <div className="space-y-4 rounded-lg border bg-white p-4">
     <p className="text-sm text-slate-600">Selecciona un grupo. Pedidos incluye automáticamente su operación y recibos para preservar las dependencias.</p>
     <fieldset className="space-y-2 text-sm">
       <legend className="font-medium">Datos operativos</legend>
       <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "receipts"} onChange={() => { setMode("receipts"); setOpen(false); }} /> Solo Recibos</label>
       <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "orders"} onChange={() => { setMode("orders"); setOpen(false); }} /> Pedidos, preparación, entregas y recibos</label>
-      <label className="flex items-center gap-2"><input type="radio" name="choice" checked={mode === "stock"} onChange={() => { setMode("stock"); setOpen(false); }} /> Stock</label>
     </fieldset>
-    {mode === "stock" ? <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-sm sm:grid-cols-2">
-      <p>Productos con saldo distinto de cero: <strong>{preview.stock_products_nonzero}</strong></p>
-      <p>Movimientos de inventario: <strong>{preview.stock_movements}</strong></p>
-      <p>Ingresos de mercadería: <strong>{preview.stock_receipts}</strong></p>
-      <p>Lotes FIFO: <strong>{preview.stock_lots}</strong></p>
-    </div> : <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-sm sm:grid-cols-2">
-      <p>Recibos: <strong>{preview.receipts}</strong></p><p>Pedidos: <strong>{preview.orders}</strong></p>
-      <p>Preparaciones: <strong>{preview.preparations}</strong></p><p>Movimientos de entrega: <strong>{preview.deliveries}</strong></p>
+    {mode === "receipts" ? <fieldset className="max-h-60 space-y-2 overflow-auto rounded border p-3 text-sm">
+      <legend>Recibos a borrar</legend>
+      {preview.receipt_options.map((receipt) => <label key={receipt.id} className="flex gap-2">
+        <input type="checkbox" checked={selected.includes(receipt.id)} onChange={(event) =>
+          setSelected((current) => event.target.checked ? [...current, receipt.id] : current.filter((id) => id !== receipt.id))} />
+        {receipt.label} · {receipt.status}
+      </label>)}
+    </fieldset> : <p className="text-sm font-semibold text-rose-800">Este modo elimina todos los pedidos y recibos de la base.</p>}
+    <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-sm sm:grid-cols-2">
+      <p>Recibos: <strong>{receiptCount}</strong></p><p>Pedidos: <strong>{preview.orders}</strong></p>
+      <p>Preparaciones: <strong>{preview.preparations}</strong></p><p>Confirmaciones de entrega: <strong>{preview.deliveries}</strong></p>
       <p>Movimientos de stock que se revertirán: <strong>{preview.delivery_stock_movements}</strong></p>
-    </div>}
-    {mode === "stock" && preview.stock_dependencies > 0 ? <p role="alert" className="text-sm text-amber-800">Limpia primero pedidos y recibos. Stock no los modifica.</p> : null}
-    <p className="text-sm text-emerald-800">Se conservan clientes ({preview.customers_preserved}), productos ({preview.products_preserved}), perfiles ({preview.profiles_preserved}) y configuración.</p>
-    {!enabled ? <p role="status" className="text-sm text-amber-800">La limpieza está desactivada por la configuración del servidor.</p> : null}
-    {!open ? <button type="button" disabled={!enabled || (mode === "stock" && preview.stock_dependencies > 0)} onClick={() => setOpen(true)} className="rounded-md border border-rose-500 px-4 py-2 text-sm text-rose-800 disabled:opacity-50">Borrar datos seleccionados</button> : null}
+    </div>
+    <p className="text-sm text-emerald-800">Se conservan clientes ({preview.customers_preserved}), productos ({preview.products_preserved}), perfiles ({preview.profiles_preserved}) y configuración. También se conservan los ingresos y movimientos de inventario independientes.</p>
+    {!open ? <button type="button" disabled={receiptCount === 0 && preview.orders === 0} onClick={() => { setConfirmation(""); setOpen(true); }} className="rounded border border-rose-500 px-4 py-2 text-rose-800 disabled:opacity-50">Borrar datos seleccionados</button> : null}
     {open ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4">
       <div role="dialog" aria-modal="true" aria-label="Confirmar borrado" className="w-full max-w-lg rounded-lg border border-rose-300 bg-white p-5 shadow-xl">
       <h2 className="font-semibold text-rose-900">Confirmar limpieza de datos de prueba</h2>
-      <p className="my-2 text-sm">Se borrarán los grupos mostrados arriba. Esta acción no se puede deshacer desde la aplicación.</p>
+      <p className="my-2 text-sm">Se borrarán {receiptCount} recibos y {preview.orders} pedidos. Esta acción no se puede deshacer desde la aplicación.</p>
       <form action={action} className="space-y-3">
         <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="revision" value={preview.revision} />
+        {mode === "receipts" ? selected.map((id) => <input key={id} type="hidden" name="receipt" value={id} />) : null}
         <label className="block text-sm">Escribe “BORRAR DATOS” para confirmar.
           <input name="confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" className="mt-1 h-10 w-full rounded-md border px-3" />
         </label>
