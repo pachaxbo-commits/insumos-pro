@@ -31,7 +31,7 @@ begin
       case when p_mode in ('orders','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.orders) end,
       case when p_mode in ('orders','orders_stock') then (select string_agg(id::text,',' order by id) from public.qb_same_day_reconciliation_allocations) end,
       case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||product_id::text||quantity::text||created_at::text,',' order by id) from public.inventory_movements) end,
-      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||remaining_quantity::text||updated_at::text,',' order by id) from public.inventory_lots) end,
+      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||remaining_quantity::text||created_at::text,',' order by id) from public.inventory_lots) end,
       case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||stock_current::text,',' order by id) from public.products) end,
       case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_merchandise_receipts) end)));
 end;
