@@ -29,7 +29,11 @@ begin
       (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_receipts),
       case when p_mode in ('orders','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_orders) end,
       case when p_mode in ('orders','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.orders) end,
-      case when p_mode in ('orders','orders_stock') then (select string_agg(id::text,',' order by id) from public.qb_same_day_reconciliation_allocations) end)));
+      case when p_mode in ('orders','orders_stock') then (select string_agg(id::text,',' order by id) from public.qb_same_day_reconciliation_allocations) end,
+      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||product_id::text||quantity::text||created_at::text,',' order by id) from public.inventory_movements) end,
+      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||remaining_quantity::text||updated_at::text,',' order by id) from public.inventory_lots) end,
+      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||stock_current::text,',' order by id) from public.products) end,
+      case when p_mode in ('stock','orders_stock') then (select string_agg(id::text||updated_at::text,',' order by id) from public.qb_merchandise_receipts) end)));
 end;
 $$;
 
@@ -81,12 +85,15 @@ begin
   -- PostgreSQL rolls the cleanup back, and the owner can obtain a new preview.
   lock table public.qb_orders, public.orders, public.qb_receipts, public.qb_receipt_orders,
     public.qb_receipt_lines in share row exclusive mode;
-  if p_mode in ('orders','orders_stock') then
+  if p_mode in ('orders','orders_stock','stock') then
     lock table public.qb_order_items, public.qb_order_preparations, public.qb_order_preparation_items,
       public.qb_order_delivery_items, public.qb_order_delivery_movements,
       public.qb_order_delivery_confirmations,public.qb_same_day_reconciliation_requests,
       public.qb_same_day_reconciliation_allocations, public.products, public.inventory_movements,
-      public.inventory_lots,public.inventory_lot_consumptions in share row exclusive mode;
+      public.inventory_lots,public.inventory_lot_consumptions, public.inventory_fifo_consumption_runs,
+      public.inventory_lot_writeoffs, public.qb_merchandise_receipts, public.qb_merchandise_receipt_lines,
+      public.qb_merchandise_receipt_movements, public.qb_merchandise_receipt_classification_results
+      in share row exclusive mode;
   end if;
   if p_mode='stock' and (exists(select 1 from public.qb_orders) or exists(select 1 from public.orders)
     or exists(select 1 from public.qb_order_delivery_movements)) then

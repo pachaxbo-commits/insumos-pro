@@ -36,7 +36,7 @@ export async function resetTestDataAction(_previous: ResetActionState, formData:
   const auth = await requireRoleAccess("/configuracion/datos-prueba");
   if (auth.user.role !== "administrador") return { success: false, message: "Acceso denegado." };
   const parsed = z.object({
-    mode: z.enum(["receipts","orders"]),
+    mode: z.enum(["receipts","orders","stock","orders_stock"]),
     revision: z.string().regex(/^[a-f0-9]{32}$/),
     receipts: z.array(z.string().uuid()),
     confirmation: z.literal("BORRAR DATOS"),
@@ -51,5 +51,12 @@ export async function resetTestDataAction(_previous: ResetActionState, formData:
   });
   if (error) return { success: false, message: "Limpieza cancelada. " + error.message };
   for (const path of ["/configuracion/datos-prueba", "/pedidos", "/matriz-operativa", "/recibos", "/stock", "/historial"]) revalidatePath(path);
-  return { success: true, message: "Limpieza completada: " + data.orders + " pedidos y " + data.receipts + " recibos." };
+  const message = parsed.data.mode === "receipts"
+    ? `Limpieza completada: ${data.receipts} recibos eliminados. Pedidos y stock conservados.`
+    : parsed.data.mode === "orders"
+      ? `Limpieza completada: ${data.orders} pedidos y ${data.receipts} recibos eliminados. ${data.inventory_movements ?? 0} movimientos vinculados revertidos.`
+      : parsed.data.mode === "stock"
+        ? `Limpieza completada: ${data.inventory_movements ?? 0} movimientos, ${data.merchandise_receipts ?? 0} ingresos y ${data.inventory_lots ?? 0} lotes eliminados. ${data.products_stock_zeroed ?? 0} productos quedaron con stock cero.`
+        : `Limpieza integral completada: ${data.orders} pedidos, ${data.receipts} recibos y ${data.inventory_movements ?? 0} movimientos eliminados. ${data.products_stock_zeroed ?? 0} productos quedaron con stock cero.`;
+  return { success: true, message };
 }
