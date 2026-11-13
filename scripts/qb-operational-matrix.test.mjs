@@ -125,8 +125,8 @@ assert.match(
   workflows,
   /v_role not in \('admin', 'administrador', 'inventario'\)/,
 );
-assert.match(actions, /save_qb_matrix_preparation_origin_with_unit/);
-assert.match(actions, /save_qb_matrix_delivery_origin_with_unit/);
+assert.match(actions, /save_qb_matrix_preparation_with_check_reset/);
+assert.match(actions, /save_qb_matrix_delivery_origin_with_weight_snapshot/);
 assert.match(explicitOrigin, /save_qb_matrix_preparation_item_with_unit/);
 assert.match(explicitOrigin, /save_qb_matrix_delivery_item_with_unit/);
 assert.match(explicitOrigin, /warehouse_used_base_quantity/);
@@ -159,7 +159,10 @@ assert.match(matrixData, /customerKey:/);
 assert.match(matrix, /function aggregateLines/);
 assert.match(matrix, /applyAutomaticDeliveryValues,/);
 assert.match(lineState, /export function applyAutomaticDeliveryValues/);
-assert.match(lineState, /deliveredQuantity: line\.preparedQuantity/);
+assert.match(
+  lineState,
+  /deliveredQuantity: usePreparationPlan \? line\.requestedQuantity : line\.preparedQuantity/,
+);
 assert.match(lineState, /deliveryCheck: false/);
 assert.doesNotMatch(matrixData, /rawDeliveryWeight <= 0\.000001/);
 assert.match(matrixData, /const deliveryActualWeightKg = rawDeliveryWeight;/);
@@ -201,7 +204,7 @@ assert.match(
   matrix,
   /return line\.deliveryCheck/,
 );
-assert.match(matrix, /Check de Entrega faltante/);
+assert.match(matrix, /Verificación física de Entrega/);
 assert.match(
   matrix,
   /disabled=\{deliveryDisabled\}/,

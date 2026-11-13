@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { actionableOrders, linesForOrder } from "../src/lib/operational-matrix/form-scope.ts";
+import { actionableOrders, canEditMatrixGroupLines, linesForOrder } from "../src/lib/operational-matrix/form-scope.ts";
+
+test("un pedido confirmado del mismo cliente sólo bloquea las filas en las que participa", () => {
+  const orders = [
+    { id: "pendiente", status: "en_preparacion", deliveryStatus: null },
+    { id: "entregado", status: "entregado_pendiente_recibo", deliveryStatus: "confirmado" },
+  ];
+  const pendingLine = { orderId: "pendiente" };
+  const confirmedLine = { orderId: "entregado" };
+  for (const stage of ["preparacion", "entrega"]) {
+    assert.equal(canEditMatrixGroupLines([pendingLine], orders, stage), true);
+    assert.equal(canEditMatrixGroupLines([pendingLine, confirmedLine], orders, stage), false);
+    assert.equal(canEditMatrixGroupLines([{ orderId: "desconocido" }], orders, stage), false);
+  }
+});
 
 test("dos clientes con dos productos conservan pedido y confirmación independientes", () => {
   const orders = [

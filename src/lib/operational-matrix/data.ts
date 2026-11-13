@@ -141,7 +141,7 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_operational_preparation_items")
           .select(
-            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, notes, row_version, prepared_at_line, prepared_by_name, origin_plan_confirmed, planned_pending_base_quantity, planned_external_base_quantity, planned_review_base_quantity",
+            "id, preparation_id, order_item_id, actual_quantity, actual_base_quantity, display_unit_id, preparation_check, actual_weight_kg, actual_weight_value, actual_weight_unit_id, actual_weight_factor_to_kg, notes, row_version, prepared_at_line, prepared_by_name, origin_plan_confirmed, planned_pending_base_quantity, planned_external_base_quantity, planned_review_base_quantity, auto_completed_before_quantity",
           )
           .in("preparation_id", preparationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -149,7 +149,7 @@ export async function getOperationalMatrixData(
       ? supabase
           .from("qb_order_delivery_items")
           .select(
-            "id, order_item_id, externally_sourced_quantity, externally_sourced_base_quantity, delivered_quantity, delivered_base_quantity, display_unit_id, delivery_check, actual_weight_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name), warehouse_used_base_quantity, pending_incoming_base_quantity, external_definitive_base_quantity, origin_review_base_quantity, source_origin_confirmed",
+            "id, order_item_id, externally_sourced_quantity, externally_sourced_base_quantity, delivered_quantity, delivered_base_quantity, display_unit_id, delivery_check, actual_weight_kg, actual_weight_value, actual_weight_unit_id, actual_weight_factor_to_kg, delivery_note, row_version, delivered_at, delivered_by_profile:profiles!delivered_by(full_name), warehouse_used_base_quantity, pending_incoming_base_quantity, external_definitive_base_quantity, origin_review_base_quantity, source_origin_confirmed",
           )
           .in("order_item_id", itemIds)
       : Promise.resolve({ data: [], error: null }),
@@ -464,7 +464,16 @@ export async function getOperationalMatrixData(
       preparedBaseQuantity: numberOr(prep?.actual_base_quantity),
       preparationDisplayUnitId: String(prep?.display_unit_id ?? "original"),
       preparationCheck,
+      preparationAutoFillPreviousQuantity: prep?.auto_completed_before_quantity == null
+        ? null
+        : numberOr(prep.auto_completed_before_quantity),
+      preparationAutoFillRequested: false,
+      preparationAutoFillResetRequested: false,
       preparationActualWeightKg,
+      preparationActualWeightValue: prep?.actual_weight_value == null ? null : numberOr(prep.actual_weight_value),
+      preparationActualWeightUnitId: prep?.actual_weight_unit_id ? String(prep.actual_weight_unit_id) : null,
+      preparationActualWeightUnitSymbol: prep?.actual_weight_unit_id ? String(units.get(String(prep.actual_weight_unit_id))?.symbol ?? "") || null : null,
+      preparationActualWeightFactorToKg: prep?.actual_weight_factor_to_kg == null ? null : numberOr(prep.actual_weight_factor_to_kg),
       preparationNote: String(prep?.notes ?? ""),
       originPlanConfirmed: Boolean(prep?.origin_plan_confirmed),
       plannedPendingBaseQuantity: numberOr(prep?.planned_pending_base_quantity),
@@ -483,6 +492,10 @@ export async function getOperationalMatrixData(
       ),
       deliveryCheck,
       deliveryActualWeightKg,
+      deliveryActualWeightValue: delivery?.actual_weight_value == null ? null : numberOr(delivery.actual_weight_value),
+      deliveryActualWeightUnitId: delivery?.actual_weight_unit_id ? String(delivery.actual_weight_unit_id) : null,
+      deliveryActualWeightUnitSymbol: delivery?.actual_weight_unit_id ? String(units.get(String(delivery.actual_weight_unit_id))?.symbol ?? "") || null : null,
+      deliveryActualWeightFactorToKg: delivery?.actual_weight_factor_to_kg == null ? null : numberOr(delivery.actual_weight_factor_to_kg),
       deliveryNote: String(delivery?.delivery_note ?? ""),
       deliveryWarehouseBaseQuantity: deliveryOrigin.warehouse,
       deliveryPendingBaseQuantity: deliveryOrigin.pendingToday,

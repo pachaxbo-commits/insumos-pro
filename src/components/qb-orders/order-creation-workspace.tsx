@@ -35,7 +35,9 @@ function shortDate(value: string) {
     dateStyle: "short",
     timeStyle: "short",
     timeZone: "America/La_Paz",
-  }).format(new Date(value));
+  })
+    .format(new Date(value))
+    .replace(/\u00a0/g, " ");
 }
 
 function deliveryDate(value: string) {
@@ -49,12 +51,16 @@ export function OrderCreationWorkspace({
   orders,
   creation,
   error,
+  canEdit = false,
+  initialEditingOrderId,
 }: {
   orders: QbInternalOrder[];
   creation?: QbInternalOrderCreationData;
   error?: string;
+  canEdit?: boolean;
+  initialEditingOrderId?: string;
 }) {
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(initialEditingOrderId ?? null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -184,10 +190,9 @@ export function OrderCreationWorkspace({
           ) : (
             <div className="divide-y rounded-xl border bg-white/70">
               {visibleOrders.map((order) => {
-                const canEdit =
-                  order.status === "pendiente_preparacion" &&
-                  !order.preparation &&
-                  !order.deliveredAt;
+                const editableStatus = ["pendiente_preparacion", "en_preparacion", "preparado"]
+                  .includes(order.status);
+                const orderCanEdit = canEdit && editableStatus && !order.deliveredAt;
                 return (
                 <div
                   key={order.id}
@@ -226,7 +231,7 @@ export function OrderCreationWorkspace({
                     <Badge variant="outline">
                       {statusLabels[order.status]}
                     </Badge>
-                    {canEdit ? (
+                    {orderCanEdit ? (
                       <Button
                         type="button"
                         size="sm"

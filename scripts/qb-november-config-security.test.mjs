@@ -98,7 +98,7 @@ test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad
   const actions = read("../src/lib/qb-receipts/actions.ts");
   const ui = read("../src/components/qb-receipts/qb-receipts-management.tsx");
   const lineWorkspace = read("../src/components/qb-receipts/receipt-line-workspace.tsx");
-  const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
+  const migration = read("../supabase/migrations/20261112111000_qb_scope_supervisor_receipts.sql");
 
   assert.match(page, /getQbReceiptsData\(auth\.user\.role!\)/);
   assert.match(page, /userRole=\{auth\.user\.role!\}/);
@@ -108,35 +108,26 @@ test("Supervisor recibe una proyección de Recibos sin agregados de rentabilidad
   assert.match(data, /qb_supervisor_receipts/);
   assert.match(data, /qb_supervisor_receipt_lines/);
   assert.match(data, /select\("id,receipt_number/);
-  assert.match(actions, /update_qb_receipt_draft_supervisor/);
-  assert.match(actions, /set_qb_receipt_supervisor_line_costs/);
+  assert.doesNotMatch(actions, /update_qb_receipt_draft_supervisor/);
+  assert.doesNotMatch(actions, /set_qb_receipt_supervisor_line_costs/);
   assert.match(actions, /if \(auth\.user\.role !== "administrador"\)\s*\{\s*return initialFailure\("Solo Administración puede consultar y modificar costos totales de compra\."\);[\s\S]{0,1000}set_qb_receipt_purchase_costs/);
-  assert.match(page, /auth\.user\.role === "supervisor" && section === "general" \? "emitidos"/);
+  assert.match(page, /auth\.user\.role === "supervisor"[\s\S]*?title="Recibos emitidos"/);
   assert.match(ui, /!isSupervisor \? <TabsTrigger value="costos"/);
   assert.match(ui, /!isSupervisor \? <TabsContent value="general">/);
   assert.match(ui, /!isSupervisor \? <Card>/);
-  const supervisorWorkspace = lineWorkspace.slice(lineWorkspace.indexOf("function SupervisorReceiptLineWorkspace"));
-  for (const allowedField of ["costBaseUnitSnapshot", "finalUnitPrice", "lineTotal", "receipt.totalAmount"]) {
-    assert.ok(supervisorWorkspace.includes(allowedField), `Supervisor receipt workspace is missing ${allowedField}`);
-  }
-  assert.doesNotMatch(supervisorWorkspace, /profitTotal|profitUnit|marginPercent|costTotalPrecise|purchaseCostTotal/);
+  assert.doesNotMatch(lineWorkspace, /SupervisorReceiptLineWorkspace/);
   assert.match(detail, /auth\.user\.role === "supervisor"[\s\S]{0,500}variant="customer-export"/);
   assert.doesNotMatch(data.slice(data.indexOf("async function getSupervisorQbReceiptsData"), data.indexOf("export async function getQbReceiptsData")),
     /cost_total_precise|cost_total_input_precise|purchase_cost_total|profit_total|profit_unit|margin_percent|internal_notes/);
   const receiptApiRoutes = filesUnder("../src/app/api").filter((path) => /receipt|recibo/i.test(path));
   assert.deepEqual(receiptApiRoutes, [], "Receipt exports must not bypass the role-specific document and data paths");
-  assert.match(migration, /subtotal_amount/);
-  assert.match(migration, /line_total/);
-  assert.match(migration, /line\.cost_base_unit_snapshot/);
-  assert.doesNotMatch(migration, /select\s+receipt\.\*/i);
-  assert.doesNotMatch(migration, /select\s+line\.\*/i);
-  const headerProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipts"), migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"));
-  const lineProjection = migration.slice(migration.indexOf("create or replace view public.qb_supervisor_receipt_lines"), migration.indexOf("create or replace view public.qb_supervisor_receipt_orders"));
-  assert.match(headerProjection, /receipt\.subtotal_amount[\s\S]*receipt\.total_amount[\s\S]*receipt\.payment_status/);
-  assert.match(lineProjection, /line\.final_unit_price[\s\S]*line\.line_total[\s\S]*line\.cost_base_unit_snapshot/);
-  assert.doesNotMatch(`${headerProjection}\n${lineProjection}`, /cost_total_precise|profit_total_precise|profit_unit_precise|margin_percent|internal_notes|distance_factor_percent/);
+  const projection = migration.slice(migration.indexOf("create view public.qb_supervisor_receipts"), migration.indexOf("-- Receipt mutations"));
+  assert.match(projection, /private\.qb_can_read_supervisor_receipt/);
+  assert.match(migration, /a\.location_id=loc\.id and a\.supervisor_id=auth\.uid\(\)/);
+  assert.match(migration, /QB_RECEIPT_ADMIN_WRITE_REQUIRED/);
+  assert.match(migration, /revoke execute on function public\.set_qb_receipt_supervisor_line_costs/);
+  assert.doesNotMatch(projection, /subtotal_amount|base_price_used|cost_base_unit_snapshot|cost_rate_snapshot|profit_total_precise|internal_notes/);
 });
-
 test("la migración habilita el RPC real de creación de recibos sin relajar validaciones", () => {
   const migration = read("../supabase/migrations/20261104100000_qb_supervisor_receipt_operations.sql");
   const creationRpc = read("../supabase/migrations/20260929010000_qb_line_receipts_from_delivered_snapshots.sql");

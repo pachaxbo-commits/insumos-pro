@@ -155,6 +155,13 @@ export async function updateMarketSheetProductActualAction(
     };
   }
 
+  if (controlsActualWeight) {
+    return {
+      success: false,
+      message: "El peso real no se puede editar desde la Hoja de Provisión. Ábrelo en Preparación para conservar la unidad original del peso.",
+    };
+  }
+
   const plan = planMarketPreparationWrite(lines ?? [], controlsActualWeight, actualValue);
   if (!plan.ok) return { success: false, message: plan.message };
 
@@ -164,9 +171,11 @@ export async function updateMarketSheetProductActualAction(
   }
 
   const { error } = await supabase.rpc(
-    "save_qb_matrix_preparation_item_with_unit",
+    "save_qb_matrix_preparation_with_check_reset",
     {
       ...plan.params,
+      p_auto_fill_quantity: false,
+      p_reset_auto_fill_quantity: false,
       p_idempotency_key: `market-sheet-${plan.params.p_order_item_id}-${Date.now()}`,
     },
   );

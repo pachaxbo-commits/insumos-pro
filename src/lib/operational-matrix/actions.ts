@@ -104,27 +104,38 @@ export async function saveMatrixPreparationAction(input: unknown) {
     preparedQuantity: quantity,
     preparationCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    actualWeightValue: quantity.nullable(),
+    actualWeightUnitId: z.uuid().nullable(),
+    actualWeightFactorToKg: quantity.positive().nullable(),
+    actualWeightCleared: z.boolean(),
     displayUnitId,
     note: z.string().max(500),
     pendingBaseQuantity: quantity,
     externalBaseQuantity: quantity,
     reviewBaseQuantity: quantity,
     originPlanConfirmed: z.boolean(),
+    autoFillQuantity: z.boolean().default(false),
+    resetAutoFillQuantity: z.boolean().default(false),
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Preparacion invalida." };
-  return rpc("save_qb_matrix_preparation_origin_with_unit", {
+  return rpc("save_qb_matrix_preparation_with_check_reset", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_prepared_quantity: parsed.data.preparedQuantity,
     p_preparation_check: parsed.data.preparationCheck,
-    p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_actual_weight_value: parsed.data.actualWeightValue,
+    p_actual_weight_unit_id: parsed.data.actualWeightUnitId,
+    p_actual_weight_factor_to_kg: parsed.data.actualWeightFactorToKg,
+    p_clear_actual_weight: parsed.data.actualWeightCleared,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_pending_base_quantity: parsed.data.pendingBaseQuantity,
     p_external_base_quantity: parsed.data.externalBaseQuantity,
     p_review_base_quantity: parsed.data.reviewBaseQuantity,
     p_origin_plan_confirmed: parsed.data.originPlanConfirmed,
+    p_auto_fill_quantity: parsed.data.autoFillQuantity,
+    p_reset_auto_fill_quantity: parsed.data.resetAutoFillQuantity,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador", "inventario", "supervisor"], false);
 }
@@ -137,6 +148,10 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     deliveredQuantity: quantity,
     deliveryCheck: z.boolean(),
     actualWeightKg: quantity.nullable(),
+    actualWeightValue: quantity.nullable(),
+    actualWeightUnitId: z.uuid().nullable(),
+    actualWeightFactorToKg: quantity.positive().nullable(),
+    actualWeightCleared: z.boolean(),
     displayUnitId,
     note: z.string().max(500),
     warehouseBaseQuantity: quantity,
@@ -147,13 +162,16 @@ export async function saveMatrixDeliveryAction(input: unknown) {
     idempotencyKey: key,
   }).safeParse(input);
   if (!parsed.success) return { success: false, message: "Entrega invalida." };
-  return rpc("save_qb_matrix_delivery_origin_with_unit", {
+  return rpc("save_qb_matrix_delivery_origin_with_weight_snapshot", {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_externally_sourced_quantity: parsed.data.externalQuantity,
     p_delivered_quantity: parsed.data.deliveredQuantity,
     p_delivery_check: parsed.data.deliveryCheck,
-    p_actual_weight_kg: parsed.data.actualWeightKg,
+    p_actual_weight_value: parsed.data.actualWeightValue,
+    p_actual_weight_unit_id: parsed.data.actualWeightUnitId,
+    p_actual_weight_factor_to_kg: parsed.data.actualWeightFactorToKg,
+    p_clear_actual_weight: parsed.data.actualWeightCleared,
     p_display_unit_id: parsed.data.displayUnitId,
     p_note: parsed.data.note,
     p_warehouse_base_quantity: parsed.data.warehouseBaseQuantity,
@@ -240,6 +258,24 @@ export async function correctMatrixRequestAction(input: unknown) {
     p_order_item_id: parsed.data.orderItemId,
     p_expected_version: parsed.data.expectedVersion,
     p_requested_quantity: parsed.data.requestedQuantity,
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  }, ["administrador"]);
+}
+
+export async function correctGroupedMatrixRequestAction(input: unknown) {
+  const parsed = z.object({
+    changes: z.array(z.object({
+      orderItemId: id,
+      expectedVersion: z.number().int().min(0),
+      requestedQuantity: z.number().finite().positive(),
+    })).min(1).max(30),
+    reason: z.string().min(3).max(500),
+    idempotencyKey: key,
+  }).safeParse(input);
+  if (!parsed.success) return { success: false, message: "Correccion invalida." };
+  return rpc("admin_update_qb_requested_quantities", {
+    p_changes: parsed.data.changes,
     p_reason: parsed.data.reason,
     p_idempotency_key: parsed.data.idempotencyKey,
   }, ["administrador"]);

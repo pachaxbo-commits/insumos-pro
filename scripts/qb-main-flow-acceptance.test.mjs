@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { canEditMatrixOrder } from "../src/lib/operational-matrix/form-scope.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -118,10 +119,9 @@ assert.match(bsQuantityMigration, /QB_BS_QUANTITY_GUARD_NOT_FOUND/);
 
 // Una plantilla grande se divide de forma idempotente sin perder productos.
 assert.match(orderInput, /\.max\(100,/);
-assert.match(orderActions, /INTERNAL_ORDER_BATCH_SIZE = 30/);
-assert.match(orderActions, /Math\.ceil\(parsed\.data\.items\.length/);
-assert.match(orderActions, /String\(index \+ 1\)\.padStart\(2, "0"\)/);
-assert.match(orderActions, /Pedido creado en \$\{batches\.length\} partes/);
+assert.match(orderActions, /p_items: parsed\.data\.items\.map/);
+assert.match(orderActions, /p_idempotency_key: parsed\.data\.idempotencyKey/);
+assert.match(orderActions, /Pedido creado en \$\{createdOrders\.length\} partes/);
 
 // Precarga sólo intención editable: cantidad, unidad y nota.
 for (const field of [
@@ -210,8 +210,19 @@ assert.equal((matrix.match(/<table className=/g) ?? []).length, 1);
 assert.doesNotMatch(matrix, /selectedMobileOrder|MobileRow/);
 assert.doesNotMatch(matrix, /MobileHeader|MobileRow/);
 assert.match(matrix, /Unidad de \$\{label\.toLowerCase\(\)\}/);
-assert.doesNotMatch(matrix, /orders\.filter/);
-assert.match(matrix, /touch-pan-x overflow-x-auto overflow-y-visible overscroll-x-contain/);
+const groupedOrders = [
+  { id: "preparacion", status: "en_preparacion", deliveryStatus: null },
+  { id: "preparado", status: "preparado", deliveryStatus: null },
+  { id: "entregado", status: "entregado", deliveryStatus: "confirmado" },
+  { id: "cancelado", status: "cancelado", deliveryStatus: null },
+];
+assert.deepEqual(groupedOrders.filter(canEditMatrixOrder).map(({ id }) => id), [
+  "preparacion",
+  "preparado",
+]);
+assert.match(matrix, /group\.orders\.filter\(canEditMatrixOrder\)\.map/);
+assert.match(matrix, /canAdmin && canEditMatrixOrder\(order\)/);
+assert.match(matrix, /touch-pan-x overflow-x-auto overflow-y-clip overscroll-x-contain/);
 assert.match(matrix, /customerGroups\.map\(\(group/);
 assert.match(matrix, /data-customer-group=\{groupDomId\(group\.id\)\}/);
 assert.match(matrix, /scrollIntoView/);
@@ -231,7 +242,7 @@ assert.match(matrix, /sticky left-\[196px\] top-0[\s\S]*UD/);
 assert.match(matrix, /sticky left-0 z-30/);
 assert.match(matrix, /sticky left-9 z-30/);
 assert.match(matrix, /sticky left-\[196px\] z-30/);
-assert.match(matrix, /sticky top-\[68px\]/);
+assert.match(matrix, /sticky top-0 z-40/);
 assert.match(matrix, /data-category-row=/);
 assert.match(matrix, /TOTALES/);
 assert.match(matrix, /TOTALES POR CLIENTE/);

@@ -43,11 +43,10 @@ test("entrega sugiere peso de preparación solo para una entrega nueva sin confi
 
 test("Entrega muestra la cobertura preparada por equivalencia base sin marcar su propio check", () => {
   assert.match(matrix, /comparePreparationCoverage\(\{[\s\S]*requestedBaseQuantity: line\.requestedBaseQuantity,[\s\S]*preparedBaseQuantity: line\.preparedBaseQuantity,[\s\S]*requestedConversionValid: line\.requestedConversionValid/);
-  assert.match(matrix, /Preparación completa/);
-  assert.match(matrix, /Faltan \$\{formatQuantity\(coverage\.missingBaseQuantity\)\}/);
-  assert.match(matrix, /Excede lo solicitado/);
-  assert.match(matrix, /conversión física no verificable/);
-  assert.match(matrix, /label=\{\s*line\.preparationCheck[\s\S]*?checked=\{hasDeliveryCheck\(line\)\}/);
+  assert.match(matrix, /coveragePresentation\(\{[\s\S]*baseUnitSymbol: line\.baseUnitSymbol/);
+  assert.match(matrix, /label=\{`Verificación física de Entrega \$\{line\.productName\}`\}/);
+  assert.match(matrix, /checked=\{hasDeliveryCheck\(line\)\}/);
+  assert.match(matrix, /onChange=\{onToggleMissingDeliveryCheck\}/);
 });
 
 test("SQL acepta peso manual, conserva auditoría y no modifica el catálogo ni recibos anteriores", () => {

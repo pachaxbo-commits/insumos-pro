@@ -19,6 +19,11 @@ export type QbReceiptLine = {
   productCode: string | null;
   categoryName: string | null;
   deliveredBaseQuantity: number;
+  actualWeightValue: number | null;
+  actualWeightUnitSymbol: string | null;
+  actualWeightKilograms: number | null;
+  commercialQuantitySnapshot: number | null;
+  commercialUnitLabelSnapshot: string | null;
   baseUnitSymbol: string;
   visibleUnitLabel: string;
   inputMode: "quantity" | "amount_bs";
@@ -47,7 +52,14 @@ export type QbReceiptLine = {
   saleTotalPrecise: string | null;
   profitUnitPrecise: string | null;
   profitTotalPrecise: string | null;
-  costSource: "manual" | "purchase_snapshot" | "fifo" | null;
+  costSource: "manual" | "purchase_snapshot" | "fifo" | "configured_rule" | null;
+  costRuleId: string | null;
+  costBasisSnapshot: "commercial_unit" | "actual_weight" | null;
+  costRateSnapshot: string | null;
+  costReferenceUnitSymbolSnapshot: string | null;
+  costQuantitySnapshot: string | null;
+  costCalculationStatus: "unconfigured" | "ready" | "pending_weight" | "pending_quantity" | "invalid_reference" | "manual_override";
+  salePriceIndependentSnapshot: boolean;
   distanceFactorPercent: number;
   exigencyFactorPercent: number;
   weatherFactorPercent: number;

@@ -163,9 +163,35 @@ function receiptUpdateErrorMessage(error: unknown) {
 }
 
 async function getSupabaseOrState() {
+  const auth = await requireRoleAccess("/recibos");
+  if (auth.user.role !== "administrador") {
+    return { state: initialFailure("Solo Administración puede modificar recibos.") };
+  }
   const supabase = await createSupabaseServerClient();
   if (!supabase) return { state: initialFailure("Faltan variables publicas de Supabase.") };
   return { supabase };
+}
+
+export async function resolveQbDraftSaleTariffsAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  const receiptId = uuidSchema.safeParse(formData.get("receipt_id"));
+  if (!receiptId.success) return initialFailure("Recibo inválido.");
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+  const { data, error } = await supabase.rpc("resolve_qb_draft_sale_tariffs", {
+    p_receipt_id: receiptId.data,
+  });
+  if (error) return initialFailure("No se pudieron aplicar las tarifas al borrador.");
+  revalidatePath("/recibos");
+  revalidatePath(`/recibos/${receiptId.data}`);
+  return {
+    success: true,
+    message: Number(data) > 0
+      ? `Tarifas aplicadas a ${data} línea(s).`
+      : "El catálogo no tiene tarifas compatibles para las líneas pendientes.",
+  };
 }
 
 export async function createQbReceiptDraftAction(
@@ -217,7 +243,7 @@ export async function setQbReceiptLinePricingAction(
   _previous: QbReceiptActionState,
   formData: FormData,
 ): Promise<QbReceiptActionState> {
-  const auth = await requireRoleAccess("/recibos");
+  await requireRoleAccess("/recibos");
   let lines: unknown;
   try { lines = JSON.parse(String(formData.get("lines") ?? "[]")); }
   catch { return initialFailure("Líneas inválidas."); }
@@ -225,20 +251,6 @@ export async function setQbReceiptLinePricingAction(
   if (!parsed.success) return initialFailure("Revisa costos y porcentajes por producto.");
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
-  if (auth.user.role === "supervisor") {
-    const { error } = await supabase.rpc("set_qb_receipt_supervisor_line_costs", {
-      p_receipt_id: parsed.data.receiptId,
-      p_lines: parsed.data.lines.map((line) => ({
-        line_id: line.lineId,
-        cost_base_unit: line.costBaseUnit === "" ? null : line.costBaseUnit,
-        notes: line.notes,
-      })),
-    });
-    if (error) return initialFailure(errorMessage(error, "No se pudieron guardar los costos base unitarios."));
-    revalidatePath("/recibos");
-    revalidatePath(`/recibos/${parsed.data.receiptId}`);
-    return { success: true, message: "Costos base unitarios guardados." };
-  }
   const { error } = await supabase.rpc("set_qb_receipt_line_pricing", {
     p_receipt_id: parsed.data.receiptId,
     p_lines: parsed.data.lines.map((line) => ({
@@ -261,7 +273,7 @@ export async function updateQbReceiptDraftAction(
   _previous: QbReceiptActionState,
   formData: FormData,
 ): Promise<QbReceiptActionState> {
-  const auth = await requireRoleAccess("/recibos");
+  await requireRoleAccess("/recibos");
 
   let lines: unknown;
   try {
@@ -290,26 +302,6 @@ export async function updateQbReceiptDraftAction(
   const { supabase, state } = await getSupabaseOrState();
   if (!supabase) return state;
 
-  if (auth.user.role === "supervisor") {
-    if (parsed.data.lines.some((line) => line.saveAsNewBasePrice)) {
-      return initialFailure("Solo Administración puede cambiar el precio base del producto.");
-    }
-    const { error } = await supabase.rpc("update_qb_receipt_draft_supervisor", {
-      p_receipt_id: parsed.data.receiptId,
-      p_visible_note: parsed.data.visibleNote,
-      p_lines: parsed.data.lines.map((line) => ({
-        line_id: line.lineId,
-        base_price_used: line.basePriceUsed,
-        expected_base_price: line.expectedBasePrice,
-        save_as_new_base_price: false,
-        notes: line.notes,
-      })),
-    });
-    if (error) return initialFailure(receiptUpdateErrorMessage(error));
-    revalidatePath("/recibos");
-    revalidatePath(`/recibos/${parsed.data.receiptId}`);
-    return { success: true, message: "Recibo QB actualizado." };
-  }
 
   const { error } = await supabase.rpc("update_qb_receipt_draft", {
     p_receipt_id: parsed.data.receiptId,

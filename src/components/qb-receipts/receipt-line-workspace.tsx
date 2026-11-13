@@ -3,11 +3,15 @@
 import { Fragment, useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import Decimal from "decimal.js";
-import { setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
+import { resolveQbDraftSaleTariffsAction, setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
 import { resolveReceiptCostSnapshot } from "@/lib/qb-receipts/cost-source";
+import { calculateIndependentSale } from "@/lib/qb-receipts/cost-basis";
 import { calculateReceiptLine, sumReceiptAmounts } from "@/lib/qb-receipts/line-pricing";
+import {
+  formatReceiptActualWeight,
+  formatReceiptCommercialQuantity,
+} from "@/lib/qb-receipts/line-display";
 import type { QbReceipt, QbReceiptLine } from "@/types/qb-receipts";
-import type { UserRole } from "@/types/auth";
 
 type Draft = { cost: string; distance: string; exigency: string; weather: string;
   extraordinary: string; notes: string };
@@ -15,9 +19,8 @@ type Draft = { cost: string; distance: string; exigency: string; weather: string
 const money = (value: number | string | null) => value === null ? "Pendiente" :
   new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2,
     maximumFractionDigits: 2 }).format(Number(value));
-const quantity = (value: number) => new Intl.NumberFormat("es-BO", {
-  maximumFractionDigits: 3,
-}).format(value);
+const actualWeight = (line: QbReceiptLine) => formatReceiptActualWeight(line);
+const commercialQuantity = (line: QbReceiptLine) => formatReceiptCommercialQuantity(line);
 
 function initialDraft(line: QbReceiptLine): Draft {
   const knownCost = line.costBaseUnitSnapshot ?? resolveReceiptCostSnapshot({
@@ -48,9 +51,32 @@ function linePreview(line: QbReceiptLine, draft: Draft, issuedSnapshot = false) 
       profitTotal: line.profitTotalPrecise,
     };
   }
-  if (draft.cost.trim() === "") return null;
+  if (line.costCalculationStatus === "pending_weight") return null;
+  if (line.costCalculationStatus === "pending_quantity" || line.costCalculationStatus === "invalid_reference") return null;
+  const costValue = line.costRuleId ? line.costBaseUnitSnapshot : draft.cost;
+  if (costValue === null || String(costValue).trim() === "") return null;
   try {
-    return calculateReceiptLine({ quantity: line.deliveredBaseQuantity, costBaseUnit: draft.cost,
+    if (line.salePriceIndependentSnapshot && line.inputMode !== "amount_bs") {
+      if (line.basePriceUsed === null) return null;
+      const quantity = new Decimal(line.deliveredBaseQuantity);
+      const sale = calculateIndependentSale({ quantity: quantity.toString(), baseUnitPrice: line.basePriceUsed,
+        factorsPercent: [draft.distance, draft.exigency, draft.weather, draft.extraordinary] });
+      const saleTotal = new Decimal(sale.saleTotalPrecise);
+      const costTotal = line.costRuleId && line.costTotalPrecise !== null
+        ? new Decimal(line.costTotalPrecise)
+        : quantity.times(costValue);
+      const profitTotal = saleTotal.minus(costTotal);
+      return {
+        factorTotalPct: sale.factorTotalPercent,
+        costBaseUnit: String(costValue),
+        unitSale: quantity.isZero() ? "0" : saleTotal.div(quantity).toString(),
+        unitProfit: quantity.isZero() ? "0" : profitTotal.div(quantity).toString(),
+        costTotal: costTotal.toString(),
+        saleTotal: saleTotal.toString(),
+        profitTotal: profitTotal.toString(),
+      };
+    }
+    return calculateReceiptLine({ quantity: line.deliveredBaseQuantity, costBaseUnit: costValue,
       factors: { distance: draft.distance, exigency: draft.exigency,
         weather: draft.weather, extraordinary: draft.extraordinary },
       fixedSaleTotal: line.inputMode === "amount_bs" ? line.fixedLineAmount : null });
@@ -58,20 +84,21 @@ function linePreview(line: QbReceiptLine, draft: Draft, issuedSnapshot = false) 
 }
 
 type ReceiptLineWorkspaceProps = {
-  receipt: QbReceipt; relatedReceipts: QbReceipt[]; userRole: UserRole;
+  receipt: QbReceipt; relatedReceipts: QbReceipt[];
   emitAction: (formData: FormData) => void; emitPending: boolean;
   voidAction: (formData: FormData) => void; voidPending: boolean;
   hideMonthlySummary?: boolean;
 };
 
 export function ReceiptLineWorkspace(props: ReceiptLineWorkspaceProps) {
-  if (props.userRole === "supervisor") return <SupervisorReceiptLineWorkspace {...props} />;
   return <AdminReceiptLineWorkspace {...props} />;
 }
 
 function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitPending,
   voidAction, voidPending, hideMonthlySummary = false }: ReceiptLineWorkspaceProps) {
   const [state, action, pending] = useActionState(setQbReceiptLinePricingAction,
+    { success: false });
+  const [tariffState, resolveTariffs, resolvingTariffs] = useActionState(resolveQbDraftSaleTariffsAction,
     { success: false });
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
     Object.fromEntries(receipt.lines.map((line) => [line.id, initialDraft(line)])));
@@ -127,6 +154,16 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
         </label>
       </div>
       {state.message && <p role="status" className="rounded border px-2 py-1 text-sm">{state.message}</p>}
+      {editable && receipt.lines.some((line) => line.inputMode === "quantity" &&
+        line.salePriceIndependentSnapshot && line.basePriceUsed === null) ? (
+        <form action={resolveTariffs} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="receipt_id" value={receipt.id} />
+          <button type="submit" disabled={resolvingTariffs || pending} className="rounded border px-3 py-2 text-sm">
+            Aplicar tarifas pendientes del catálogo
+          </button>
+        </form>
+      ) : null}
+      {tariffState.message ? <p role="status" className="text-sm">{tariffState.message}</p> : null}
       <form action={action} className="space-y-3">
         <input type="hidden" name="receipt_id" value={receipt.id} />
         <input type="hidden" name="lines" value={payload} />
@@ -134,7 +171,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
           <table className="w-full min-w-[1380px] text-xs">
             <thead className="sticky top-0 z-10 bg-slate-100 text-left">
               <tr>{[
-                "N°", "Código", "Producto", "UD", "Cant.", "Dist. %", "Exig. %", "Clima %",
+                "N°", "Código", "Producto", "UD", "Cantidad comercial", "Peso real", "Dist. %", "Exig. %", "Clima %",
                 "Extra. %", "Factor total %", "Costo base/UD", "Precio anterior", "Precio venta/UD",
                 "Precio ref. / @", "Costo total Bs", "Venta total Bs", "Utilidad Bs", "Utilidad Bs/UD", "Observación"
               ].map((name) => (
@@ -148,7 +185,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                   const categories = [...new Set(orderLines.map((line) => line.categoryName ?? "Sin categoría"))];
                   return categories.map((category) => <Fragment key={`${order.orderId}:${category}`}>
                     <tr className="bg-slate-50">
-                      <td colSpan={19} className="px-2 py-1.5 font-semibold">
+                      <td colSpan={20} className="px-2 py-1.5 font-semibold">
                         {order.orderReference} · {category}</td></tr>
                     {orderLines.filter((line) => (line.categoryName ?? "Sin categoría") === category)
                       .map((line, index) => {
@@ -166,7 +203,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                         const arrobaDisplay =
                           previewUnitSale !== null && arrobaRatio !== null
                             ? Number((previewUnitSale * arrobaRatio).toFixed(2))
-                            : line.salePricePerArroba;
+                            : editable ? null : line.salePricePerArroba;
                         const input = (field: keyof Draft, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}
@@ -179,13 +216,17 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                           <td className="px-2 py-1.5">{line.productCode ?? "—"}</td>
                           <td className="max-w-48 px-2 py-1.5 font-medium">{line.productName}</td>
                           <td className="px-2 py-1.5">{line.baseUnitSymbol}</td>
-                          <td className="px-2 py-1.5 text-right">{line.deliveredBaseQuantity}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5 text-right">{commercialQuantity(line)}</td>
+                          <td className="whitespace-nowrap px-2 py-1.5">{actualWeight(line)}</td>
                           <td className="px-1 py-1">{input("distance")}</td>
                           <td className="px-1 py-1">{input("exigency")}</td>
                           <td className="px-1 py-1">{input("weather")}</td>
                           <td className="px-1 py-1">{input("extraordinary")}</td>
                           <td className="px-2 py-1.5 text-right">{preview ? `${preview.factorTotalPct}%` : "—"}</td>
-                          <td className="px-1 py-1">{input("cost", "w-24")}</td>
+                          <td className="px-2 py-1.5">{line.costRuleId ? <span className="whitespace-nowrap text-xs">
+                            {money(line.costRateSnapshot)} Bs / {line.costBasisSnapshot === "actual_weight" ? line.costReferenceUnitSymbolSnapshot : line.commercialUnitLabelSnapshot}
+                            {line.costCalculationStatus !== "ready" && <span className="ml-1 text-amber-700">· {line.costCalculationStatus === "pending_weight" ? "Peso pendiente" : "Revisar regla"}</span>}
+                          </span> : input("cost", "w-24")}</td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">
                             {line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}
                           </td>
@@ -256,72 +297,5 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
       <div className="mt-3 border-t pt-2 font-semibold">Venta {money(monthlyAmounts.saleTotal)} Bs<br />
         Utilidad {money(monthlyAmounts.profitTotal)} Bs<br />Margen {money(monthlyAmounts.marginPercent)}%</div>
     </aside>}
-  </div>;
-}
-
-function SupervisorReceiptLineWorkspace({ receipt, emitAction, emitPending, voidAction,
-  voidPending }: ReceiptLineWorkspaceProps) {
-  const [state, action, pending] = useActionState(setQbReceiptLinePricingAction, { success: false });
-  const [costs, setCosts] = useState<Record<string, string>>(() => Object.fromEntries(
-    receipt.lines.map((line) => [line.id, line.costBaseUnitSnapshot ?? ""]),
-  ));
-  const [notes, setNotes] = useState<Record<string, string>>(() => Object.fromEntries(
-    receipt.lines.map((line) => [line.id, line.notes ?? ""]),
-  ));
-  const editable = receipt.status === "borrador";
-  const payload = JSON.stringify(receipt.lines.map((line) => ({
-    lineId: line.id,
-    costBaseUnit: costs[line.id] ?? "",
-    distanceFactorPercent: 0,
-    exigencyFactorPercent: 0,
-    weatherFactorPercent: 0,
-    extraordinaryFactorPercent: 0,
-    notes: notes[line.id] ?? "",
-  })));
-
-  return <div className="min-w-0 space-y-3">
-    <div className="flex flex-wrap items-end justify-between gap-2">
-      <div><h3 className="font-semibold">{receipt.customerName} · {receipt.number}</h3>
-        <p className="text-xs text-muted-foreground">Cantidad entregada, costo base unitario y precio del recibo para el cliente.</p></div>
-      <p className="text-sm font-semibold">Importe individual: {receipt.hasPendingPrices ? "Pendiente" : money(receipt.totalAmount)} Bs</p>
-    </div>
-    {state.message ? <p role="status" className={`rounded border px-2 py-1 text-sm ${state.success ? "text-emerald-800" : "text-destructive"}`}>{state.message}</p> : null}
-    {receipt.hasPendingPrices ? <p className="rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">Completa los costos base unitarios y precios faltantes antes de emitir. Los totales internos no se muestran en este perfil.</p> : null}
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="receipt_id" value={receipt.id} />
-      <input type="hidden" name="lines" value={payload} />
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className="bg-slate-100 text-left text-xs">
-            <tr><th className="px-3 py-2">Pedido</th><th className="px-3 py-2">Producto</th>
-              <th className="px-3 py-2 text-right">Cantidad entregada</th><th className="px-3 py-2">Costo base/UD</th>
-              <th className="px-3 py-2 text-right">Precio venta/UD</th><th className="px-3 py-2 text-right">Importe línea</th>
-              <th className="px-3 py-2">Observación</th></tr>
-          </thead>
-          <tbody className="divide-y">
-            {receipt.lines.map((line) => <tr key={line.id}>
-              <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{line.orderReference}</td>
-              <td className="px-3 py-2"><span className="font-medium">{line.productName}</span><span className="block text-xs text-muted-foreground">{line.baseUnitSymbol}</span></td>
-              <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{quantity(line.deliveredBaseQuantity)} {line.baseUnitSymbol}</td>
-              <td className="px-3 py-2">{editable ? <input aria-label={`Costo base unitario ${line.productName}`} type="number" min="0" step="0.00000001" value={costs[line.id] ?? ""} onChange={(event) => setCosts((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-32 rounded border bg-white px-2 text-right" /> : money(line.costBaseUnitSnapshot)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{line.finalUnitPrice === null ? "Pendiente" : money(line.finalUnitPrice)}</td>
-              <td className="px-3 py-2 text-right font-semibold tabular-nums">{line.lineTotal === null ? "Pendiente" : money(line.lineTotal)}</td>
-              <td className="px-3 py-2">{editable ? <input aria-label={`Observación ${line.productName}`} value={notes[line.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [line.id]: event.target.value }))} className="h-9 w-40 rounded border bg-white px-2" /> : line.notes || "—"}</td>
-            </tr>)}
-          </tbody>
-        </table>
-      </div>
-      {editable ? <div className="flex flex-wrap items-center gap-2">
-        <button disabled={pending} className="rounded bg-emerald-800 px-3 py-2 text-sm text-white disabled:opacity-50">{pending ? "Guardando…" : "Guardar costos base unitarios"}</button>
-        <span className="text-xs text-muted-foreground">El sistema conserva los parámetros internos y actualiza el precio calculado al guardar.</span>
-      </div> : null}
-    </form>
-    {editable ? <div className="flex flex-wrap items-center gap-2">
-      <form action={emitAction}><input type="hidden" name="receipt_id" value={receipt.id} />
-        <button disabled={emitPending || receipt.hasPendingPrices} className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50">{emitPending ? "Emitiendo…" : "Emitir recibo"}</button></form>
-      <form action={voidAction} className="flex gap-2"><input type="hidden" name="receipt_id" value={receipt.id} />
-        <input name="reason" required placeholder="Motivo de anulación" className="h-9 rounded border px-2 text-sm" />
-        <button disabled={voidPending} className="rounded border px-3 text-sm">Anular</button></form>
-    </div> : null}
   </div>;
 }

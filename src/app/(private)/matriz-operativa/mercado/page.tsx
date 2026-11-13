@@ -102,8 +102,8 @@ export default async function MarketPrintPage({
           basePath="/matriz-operativa/mercado"
         />
       ) : model ? (
-        <section className="bg-white p-3 text-slate-950 print:p-0">
-          <div className="border-b-2 border-emerald-900 pb-2 text-center">
+        <section className="qb-provision-print-page bg-white p-3 text-slate-950 print:p-0">
+          <div className={`border-b-2 border-emerald-900 pb-2 text-center ${model.rows.length ? "print:hidden" : ""}`}>
             <h2 className="text-lg font-bold">QB INSUMOS · HOJA DE PROVISIÓN</h2>
             <p className="mt-1 text-sm">Fecha operativa: {model.operationalDate}</p>
             <p className="text-xs text-slate-600">

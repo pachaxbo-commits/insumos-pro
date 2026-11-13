@@ -54,6 +54,8 @@ const MAX_ORDER_PRODUCTS = 100;
 
 type DraftLine = {
   key: number;
+  orderItemId?: string;
+  expectedVersion?: number;
   productId: string;
   allowedUnitId: string;
   quantity: string;
@@ -89,6 +91,8 @@ function boliviaTomorrow() {
 function initialDraftLines(order?: QbInternalOrder): DraftLine[] {
   return (order?.items ?? []).map((item, index) => ({
     key: index + 1,
+    orderItemId: item.id,
+    expectedVersion: item.rowVersion,
     productId: item.productId,
     allowedUnitId: item.allowedUnitId,
     quantity: String(item.requestedQuantity),
@@ -133,6 +137,7 @@ export function InternalOrderCreator({
   const [customerNotes, setCustomerNotes] = useState(
     editingOrder?.customerNotes ?? "",
   );
+  const [editReason, setEditReason] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() =>
     initiallyOpen || editing ? crypto.randomUUID() : "",
   );
@@ -361,6 +366,8 @@ export function InternalOrderCreator({
       ...current,
       {
         key: nextLineKey,
+                orderItemId: undefined,
+                expectedVersion: undefined,
         productId,
         allowedUnitId: defaultUnit.id,
         quantity: String(
@@ -686,7 +693,7 @@ export function InternalOrderCreator({
           <CardTitle>{editing ? "Editar pedido" : "Nuevo pedido"}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {editing
-              ? `Actualiza ${editingOrder?.reference}. La edición se bloqueará al iniciar preparación.`
+              ? `Actualiza ${editingOrder?.reference}. Si Preparación ya inició, las líneas afectadas deberán revisarse nuevamente; las líneas entregadas no se pueden modificar.`
               : "Registra el pedido y envíalo al checklist de preparación."}
           </p>
         </div>
@@ -708,6 +715,7 @@ export function InternalOrderCreator({
           <input type="hidden" name="order_mode" value="registered" />
           <input type="hidden" name="idempotency_key" value={idempotencyKey} />
           <input type="hidden" name="items" value={itemsPayload} />
+          <input type="hidden" name="edit_reason" value={editReason} />
           {editingOrder ? (
             <>
               <input type="hidden" name="order_id" value={editingOrder.id} />
@@ -788,7 +796,7 @@ export function InternalOrderCreator({
                 </Label>
                 <Input
                   id="internal-operational-date"
-                  name="operational_date"
+                  name={editingOrder?.preparation ? undefined : "operational_date"}
                   type="date"
                   min={boliviaToday()}
                   value={operationalDate}
@@ -797,13 +805,40 @@ export function InternalOrderCreator({
                     setOperationalDate(event.target.value);
                   }}
                   required
+                  disabled={Boolean(editingOrder?.preparation)}
                   className="h-12 text-base"
                 />
+                {editingOrder?.preparation ? (
+                  <input type="hidden" name="operational_date" value={operationalDate} />
+                ) : null}
                 <p className="text-xs text-muted-foreground">
-                  El pedido aparecerá en la planilla de esta fecha.
+                  {editingOrder?.preparation
+                    ? "La fecha queda fija después de iniciar Preparación."
+                    : "El pedido aparecerá en la planilla de esta fecha."}
                 </p>
               </div>
             </div>
+
+            {editingOrder?.preparation ? (
+              <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                <Label htmlFor="internal-edit-reason" className="font-semibold text-amber-950">
+                  Motivo del cambio <span className="text-rose-700">*</span>
+                </Label>
+                <Textarea
+                  id="internal-edit-reason"
+                  value={editReason}
+                  onChange={(event) => setEditReason(event.target.value)}
+                  minLength={3}
+                  maxLength={500}
+                  rows={2}
+                  required
+                  placeholder="Ej.: el cliente agregó dos unidades antes de la entrega"
+                />
+                <p className="text-xs text-amber-900">
+                  Las líneas ya entregadas no se editan. Si cambia una línea medida, se conserva su medición y vuelve a revisión.
+                </p>
+              </div>
+            ) : null}
 
             {customerId && selectedCustomer && selectedCustomer.locations.length === 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">

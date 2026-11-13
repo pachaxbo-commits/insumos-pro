@@ -150,9 +150,9 @@ select '00000000-0000-4000-8000-00000000f102'::uuid,
 from public.qb_product_allowed_units allowed
 where allowed.product_id = '00000000-0000-4000-8000-00000000c001'
   and allowed.usage_context = 'pedido' and allowed.is_default = true;
-select public.save_qb_matrix_delivery_item_with_weight_v2(
-  '00000000-0000-4000-8000-00000000f101', 0, 3, 9, true, null, '1 kg faltante; 3 kg de compra externa',
-  'qa-delivery-line-001');
+select public.save_qb_matrix_delivery_origin_with_unit(
+  '00000000-0000-4000-8000-00000000f101', 0, 3, 9, true, null, 'original',
+  '1 kg faltante; 3 kg de compra externa', 6, 0, 3, 0, true, 'qa-delivery-line-001');
 select public.confirm_qb_matrix_delivery(
   '00000000-0000-4000-8000-00000000e101',
   (select updated_at from public.qb_orders where id = '00000000-0000-4000-8000-00000000e101'),

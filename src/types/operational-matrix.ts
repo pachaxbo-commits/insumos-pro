@@ -65,7 +65,16 @@ export type MatrixLine = {
   preparedBaseQuantity: number;
   preparationDisplayUnitId: string;
   preparationCheck: boolean;
+  /** Previous quantity captured by the server when a check auto-filled this line. */
+  preparationAutoFillPreviousQuantity: number | null;
+  /** Transient intent persisted by the preparation RPC. */
+  preparationAutoFillRequested: boolean;
+  preparationAutoFillResetRequested: boolean;
   preparationActualWeightKg: number | null;
+  preparationActualWeightValue: number | null;
+  preparationActualWeightUnitId: string | null;
+  preparationActualWeightUnitSymbol: string | null;
+  preparationActualWeightFactorToKg: number | null;
   preparationNote: string;
   originPlanConfirmed: boolean;
   plannedPendingBaseQuantity: number;
@@ -81,6 +90,10 @@ export type MatrixLine = {
   deliveryDisplayUnitId: string;
   deliveryCheck: boolean;
   deliveryActualWeightKg: number | null;
+  deliveryActualWeightValue: number | null;
+  deliveryActualWeightUnitId: string | null;
+  deliveryActualWeightUnitSymbol: string | null;
+  deliveryActualWeightFactorToKg: number | null;
   deliveryNote: string;
   deliveryWarehouseBaseQuantity: number;
   deliveryPendingBaseQuantity: number;

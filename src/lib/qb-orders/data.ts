@@ -35,13 +35,14 @@ type OrderRow = {
 
 type ItemRow = {
   id: string;
+  row_version: number;
   order_id: string;
   product_id: string;
   allowed_unit_id: string;
   source_label: string;
   requested_quantity: number | string;
   order_input_mode: "quantity" | "amount_bs";
-  requested_amount_bs: number | string | null;
+  requested_amount_bs?: number | string | null;
   estimated_requested_quantity: number | string | null;
   estimated_base_quantity: number | string | null;
   base_unit_symbol: string;
@@ -315,10 +316,10 @@ export async function getQbInternalOrdersData(
 
   const itemsResult = role === "supervisor"
     ? await supabase.from("qb_operational_order_items")
-        .select("id,order_id,product_id,allowed_unit_id,source_label,requested_quantity,order_input_mode,estimated_requested_quantity,estimated_base_quantity,base_unit_symbol,base_quantity,customer_notes,sort_order")
+        .select("id,order_id,product_id,allowed_unit_id,source_label,requested_quantity,order_input_mode,estimated_requested_quantity,estimated_base_quantity,base_unit_symbol,base_quantity,customer_notes,sort_order,row_version")
         .in("order_id", orderIds).eq("order_input_mode", "quantity").order("sort_order", { ascending: true })
     : await supabase.from("qb_order_items")
-        .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, product:products(name, stock_current)")
+        .select("id, order_id, product_id, allowed_unit_id, source_label, requested_quantity, order_input_mode, requested_amount_bs, estimated_requested_quantity, estimated_base_quantity, base_unit_symbol, base_quantity, customer_notes, sort_order, row_version, product:products(name, stock_current)")
         .in("order_id", orderIds).order("sort_order", { ascending: true });
   const preparationResult = await supabase
       .from("qb_order_preparations")
@@ -389,6 +390,7 @@ export async function getQbInternalOrdersData(
 
       return {
         id: item.id,
+        rowVersion: Number(item.row_version) || 0,
         productId: item.product_id,
         allowedUnitId: item.allowed_unit_id,
         productName: productName(item),
