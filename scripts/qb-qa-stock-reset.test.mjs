@@ -53,12 +53,14 @@ test("catalog, customers, users and configuration are never selected for deletio
   assert.match(migration, /where stock_current <> 0/);
 });
 
-test("legacy stock-only scope is absent from the owner UI", () => {
+test("owner cleanup exposes stock only through the current transactional modes", () => {
   assert.match(migration, /stock_products_nonzero/);
   assert.match(migration, /stock_movements/);
   assert.match(migration, /stock_receipts/);
   assert.match(migration, /stock_lots/);
-  assert.doesNotMatch(page, /getTestDataResetPreview\("stock"\)/);
-  assert.doesNotMatch(form, /setMode\("stock"\)/);
+  assert.match(page, /getTestDataResetPreview\("stock"\)/);
+  assert.match(page, /getTestDataResetPreview\("orders_stock"\)/);
+  assert.match(form, /setMode\("stock"\)/);
+  assert.match(form, /setMode\("orders_stock"\)/);
   assert.match(form, /delivery_stock_movements/);
 });

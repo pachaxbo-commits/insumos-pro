@@ -19,7 +19,7 @@ begin
         union select inventory_movement_id from public.qb_same_day_reconciliation_allocations
       ) m) else 0 end,
     'products_preserved',(select count(*) from public.products),
-    'products_stock_zeroed',case when p_mode in ('stock','orders_stock') then (select count(*) from public.products) else 0 end,
+    'products_stock_zeroed',case when p_mode in ('stock','orders_stock') then (select count(*) from public.products where coalesce(stock_current,0)<>0) else 0 end,
     'inventory_movements',case when p_mode in ('stock','orders_stock') then (select count(*) from public.inventory_movements) else 0 end,
     'merchandise_receipts',case when p_mode in ('stock','orders_stock') then (select count(*) from public.qb_merchandise_receipts) else 0 end,
     'inventory_lots',case when p_mode in ('stock','orders_stock') then (select count(*) from public.inventory_lots) else 0 end,
@@ -74,6 +74,10 @@ declare
   v_audit_ids uuid[];
   v_preview jsonb;
   v_result jsonb;
+  v_deleted_movements integer:=0;
+  v_deleted_merchandise integer:=0;
+  v_deleted_lots integer:=0;
+  v_zeroed_products integer:=0;
 begin
   if v_actor is null or not coalesce(public.current_user_role() in ('admin','administrador'),false) then
     raise exception 'Acceso denegado.' using errcode='42501';
@@ -184,6 +188,10 @@ begin
     delete from public.orders;
   end if;
   if p_mode in ('stock','orders_stock') then
+    select count(*) into v_deleted_movements from public.inventory_movements;
+    select count(*) into v_deleted_merchandise from public.qb_merchandise_receipts;
+    select count(*) into v_deleted_lots from public.inventory_lots;
+    select count(*) into v_zeroed_products from public.products where coalesce(stock_current,0)<>0;
     if exists(select 1 from public.qb_order_delivery_movements where inventory_movement_id is not null)
       and p_mode='stock' then raise exception 'Hay movimientos de entrega dependientes. Selecciona Pedidos y Stock.'; end if;
     delete from public.inventory_lot_consumptions;
@@ -203,7 +211,9 @@ begin
   delete from public.audit_logs where entity_id=any(v_audit_ids) and action<>'qb_owner_cleanup';
   v_result:=jsonb_build_object('mode',p_mode,'receipts',cardinality(v_receipts),
     'orders',v_preview->'orders','preparations',v_preview->'preparations','deliveries',v_preview->'deliveries',
-    'inventory_movements',coalesce(cardinality(v_movements),0));
+    'inventory_movements',case when p_mode in ('stock','orders_stock') then v_deleted_movements else coalesce(cardinality(v_movements),0) end,
+    'merchandise_receipts',v_deleted_merchandise,'inventory_lots',v_deleted_lots,
+    'products_stock_zeroed',v_zeroed_products);
   insert into public.audit_logs(user_id,action,entity_type,metadata)
   values(v_actor,'qb_owner_cleanup','qb_test_operations',v_result);
   return v_result;
