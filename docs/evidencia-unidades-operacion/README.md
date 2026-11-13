@@ -30,3 +30,11 @@ Las capturas usan clientes y pedidos ficticios. Las pruebas visuales ejercitan e
 - Contrato SQL con identidad de administrador y rollback: CUARTILLA, 8 unidades con 12 libras y 25 KG con 20 de almacén y 5 externos. Verifica importes comerciales y cantidades de inventario. También se ensayó la revisión del pedido histórico sobre la copia.
 - Impresión integral en Edge: PDF de dos páginas horizontales con cuatro clientes ficticios, dos por página, y todos los productos y sus unidades. Véase hoja-provision-qa.pdf.
 - Pendiente: recorrido autenticado de extremo a extremo en navegador sobre la misma base migrada. El servicio HTTP local existente usa otra base. El contrato SQL y la impresión no sustituyen esa comprobación.
+
+## QA autenticado de 131 migraciones
+
+- Aplicación local independiente en http://127.0.0.1:3381 con Auth y REST conectados a qb_pr19_final_qa. Se verificó el destino por la auditoría escrita desde la interfaz con un administrador ficticio. El historial de la aplicación sigue en 131 migraciones. Para iniciar GoTrue en la copia se completó el registro local de Auth con 27 versiones faltantes del mismo runtime, tras comparar las columnas de ambos esquemas Auth. Production quedó fuera de este entorno.
+- Revisión histórica comprobada en el navegador. Se previsualizó, se indicó el motivo, se confirmó y se verificó que el registro de auditoría persistió en la copia.
+- La matriz autenticada se comprobó a 1440, 768 y 390 px. Las entradas de cantidad y peso mantienen 16 px también en tableta. El tamaño de las casillas quedó intacto. Se comprobó el indicador al final de la tabla.
+- Con datos ficticios creados por el contrato SQL, se abrió el recibo en el navegador con 8 UNIDAD y 12 LIBRA, se descargó el Excel interno y se generó un PDF. Las capturas del entorno restaurado se conservan localmente por contener datos de la copia.
+- Falta ejecutar desde el navegador las escrituras de Pedido, Preparación y Entrega de un pedido nuevo, y comprobar el ajuste excepcional del origen durante esa misma secuencia. Las pruebas autenticadas de lectura y el contrato SQL cubren partes distintas.

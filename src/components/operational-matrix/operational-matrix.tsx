@@ -2335,7 +2335,7 @@ function DecimalInput({
   return (
     <Input
       aria-label={label}
-      className={`h-8 min-w-24 text-right text-sm font-semibold ${
+      className={`h-8 min-w-24 text-right text-base font-semibold tabular-nums md:text-base ${
         attention ? "border-rose-500 bg-rose-50 ring-1 ring-rose-300" : ""
       }`}
       type="text"
@@ -2428,7 +2428,7 @@ function MeasuredQuantityEditor({
   return (
     <div className="grid min-w-40 grid-cols-2 items-start gap-2">
       <div className="min-w-0">
-        <span className="mb-0.5 block text-left text-xs font-semibold text-slate-700">
+        <span className="mb-0.5 block text-left text-sm font-semibold text-slate-700">
           {quantityLabel}
         </span>
         <QuantityEditor
@@ -2445,7 +2445,7 @@ function MeasuredQuantityEditor({
         />
       </div>
       <div className="min-w-0">
-        <span className="mb-0.5 block text-left text-xs font-semibold text-slate-700">
+        <span className="mb-0.5 block text-left text-sm font-semibold text-slate-700">
           Peso real (opcional)
         </span>
         <div className="flex items-center gap-1">
@@ -2518,15 +2518,15 @@ function PreparedMeasurementDisplay({
       className="min-w-32 rounded-md border border-slate-300 bg-slate-50/80 px-2 py-1.5 text-left"
       aria-label={`Preparado por Inventario para ${line.productName}`}
     >
-      <span className="block text-[9px] font-medium text-muted-foreground">
+      <span className="block text-xs font-medium text-muted-foreground">
         Cantidad preparada
       </span>
-      <span className="block font-semibold">
+      <span className="block text-base font-semibold tabular-nums">
         {formatQuantity(line.preparedQuantity)} {line.sourceLabel}
       </span>
       {line.controlsActualWeight || line.preparationActualWeightKg !== null ? (
         <>
-          <span className="mt-1 block text-[9px] font-medium text-muted-foreground">
+          <span className="mt-1 block text-xs font-medium text-muted-foreground">
             Peso preparado
           </span>
           <span className="block font-semibold">
