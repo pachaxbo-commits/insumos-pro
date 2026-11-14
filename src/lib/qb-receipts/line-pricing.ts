@@ -1,5 +1,15 @@
 import Decimal from "decimal.js";
 
+export function isUnconfirmedDefaultReceiptCost(input: {
+  cost: string;
+  costTouched: boolean;
+  costBaseUnitSnapshot: number | string | null;
+  suggestedCostBaseUnit: number | string | null | undefined;
+}) {
+  return input.cost === "0" && !input.costTouched &&
+    input.costBaseUnitSnapshot === null && input.suggestedCostBaseUnit === null;
+}
+
 export type LineFactors = {
   distance: Decimal.Value;
   exigency: Decimal.Value;

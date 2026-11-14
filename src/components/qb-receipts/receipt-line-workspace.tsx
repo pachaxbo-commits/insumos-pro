@@ -4,7 +4,11 @@ import { Fragment, useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import Decimal from "decimal.js";
 import { setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
-import { calculateReceiptLine, sumReceiptAmounts } from "@/lib/qb-receipts/line-pricing";
+import {
+  calculateReceiptLine,
+  isUnconfirmedDefaultReceiptCost,
+  sumReceiptAmounts,
+} from "@/lib/qb-receipts/line-pricing";
 import {
   formatReceiptActualWeight,
   formatReceiptCommercialQuantity,
@@ -12,7 +16,7 @@ import {
 import type { QbReceipt, QbReceiptLine } from "@/types/qb-receipts";
 
 type Draft = { cost: string; distance: string; exigency: string; weather: string;
-  extraordinary: string; notes: string };
+  extraordinary: string; notes: string; costTouched?: boolean };
 
 const money = (value: number | string | null) => value === null ? "—" :
   new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2,
@@ -94,7 +98,15 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
   const hasUnsavedChanges = receipt.lines.some((line) =>
     JSON.stringify(drafts[line.id] ?? initialDraft(line, editable)) !== JSON.stringify(initialDraft(line, editable)));
   const lines = receipt.lines.filter((line) => viewOrder === "all" || line.orderId === viewOrder);
-  const payload = JSON.stringify(receipt.lines.map((line) => {
+  const payload = JSON.stringify(receipt.lines.filter((line) => {
+    const draft = drafts[line.id] ?? initialDraft(line, editable);
+    return !isUnconfirmedDefaultReceiptCost({
+      cost: draft.cost,
+      costTouched: Boolean(draft.costTouched),
+      costBaseUnitSnapshot: line.costBaseUnitSnapshot,
+      suggestedCostBaseUnit: line.suggestedCostBaseUnit,
+    });
+  }).map((line) => {
     const draft = drafts[line.id] ?? initialDraft(line, editable);
     return { lineId: line.id, costBaseUnit: draft.cost,
       distanceFactorPercent: draft.distance, exigencyFactorPercent: draft.exigency,
@@ -118,10 +130,11 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
     saleTotal: item.saleTotalPrecise ?? item.totalAmount,
   })));
 
-  function change(lineId: string, field: keyof Draft, value: string) {
+  function change(lineId: string, field: Exclude<keyof Draft, "costTouched">, value: string) {
     setDrafts((current) => ({ ...current, [lineId]: {
       ...(current[lineId] ?? initialDraft(receipt.lines.find((line) => line.id === lineId)!, editable)),
       [field]: value,
+      ...(field === "cost" ? { costTouched: true } : {}),
     } }));
   }
 
@@ -172,7 +185,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                         const arrobaDisplay = previewUnitSale !== null && line.arrobaFactor !== null
                           ? Number((previewUnitSale * line.arrobaFactor).toFixed(2))
                           : !editable ? line.salePricePerArroba : null;
-                        const input = (field: keyof Draft, width = "w-16") =>
+                        const input = (field: Exclude<keyof Draft, "costTouched">, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}
                             disabled={!editable || (line.inputMode === "amount_bs" &&
