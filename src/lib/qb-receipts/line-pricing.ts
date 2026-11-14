@@ -1,5 +1,15 @@
 import Decimal from "decimal.js";
 
+export function isUnconfirmedDefaultReceiptCost(input: {
+  cost: string;
+  costTouched: boolean;
+  costBaseUnitSnapshot: number | string | null;
+  suggestedCostBaseUnit: number | string | null | undefined;
+}) {
+  return input.cost === "0" && !input.costTouched &&
+    input.costBaseUnitSnapshot === null && input.suggestedCostBaseUnit === null;
+}
+
 export type LineFactors = {
   distance: Decimal.Value;
   exigency: Decimal.Value;
@@ -44,6 +54,24 @@ export function calculateReceiptLine(input: LinePricingInput) {
     saleTotal: saleTotal.toFixed(precision),
     profitTotal: saleTotal.minus(costTotal).toFixed(precision),
   };
+}
+
+export function resolveReceiptArrobaFactor(input: {
+  isArroba: boolean;
+  arrobaKilograms: number | null;
+  unitKilograms: number | null;
+  measuredKilograms: number | null;
+  deliveredQuantity: number;
+}): number | null {
+  if (input.isArroba) return 1;
+  if (input.arrobaKilograms === null || input.arrobaKilograms <= 0) return null;
+  if (input.unitKilograms !== null && input.unitKilograms > 0) {
+    return input.arrobaKilograms / input.unitKilograms;
+  }
+  if (input.measuredKilograms === null || input.measuredKilograms <= 0 || input.deliveredQuantity <= 0) {
+    return null;
+  }
+  return input.arrobaKilograms * input.deliveredQuantity / input.measuredKilograms;
 }
 
 export type ReceiptAmounts = { costTotal: Decimal.Value; saleTotal: Decimal.Value };

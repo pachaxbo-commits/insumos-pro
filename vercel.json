@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "codex/unidades-operacion": false
+      "codex/unidades-operacion": false,
+      "codex/costos-y-limpieza": false
     }
   }
 }

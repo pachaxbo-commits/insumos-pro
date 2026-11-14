@@ -1,5 +1,7 @@
 import "server-only";
 
+import { resolveReceiptArrobaFactor } from "./line-pricing";
+
 import { unstable_noStore as noStore } from "next/cache";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -109,6 +111,7 @@ type ReceiptLineRow = {
   cost_quantity_snapshot?: number | string | null;
   cost_calculation_status?: QbReceiptLine["costCalculationStatus"];
   sale_price_independent_snapshot?: boolean;
+  receipt_cost_saved_at?: string | null;
   distance_factor_percent?: number | string;
   exigency_factor_percent?: number | string;
   weather_factor_percent?: number | string;
@@ -246,7 +249,7 @@ function calculatePricePerArroba(
   arrobaUnit: UnitSymbolRow | undefined,
   weightDimensionId: string | undefined,
 ): number | null {
-  if (price === null || price <= 0 || !unit || !arrobaUnit) {
+  if (price === null || price < 0 || !unit || !arrobaUnit) {
     return null;
   }
   const arrobaFactor = arrobaUnit.code === "arroba" ? resolveWeightFactor(arrobaUnit, weightDimensionId) : null;
@@ -256,21 +259,6 @@ function calculatePricePerArroba(
   if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
 
   return Number(((price / unitWeightFactor) * arrobaFactor).toFixed(4));
-}
-
-function calculateArrobaFactor(
-  unit: UnitSymbolRow | undefined,
-  arrobaUnit: UnitSymbolRow | undefined,
-  weightDimensionId: string | undefined,
-): number | null {
-  if (!unit || !arrobaUnit) return null;
-  const arrobaFactor = arrobaUnit.code === "arroba" ? resolveWeightFactor(arrobaUnit, weightDimensionId) : null;
-  if (arrobaFactor === null) return null;
-
-  const unitWeightFactor = resolveWeightFactor(unit, weightDimensionId);
-  if (unitWeightFactor === null || unitWeightFactor <= 0) return null;
-
-  return Number((arrobaFactor / unitWeightFactor).toFixed(6));
 }
 
 function attachPreviousPrices(receipts: QbReceipt[]) {
@@ -371,7 +359,8 @@ function mapReceipt(
     profitTotalPrecise: nullableDecimalText(row.profit_total_precise),
     hasPendingPrices: lines.some(
       (line) =>
-        (row.pricing_mode === "line_cost_markup" && line.costBaseUnitSnapshot === null) ||
+        (row.pricing_mode === "line_cost_markup" && (line.costBaseUnitSnapshot === null ||
+          (row.status === "borrador" && line.receiptCostSaved === false))) ||
         line.deliveredBaseQuantity <= 0 ||
         (line.inputMode === "quantity" &&
           (line.basePriceUsed === null ||
@@ -486,7 +475,7 @@ async function getReceiptParts(
         ? supabase
             .from("qb_units")
             .select("id, name, symbol, code, dimension_id, conversion_factor_to_base")
-            .in("id", unitIds)
+            .in("id", unitIds).eq("is_active", true)
         : Promise.resolve({ data: [] }),
       supabase
         .from("qb_unit_dimensions")
@@ -514,6 +503,14 @@ async function getReceiptParts(
       );
   }
 
+  const { data: suggestedCosts, error: suggestedCostsError } = await supabase.rpc(
+    "get_qb_draft_receipt_cost_suggestions", { p_receipts: receiptIds },
+  );
+  if (suggestedCostsError) throw new Error("No se pudieron cargar los costos sugeridos: " + suggestedCostsError.message);
+  const suggestedCostByLine = new Map<string, string | null>((suggestedCosts ?? []).map(
+    (item: { line_id: string; suggested_cost: unknown }) => [item.line_id, nullableDecimalText(item.suggested_cost as string | number | null)],
+  ));
+
   const ordersByReceipt = new Map<string, QbReceiptOrder[]>();
   if (!ordersResult.error) {
     for (const row of (ordersResult.data ?? []) as ReceiptOrderRow[]) {
@@ -538,6 +535,16 @@ async function getReceiptParts(
       const lineUnit =
         (!row.sale_price_independent_snapshot && row.pricing_unit_id ? unitById.get(row.pricing_unit_id) : undefined) ??
         (row.base_unit_id ? unitById.get(row.base_unit_id) : undefined);
+      const deliveredBase = numberValue(row.delivered_base_quantity);
+      const measuredKg = nullableNumberValue(row.actual_weight_kg);
+      const arrobaKg = resolveWeightFactor(arrobaUnit, weightDimensionId);
+      const arrobaFactor = resolveReceiptArrobaFactor({
+        isArroba: (lineUnit?.symbol ?? row.base_unit_symbol).trim().toUpperCase() === "ARROBA",
+        arrobaKilograms: arrobaKg,
+        unitKilograms: resolveWeightFactor(lineUnit, weightDimensionId),
+        measuredKilograms: measuredKg,
+        deliveredQuantity: deliveredBase,
+      });
       items.push({
         id: row.id,
         orderId: row.order_id,
@@ -589,13 +596,14 @@ async function getReceiptParts(
           arrobaUnit,
           weightDimensionId,
         ),
-        arrobaFactor: calculateArrobaFactor(
-          lineUnit,
-          arrobaUnit,
-          weightDimensionId,
-        ),
+        arrobaFactor,
+        arrobaReferenceIssue: arrobaFactor !== null ? null
+          : arrobaKg === null || deliveredBase <= 0 ? "Revisar unidad"
+          : "Falta peso real",
         purchaseCostTotal: nullableNumberValue(row.purchase_cost_total),
         costBaseUnitSnapshot: nullableDecimalText(row.cost_base_unit_snapshot),
+        suggestedCostBaseUnit: suggestedCostByLine.get(row.id) ?? null,
+        receiptCostSaved: Boolean(row.receipt_cost_saved_at),
         costTotalPrecise: nullableDecimalText(row.cost_total_precise),
         saleTotalPrecise: nullableDecimalText(row.sale_total_precise),
         profitUnitPrecise: nullableDecimalText(row.profit_unit_precise),
