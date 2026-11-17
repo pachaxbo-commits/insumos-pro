@@ -495,6 +495,11 @@ begin
     raise exception 'QB_LINE_PRICING_LINE_NOT_FOUND';
   end if;
 
+  if v_existing.cost_source is distinct from 'fifo' or v_existing.cost_base_unit_snapshot is null then
+    raise exception 'QB_RECEIPT_LINE_NOT_FIFO: La línea no cuenta con una tarifa FIFO calculada para corregir.'
+      using errcode = '42500';
+  end if;
+
   perform set_config('qb.line_pricing_write', 'enabled', true);
 
   -- Updates only the receipt line and marks it as manual override with audit notes.
@@ -536,6 +541,9 @@ revoke all on function public.override_qb_receipt_fifo_cost(uuid, uuid, numeric,
 grant execute on function public.override_qb_receipt_fifo_cost(uuid, uuid, numeric, text) to authenticated;
 
 -- 5. Clearly distinguish confirmed purchase cost reference from manual prior cost in get_qb_receipt_lines_fifo_context
+-- Explicit controlled DROP without CASCADE is mandatory because PostgreSQL does not allow
+-- CREATE OR REPLACE FUNCTION to alter the column count or types of an existing TABLE return type.
+-- Dependency check confirmed: 0 dependent database objects (no views, triggers, or foreign keys).
 drop function if exists public.get_qb_receipt_lines_fifo_context(uuid[]);
 
 create or replace function public.get_qb_receipt_lines_fifo_context(p_receipts uuid[])

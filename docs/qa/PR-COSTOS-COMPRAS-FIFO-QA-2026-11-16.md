@@ -51,6 +51,7 @@ Para una línea de recibo en modo `line_cost_markup`:
   - Para ajustes excepcionales autorizados, se implementó la función y Server Action `public.override_qb_receipt_fifo_cost(receipt_id, line_id, new_cost, reason)`:
     - Requiere rol administrativo activo.
     - Exige un motivo de auditoría no vacío.
+    - Valida estrictamente que la línea posea una tarifa FIFO calculada (`cost_source = 'fifo'` y `cost_base_unit_snapshot IS NOT NULL`) y que el recibo esté en borrador; cualquier intento de aplicar esta corrección sobre una línea sin costo FIFO es rechazado con la excepción `QB_RECEIPT_LINE_NOT_FIFO: La línea no cuenta con una tarifa FIFO calculada para corregir.` (SQLSTATE `42500`).
     - Registra el evento auditable `costo_fifo_corregido_manualmente` en `public.qb_receipt_events`.
     - Actualiza la línea a `cost_source = 'manual'`, `cost_calculation_status = 'manual_override'`.
     - **No modifica ni corrompe** `inventory_lots` ni `inventory_lot_consumptions`.
@@ -74,11 +75,18 @@ Para una línea de recibo en modo `line_cost_markup`:
 
 1. [`supabase/migrations/20261116120000_qb_fifo_receipt_costs_from_confirmed_purchases.sql`](../../supabase/migrations/20261116120000_qb_fifo_receipt_costs_from_confirmed_purchases.sql)
    - Creación de infraestructura de cálculo FIFO sobre consumos confirmados, bloqueo de emisión sin costo, y snapshot inmutable en recibos.
+   - Crea `get_qb_receipt_lines_fifo_context(uuid[])` con 10 columnas en `RETURNS TABLE`.
 2. [`supabase/migrations/20261116233000_qb_fifo_override_guards_and_distinct_cost_references.sql`](../../supabase/migrations/20261116233000_qb_fifo_override_guards_and_distinct_cost_references.sql)
    - Neutralización de reglas antiguas sobre FIFO en `line_cost_markup`.
    - Protección de líneas FIFO contra edición accidental en `set_qb_receipt_line_pricing()`.
-   - RPC auditada `override_qb_receipt_fifo_cost()` y restricción en `qb_receipt_events`.
-   - Separación estricta de referencias en `get_qb_receipt_lines_fifo_context()`.
+   - RPC auditada `override_qb_receipt_fifo_cost()` con validación estricta de procedencia FIFO (`cost_source = 'fifo'` y `cost_base_unit_snapshot IS NOT NULL`) y restricción en `qb_receipt_events` (9 valores permitidos, 100% compatible con los 8 tipos históricos).
+   - **Compatibilidad PostgreSQL en tipo de retorno**:
+     - PostgreSQL prohíbe modificar el número o tipos de columnas de una función con `RETURNS TABLE(...)` mediante `CREATE OR REPLACE FUNCTION` (SQLSTATE `42804`).
+     - Se aplicó `DROP FUNCTION IF EXISTS public.get_qb_receipt_lines_fifo_context(uuid[]);` controlado sin `CASCADE` antes de recrearla con 12 columnas (`previous_manual_cost_value`, `previous_manual_cost_unit_symbol`).
+     - Se verificó dependencia previa: 0 objetos dependientes (vistas, triggers o claves foráneas).
+   - **Instalación secuencial demostrada**:
+     - Aplicación limpia y consecutiva 135 -> 136 -> 137 en entorno desechable con esquema idéntico a Production.
+     - 135 versiones iniciales -> migración 136 aplicada (función con 10 columnas) -> migración 137 aplicada (función con 12 columnas).
 
 ---
 
@@ -139,29 +147,47 @@ ORDER BY p.name, il.received_at;
 ### Verificación de rechazo directo y corrección excepcional auditada (Caso Extra 4)
 
 ```sql
--- Intento de edición directa sobre línea FIFO:
+-- 1. Intento de edición directa de tarifa sobre línea FIFO (parámetros reales de set_qb_receipt_line_pricing):
 SELECT public.set_qb_receipt_line_pricing(
-  '4c9f7a75-1153-469b-8cf9-1cbca8353aa5'::uuid,
-  '[{"line_id":"ee614586-7538-4518-9ffe-570ffbe76b2e","cost_base_unit":18.5,"distance_percent":0,"exigency_percent":0,"weather_percent":0,"extraordinary_percent":0}]'::jsonb
+  '360f5e99-2872-40f1-9ce1-64b12aa9f176'::uuid,
+  '[{"line_id":"7d423e66-f3f3-4d16-a097-3bdf016c8215","cost_base_unit":18.5,"distance_factor_percent":0,"exigency_factor_percent":0,"weather_factor_percent":0,"extraordinary_factor_percent":0}]'::jsonb
 );
--- ERROR:  QB_FIFO_COST_OVERRIDE_REQUIRES_EXPLICIT_ACTION: La tarifa calculada por FIFO no puede modificarse directamente en la tabla. Usa la acción de corrección excepcional con motivo de auditoría.
+-- ERROR:  42500: QB_FIFO_COST_OVERRIDE_REQUIRES_EXPLICIT_ACTION: La tarifa calculada por FIFO no puede modificarse directamente en la tabla. Usa la acción de corrección excepcional con motivo de auditoría.
 
--- Ejecución de acción excepcional auditada:
+-- 2. Intento de corrección excepcional sobre línea SIN costo FIFO calculado (línea sin stock o sin consumos FIFO):
 SELECT public.override_qb_receipt_fifo_cost(
-  '4c9f7a75-1153-469b-8cf9-1cbca8353aa5'::uuid,
+  '3a40a812-a77a-47da-aec1-3ead48da6fc8'::uuid,
+  'c07ede00-ec72-4bff-bb75-15a743e795b8'::uuid,
+  18.5,
+  'Intento inválido de corrección FIFO sobre línea sin stock'
+);
+-- ERROR:  42500: QB_RECEIPT_LINE_NOT_FIFO: La línea no cuenta con una tarifa FIFO calculada para corregir.
+
+-- 3. Ejecución autorizada de acción excepcional sobre línea FIFO:
+SELECT public.override_qb_receipt_fifo_cost(
+  '4273414a-c118-4a28-bd55-c7e7de58bd33'::uuid,
   'ee614586-7538-4518-9ffe-570ffbe76b2e'::uuid,
   18.5,
   'Ajuste excepcional por merma autorizada'
 );
+-- Retorna el receipt_id: 4273414a-c118-4a28-bd55-c7e7de58bd33
 
--- Estado resultante en qb_receipt_lines y qb_receipt_events:
-SELECT cost_source, cost_calculation_status, cost_base_unit_snapshot
+-- 4. Estado resultante en qb_receipt_lines:
+SELECT cost_source, cost_calculation_status, cost_base_unit_snapshot, notes
 FROM public.qb_receipt_lines WHERE id = 'ee614586-7538-4518-9ffe-570ffbe76b2e';
--- manual | manual_override | 18.50000000
+-- manual | manual_override | 18.50000000 | ... Corrección excepcional FIFO: Ajuste excepcional por merma autorizada
 
-SELECT type, details->>'reason' as reason, details->>'previous_cost' as prev_cost, details->>'new_cost' as new_cost
-FROM public.qb_receipt_events WHERE receipt_id = '4c9f7a75-1153-469b-8cf9-1cbca8353aa5' AND type = 'costo_fifo_corregido_manualmente';
--- costo_fifo_corregido_manualmente | Ajuste excepcional por merma autorizada | 14 | 18.5
+-- 5. Registro de auditoría en qb_receipt_events (columnas canónicas event_type y metadata):
+SELECT event_type, metadata->>'reason' as reason, metadata->>'previous_cost' as prev_cost, metadata->>'new_cost' as new_cost
+FROM public.qb_receipt_events
+WHERE receipt_id = '4273414a-c118-4a28-bd55-c7e7de58bd33'
+  AND event_type = 'costo_fifo_corregido_manualmente';
+--            event_type            |                 reason                  |  prev_cost  |  new_cost
+-- ----------------------------------+-----------------------------------------+-------------+-------------
+--  costo_fifo_corregido_manualmente | Ajuste excepcional por merma autorizada | 14.00000000 | 18.50000000
+
+-- 6. Restricción qb_receipt_events_type_check compatible con históricos:
+-- event_type = ANY (ARRAY['creado', 'lineas_editadas', 'precio_base_actualizado', 'emitido', 'anulado', 'reemplazado', 'control_actualizado', 'costos_compra_actualizados', 'costo_fifo_corregido_manualmente'])
 ```
 
 ### Verificación de referencias diferenciadas (Caso Extra 5)
@@ -173,7 +199,7 @@ SELECT
   previous_purchase_cost_unit_symbol,
   previous_manual_cost_value,
   previous_manual_cost_unit_symbol
-FROM public.get_qb_receipt_lines_fifo_context(ARRAY['7c8e9f12-...'::uuid]);
+FROM public.get_qb_receipt_lines_fifo_context(ARRAY['c5b7b023-b595-49b3-be33-2d684544edd4'::uuid]);
 ```
 
 ```text
@@ -182,3 +208,55 @@ FROM public.get_qb_receipt_lines_fifo_context(ARRAY['7c8e9f12-...'::uuid]);
  644c8657-f44f-4eb0-97fb-4eee0fbd6eee |                           11 | KG                                 |                            |
  6937129b-f3fa-47bd-98b2-959f2727c049 |                              |                                    |                         21 | KG
 ```
+
+---
+
+## 7. Verificación de instalación secuencial 135 -> 136 -> 137 en PostgreSQL
+
+Demostración ejecutada en base de datos QA desechable inicializada en el estado de 135 migraciones de Production:
+
+### 1. Estado inicial en 135 migraciones
+```sql
+SELECT count(*) FROM supabase_migrations.schema_migrations;
+-- count: 135
+-- Última migración: 20261114104000_qb_fix_customer_address_optional_in_orders.sql
+-- get_qb_receipt_lines_fifo_context: No existe (NULL)
+```
+
+### 2. Aplicación de migración 136 (`20261116120000_qb_fifo_receipt_costs_from_confirmed_purchases.sql`)
+```sql
+SELECT count(*) FROM supabase_migrations.schema_migrations;
+-- count: 136
+
+SELECT pg_get_function_result('public.get_qb_receipt_lines_fifo_context(uuid[])'::regprocedure);
+```
+```text
+TABLE(line_id uuid, warehouse_base_quantity numeric, external_base_quantity numeric, fifo_known_quantity numeric, fifo_known_total_cost numeric, fifo_unknown_quantity numeric, fifo_lot_count integer, fifo_lots_summary text, previous_purchase_cost_value numeric, previous_purchase_cost_unit_symbol text)
+```
+*(Firma original de 10 columnas).*
+
+### 3. Aplicación de migración 137 (`20261116233000_qb_fifo_override_guards_and_distinct_cost_references.sql`)
+```sql
+SELECT count(*) FROM supabase_migrations.schema_migrations;
+-- count: 137
+
+SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 5;
+```
+```text
+    version     
+----------------
+ 20261116233000
+ 20261116120000
+ 20261114104000
+ 20261114103000
+ 20261114101000
+(5 rows)
+```
+
+```sql
+SELECT pg_get_function_result('public.get_qb_receipt_lines_fifo_context(uuid[])'::regprocedure);
+```
+```text
+TABLE(line_id uuid, warehouse_base_quantity numeric, external_base_quantity numeric, fifo_known_quantity numeric, fifo_known_total_cost numeric, fifo_unknown_quantity numeric, fifo_lot_count integer, fifo_lots_summary text, previous_purchase_cost_value numeric, previous_purchase_cost_unit_symbol text, previous_manual_cost_value numeric, previous_manual_cost_unit_symbol text)
+```
+*(Firma actualizada de 12 columnas instalada limpiamente mediante DROP controlado sin CASCADE ni errores de tipo).*
