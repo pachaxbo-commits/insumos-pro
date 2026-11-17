@@ -123,30 +123,56 @@ function getQbParametrizationWarning(message: string) {
   return "No pudimos cargar la configuración de unidades y presentaciones. Inténtalo nuevamente o comunícate con el administrador de QB Insumos.";
 }
 
+const PRODUCT_ID_QUERY_CHUNK_SIZE = 100;
+
+function chunkProductIds(productIds: string[], size = PRODUCT_ID_QUERY_CHUNK_SIZE) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < productIds.length; index += size) {
+    chunks.push(productIds.slice(index, index + size));
+  }
+  return chunks;
+}
+
+/** Query Supabase in bounded product_id chunks to stay below PostgREST/Kong URI length limits. */
+async function queryByProductIdChunks<T>(
+  productIds: string[],
+  runChunk: (chunk: string[]) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[] | null; error: { message: string } | null }> {
+  const chunks = chunkProductIds(productIds);
+  const results = await Promise.all(chunks.map((chunk) => runChunk(chunk)));
+  const rows: T[] = [];
+  for (const result of results) {
+    if (result.error) return { data: null, error: result.error };
+    if (result.data) rows.push(...result.data);
+  }
+  return { data: rows, error: null };
+}
+
 async function loadAllAllowedUnits(
   supabase: SupabaseServerClient,
   productIds: string[],
 ) {
   const pageSize = 1000;
-  const rows: QbProductAllowedUnit[] = [];
+  return queryByProductIdChunks<QbProductAllowedUnit>(productIds, async (chunk) => {
+    const chunkRows: QbProductAllowedUnit[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const result = await supabase
+        .from("qb_product_allowed_units")
+        .select(
+          "id, product_id, usage_context, unit_id, presentation_id, is_default, quantity_step, min_quantity, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+        )
+        .in("product_id", chunk)
+        .order("usage_context", { ascending: true })
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
 
-  for (let from = 0; ; from += pageSize) {
-    const result = await supabase
-      .from("qb_product_allowed_units")
-      .select(
-        "id, product_id, usage_context, unit_id, presentation_id, is_default, quantity_step, min_quantity, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
-      )
-      .in("product_id", productIds)
-      .order("usage_context", { ascending: true })
-      .order("sort_order", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (result.error) return { data: null, error: result.error };
-    const page = (result.data ?? []) as QbProductAllowedUnit[];
-    rows.push(...page);
-    if (page.length < pageSize) return { data: rows, error: null };
-  }
+      if (result.error) return { data: null, error: result.error };
+      const page = (result.data ?? []) as QbProductAllowedUnit[];
+      chunkRows.push(...page);
+      if (page.length < pageSize) return { data: chunkRows, error: null };
+    }
+  });
 }
 
 async function loadQbParametrizationData(
@@ -172,47 +198,61 @@ async function loadQbParametrizationData(
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
-      ? supabase
-          .from("qb_product_presentations")
-          .select(
-            "id, product_id, name, symbol, contained_quantity, contained_unit_id, base_quantity, base_unit_id, conversion_factor_to_base, allow_purchase, allow_order, allow_sale, allow_inventory, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
-          )
-          .order("sort_order", { ascending: true })
-          .in("product_id", productIds)
-          .order("name", { ascending: true })
+      ? queryByProductIdChunks<QbProductPresentation>(productIds, async (chunk) => {
+          const res = await supabase
+            .from("qb_product_presentations")
+            .select(
+              "id, product_id, name, symbol, contained_quantity, contained_unit_id, base_quantity, base_unit_id, conversion_factor_to_base, allow_purchase, allow_order, allow_sale, allow_inventory, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+            )
+            .in("product_id", chunk)
+            .order("sort_order", { ascending: true })
+            .order("name", { ascending: true });
+          return { data: (res.data ?? null) as QbProductPresentation[] | null, error: res.error };
+        })
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
       ? loadAllAllowedUnits(supabase, productIds)
       : Promise.resolve({ data: [], error: null }),
     scope === "full" && productIds.length
-      ? supabase
-          .from("qb_product_classification_outputs")
-          .select(
-            "id, source_product_id, output_type, output_product_id, label, expected_percentage, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
-          )
-          .order("sort_order", { ascending: true })
-          .in("source_product_id", productIds)
-          .order("label", { ascending: true })
+      ? queryByProductIdChunks<QbProductClassificationOutput>(productIds, async (chunk) => {
+          const res = await supabase
+            .from("qb_product_classification_outputs")
+            .select(
+              "id, source_product_id, output_type, output_product_id, label, expected_percentage, is_active, sort_order, notes, created_by, updated_by, created_at, updated_at",
+            )
+            .in("source_product_id", chunk)
+            .order("sort_order", { ascending: true })
+            .order("label", { ascending: true });
+          return { data: (res.data ?? null) as QbProductClassificationOutput[] | null, error: res.error };
+        })
       : Promise.resolve({ data: [], error: null }),
   ]);
   const settingsResult = !productIds.length
     ? { data: [] as QbProductUnitSettings[], error: null }
     : includeFinancial
-      ? await supabase.from("qb_product_unit_settings")
-          .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, internal_notes, notes, created_by, updated_by, created_at, updated_at")
-          .in("product_id", productIds)
-          .order("updated_at", { ascending: false })
-          .then((result) => ({ data: (result.data ?? []) as unknown as QbProductUnitSettings[], error: result.error }))
-      : await supabase.from("qb_operational_product_unit_settings")
-          .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, notes, created_by, updated_by, created_at, updated_at")
-          .in("product_id", productIds)
-          .order("updated_at", { ascending: false })
-          .then((result) => ({
-            data: (result.data ?? []).map((row) => ({
-              ...row, base_price_unit_id: null, base_sale_price: null, internal_notes: null,
-            })) as unknown as QbProductUnitSettings[],
-            error: result.error,
-          }));
+      ? await queryByProductIdChunks<QbProductUnitSettings>(productIds, async (chunk) => {
+          const res = await supabase
+            .from("qb_product_unit_settings")
+            .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, base_price_unit_id, base_sale_price, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, internal_notes, notes, created_by, updated_by, created_at, updated_at")
+            .in("product_id", chunk)
+            .order("updated_at", { ascending: false });
+          return { data: (res.data ?? null) as unknown as QbProductUnitSettings[] | null, error: res.error };
+        })
+      : await queryByProductIdChunks<QbProductUnitSettings>(productIds, async (chunk) => {
+          const res = await supabase
+            .from("qb_operational_product_unit_settings")
+            .select("product_id, base_unit_id, inventory_unit_id, base_inventory_unit_id, supports_amount_bs, is_visible_in_qb_catalog, is_classifiable, classification_mode, is_qb_active, notes, created_by, updated_by, created_at, updated_at")
+            .in("product_id", chunk)
+            .order("updated_at", { ascending: false });
+          return {
+            data: res.data
+              ? (res.data.map((row) => ({
+                  ...row, base_price_unit_id: null, base_sale_price: null, internal_notes: null,
+                })) as unknown as QbProductUnitSettings[])
+              : null,
+            error: res.error,
+          };
+        });
 
   const qbError =
     dimensionsResult.error ??

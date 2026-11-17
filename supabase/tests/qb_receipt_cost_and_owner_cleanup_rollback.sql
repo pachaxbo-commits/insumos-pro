@@ -131,9 +131,9 @@ begin
       select next_receipt,ro.id,l.order_id,l.preparation_item_id,l.product_id,l.product_name_snapshot,
         l.delivered_base_quantity,l.base_unit_id,l.base_unit_symbol,l.visible_unit_label,'purchase_snapshot',95
       from qb_receipt_lines l join qb_receipt_orders ro on ro.receipt_id=next_receipt where l.id=line_id;
-    if (select suggested_cost from get_qb_draft_receipt_cost_suggestions(array[next_receipt])) is distinct from 22::numeric
+    if (select suggested_cost from get_qb_draft_receipt_cost_suggestions(array[next_receipt])) is not null
       or exists(select 1 from qb_receipt_lines where receipt_id=next_receipt and cost_base_unit_snapshot is not null) then
-      raise exception 'Next receipt did not suggest 22 or accepted a purchase reference';
+      raise exception 'Next unstocked receipt auto-filled suggested_cost or accepted a purchase reference';
     end if;
     if scenario.source_code='kg' then
       perform emit_qb_receipt(v_receipt_id);

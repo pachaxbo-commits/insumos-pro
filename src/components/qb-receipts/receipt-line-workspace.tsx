@@ -21,8 +21,19 @@ type Draft = { cost: string; distance: string; exigency: string; weather: string
 const money = (value: number | string | null) => value === null ? "—" :
   new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2,
     maximumFractionDigits: 2 }).format(Number(value));
+const qty = (value: number | null | undefined) => value == null ? "0" :
+  new Intl.NumberFormat("es-BO", { maximumFractionDigits: 4 }).format(value);
 const actualWeight = (line: QbReceiptLine) => formatReceiptActualWeight(line);
 const commercialQuantity = (line: QbReceiptLine) => formatReceiptCommercialQuantity(line);
+
+function formatDraftCost(value: string | null) {
+  if (value === null || value.trim() === "") return null;
+  try {
+    return new Decimal(value).toString();
+  } catch {
+    return value;
+  }
+}
 
 function needsLegacyCostReview(line: QbReceiptLine) {
   return !line.salePriceIndependentSnapshot && line.costSource === "purchase_snapshot" &&
@@ -33,9 +44,10 @@ function needsLegacyCostReview(line: QbReceiptLine) {
 }
 
 function initialDraft(line: QbReceiptLine, editable: boolean): Draft {
-  const knownCost = !editable || line.costSource === "manual"
-    ? line.costBaseUnitSnapshot : line.suggestedCostBaseUnit;
-  return { cost: knownCost?.toString() ?? (editable ? "0" : ""),
+  const knownCost = !editable || (line.costSource !== null && line.costSource !== "purchase_snapshot")
+    ? formatDraftCost(line.costBaseUnitSnapshot)
+    : null;
+  return { cost: knownCost ?? (editable ? "0" : ""),
     distance: String(line.distanceFactorPercent), exigency: String(line.exigencyFactorPercent),
     weather: String(line.weatherFactorPercent), extraordinary: String(line.extraordinaryFactorPercent),
     notes: line.notes ?? "" };
@@ -208,11 +220,48 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                             {input("cost", "w-24")} <span>Bs/{line.baseUnitSymbol}</span>
                             {editable && (needsLegacyCostReview(line) || line.costSource === "purchase_snapshot")
                               ? <span className="block text-amber-800">Referencia de compra excluida</span> : null}
-                            {editable && draft.cost === "0" && line.costSource !== "manual" && line.suggestedCostBaseUnit == null
-                              ? <span className="block text-slate-600">Sin costo guardado en esta unidad</span> : null}
+                            {line.costSource === "fifo" && (!draft.costTouched || draft.cost === formatDraftCost(line.costBaseUnitSnapshot))
+                              ? <>
+                                  <span className="block text-emerald-800">
+                                    Costo FIFO ({line.fifoLotCount === 1 ? "1 lote" : `${line.fifoLotCount ?? 0} lotes`})
+                                  </span>
+                                  {line.fifoLotsSummary
+                                    ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                    : null}
+                                </>
+                              : null}
+                            {editable && line.costBaseUnitSnapshot === null && !draft.costTouched
+                              ? (line.fifoUnknownQuantity ?? 0) > 0
+                                ? <>
+                                    <span className="block max-w-56 whitespace-normal text-amber-800">
+                                      Costo pendiente: consumo sin costo conocido ({qty(line.fifoUnknownQuantity)} {line.baseUnitSymbol})
+                                    </span>
+                                    {line.fifoLotsSummary
+                                      ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                      : null}
+                                  </>
+                                : (line.warehouseBaseQuantity ?? 0) > 0 && (line.externalBaseQuantity ?? 0) > 0
+                                  ? <>
+                                      <span className="block max-w-56 whitespace-normal text-amber-800">
+                                        Costo pendiente: entrega mixta ({qty(line.warehouseBaseQuantity)} {line.baseUnitSymbol} almacén + {qty(line.externalBaseQuantity)} {line.baseUnitSymbol} externo)
+                                      </span>
+                                      {line.fifoLotsSummary
+                                        ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                        : null}
+                                    </>
+                                  : line.warehouseBaseQuantity === 0
+                                    ? <span className="block text-slate-600">Sin stock en almacén · ingresa el costo real</span>
+                                    : <span className="block text-slate-600">Costo pendiente · ingresa el costo real</span>
+                              : null}
                           </td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">
-                            {line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}
+                            <div>{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}</div>
+                            <div className="font-sans text-[11px] text-slate-500">
+                              Compra ant.:{" "}
+                              {line.previousPurchaseCostReferenceValue !== null
+                                ? `${money(line.previousPurchaseCostReferenceValue)} Bs/${line.previousPurchaseCostReferenceUnitSymbol ?? line.baseUnitSymbol}`
+                                : "Sin ref."}
+                            </div>
                           </td>
                           <td className="px-2 py-1.5 text-right font-semibold">{money(unitSale)} {unitSale !== null && line.inputMode !== "amount_bs" ? "Bs/" + line.baseUnitSymbol : null}</td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">

@@ -72,6 +72,13 @@ export type QbReceiptLine = {
   purchaseCostReferenceValue: number | null;
   previousPurchaseCostReferenceUnitSymbol: string | null;
   previousPurchaseCostReferenceValue: number | null;
+  warehouseBaseQuantity?: number | null;
+  externalBaseQuantity?: number | null;
+  fifoKnownQuantity?: number | null;
+  fifoKnownTotalCost?: number | null;
+  fifoUnknownQuantity?: number | null;
+  fifoLotCount?: number | null;
+  fifoLotsSummary?: string | null;
   notes: string | null;
 };
 

@@ -284,13 +284,15 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
       line.previousBasePrice = previous?.basePrice ?? null;
       line.previousBasePricePerArroba = previous?.perArroba ?? null;
       line.previousSalePrice = previous?.salePrice ?? null;
-      const previousPurchaseCost = previousPurchaseCostByProduct.get(
-        line.productId,
-      );
-      line.previousPurchaseCostReferenceValue =
-        previousPurchaseCost?.value ?? null;
-      line.previousPurchaseCostReferenceUnitSymbol =
-        previousPurchaseCost?.unitSymbol ?? null;
+      if (line.previousPurchaseCostReferenceValue === null) {
+        const previousPurchaseCost = previousPurchaseCostByProduct.get(
+          line.productId,
+        );
+        line.previousPurchaseCostReferenceValue =
+          previousPurchaseCost?.value ?? null;
+        line.previousPurchaseCostReferenceUnitSymbol =
+          previousPurchaseCost?.unitSymbol ?? null;
+      }
     }
     if (receipt.status !== "emitido") continue;
     for (const line of receipt.lines) {
@@ -322,6 +324,15 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
         previousPurchaseCostByProduct.set(line.productId, {
           value: line.purchaseCostReferenceValue,
           unitSymbol: line.purchaseCostReferenceUnitSymbol,
+        });
+      } else if (
+        line.costBaseUnitSnapshot !== null &&
+        Number.isFinite(Number(line.costBaseUnitSnapshot)) &&
+        (line.costSource === "manual" || line.costSource === "fifo")
+      ) {
+        previousPurchaseCostByProduct.set(line.productId, {
+          value: Number(line.costBaseUnitSnapshot),
+          unitSymbol: line.baseUnitSymbol,
         });
       }
     }
@@ -503,13 +514,33 @@ async function getReceiptParts(
       );
   }
 
-  const { data: suggestedCosts, error: suggestedCostsError } = await supabase.rpc(
-    "get_qb_draft_receipt_cost_suggestions", { p_receipts: receiptIds },
-  );
+  const [
+    { data: suggestedCosts, error: suggestedCostsError },
+    { data: fifoContexts, error: fifoContextsError },
+  ] = await Promise.all([
+    supabase.rpc("get_qb_draft_receipt_cost_suggestions", { p_receipts: receiptIds }),
+    supabase.rpc("get_qb_receipt_lines_fifo_context", { p_receipts: receiptIds }),
+  ]);
   if (suggestedCostsError) throw new Error("No se pudieron cargar los costos sugeridos: " + suggestedCostsError.message);
+  if (fifoContextsError) throw new Error("No se pudo cargar el contexto FIFO de los recibos: " + fifoContextsError.message);
   const suggestedCostByLine = new Map<string, string | null>((suggestedCosts ?? []).map(
     (item: { line_id: string; suggested_cost: unknown }) => [item.line_id, nullableDecimalText(item.suggested_cost as string | number | null)],
   ));
+  type FifoContextRow = {
+    line_id: string;
+    warehouse_base_quantity: number | string | null;
+    external_base_quantity: number | string | null;
+    fifo_known_quantity: number | string | null;
+    fifo_known_total_cost: number | string | null;
+    fifo_unknown_quantity: number | string | null;
+    fifo_lot_count: number | null;
+    fifo_lots_summary: string | null;
+    previous_purchase_cost_value: number | string | null;
+    previous_purchase_cost_unit_symbol: string | null;
+  };
+  const fifoContextByLine = new Map<string, FifoContextRow>(
+    ((fifoContexts ?? []) as FifoContextRow[]).map((item) => [item.line_id, item]),
+  );
 
   const ordersByReceipt = new Map<string, QbReceiptOrder[]>();
   if (!ordersResult.error) {
@@ -545,6 +576,7 @@ async function getReceiptParts(
         measuredKilograms: measuredKg,
         deliveredQuantity: deliveredBase,
       });
+      const fifoContext = fifoContextByLine.get(row.id);
       items.push({
         id: row.id,
         orderId: row.order_id,
@@ -628,8 +660,15 @@ async function getReceiptParts(
         purchaseCostReferenceValue: nullableNumberValue(
           row.purchase_cost_reference_value,
         ),
-        previousPurchaseCostReferenceUnitSymbol: null,
-        previousPurchaseCostReferenceValue: null,
+        previousPurchaseCostReferenceUnitSymbol: fifoContext?.previous_purchase_cost_unit_symbol ?? null,
+        previousPurchaseCostReferenceValue: nullableNumberValue(fifoContext?.previous_purchase_cost_value),
+        warehouseBaseQuantity: nullableNumberValue(fifoContext?.warehouse_base_quantity),
+        externalBaseQuantity: nullableNumberValue(fifoContext?.external_base_quantity),
+        fifoKnownQuantity: nullableNumberValue(fifoContext?.fifo_known_quantity),
+        fifoKnownTotalCost: nullableNumberValue(fifoContext?.fifo_known_total_cost),
+        fifoUnknownQuantity: nullableNumberValue(fifoContext?.fifo_unknown_quantity),
+        fifoLotCount: fifoContext?.fifo_lot_count ?? null,
+        fifoLotsSummary: fifoContext?.fifo_lots_summary ?? null,
         notes: row.notes,
       });
       linesByReceipt.set(row.receipt_id, items);
