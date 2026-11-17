@@ -269,6 +269,42 @@ export async function setQbReceiptLinePricingAction(
   return { success: true, message: "Productos y factores guardados." };
 }
 
+export async function overrideQbReceiptFifoCostAction(
+  _previous: QbReceiptActionState,
+  formData: FormData,
+): Promise<QbReceiptActionState> {
+  await requireRoleAccess("/recibos");
+  const parsed = z.object({
+    receiptId: uuidSchema,
+    lineId: uuidSchema,
+    newCost: z.string().regex(/^\d+(?:\.\d{1,8})?$/),
+    reason: z.string().trim().min(3).max(500),
+  }).safeParse({
+    receiptId: formData.get("receipt_id"),
+    lineId: formData.get("line_id"),
+    newCost: formData.get("new_cost"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) {
+    return initialFailure("Indica una tarifa de costo válida y un motivo de corrección (mínimo 3 caracteres).");
+  }
+  const { supabase, state } = await getSupabaseOrState();
+  if (!supabase) return state;
+  const { receiptId, lineId, newCost, reason } = parsed.data;
+  const { error } = await supabase.rpc("override_qb_receipt_fifo_cost", {
+    p_receipt_id: receiptId,
+    p_line_id: lineId,
+    p_new_cost: Number(newCost),
+    p_reason: reason,
+  });
+  if (error) {
+    return initialFailure(errorMessage(error, "No se pudo registrar la corrección excepcional del costo FIFO."));
+  }
+  revalidatePath("/recibos");
+  revalidatePath(`/recibos/${receiptId}`);
+  return { success: true, message: "Corrección excepcional de costo FIFO guardada con auditoría." };
+}
+
 export async function reviewQbLegacyReceiptCostAction(
   _previous: QbReceiptActionState,
   formData: FormData,

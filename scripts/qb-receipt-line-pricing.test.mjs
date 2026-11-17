@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { calculateReceiptLine, isUnconfirmedDefaultReceiptCost, resolveReceiptArrobaFactor, sumReceiptAmounts, summarizeReceipts } from
   "../src/lib/qb-receipts/line-pricing.ts";
-import { resolveReceiptCostSnapshot } from "../src/lib/qb-receipts/cost-source.ts";
+import { calculateFifoReceiptLineCost, resolveReceiptCostSnapshot } from "../src/lib/qb-receipts/cost-source.ts";
 
 const factors = (distance, exigency, weather, extraordinary) =>
   ({ distance, exigency, weather, extraordinary });
@@ -163,4 +163,80 @@ test("referencia de venta por arroba usa unidad física o peso medido", () => {
   assert.equal(resolveReceiptArrobaFactor({ ...base, isArroba: true }) * 22, 22);
   assert.equal(resolveReceiptArrobaFactor(base), null);
   assert.equal(resolveReceiptArrobaFactor({ ...base, measuredKilograms: 4 }) * 22, 126.5);
+});
+
+test("producto sin stock en bodega inicia pendiente en Bs 0 sin heredar costo", () => {
+  const result = calculateFifoReceiptLineCost({
+    deliveredQuantity: 4,
+    warehouseQuantity: 0,
+    unreconciledExternalQuantity: 4,
+    consumptions: [],
+  });
+  assert.deepEqual(result, {
+    status: "no_stock",
+    source: null,
+    costTotal: null,
+    costBaseUnit: null,
+    knownQuantity: "0.00000000",
+    unknownQuantity: "0.00000000",
+  });
+});
+
+test("costo FIFO de un lote valorizado conserva la tarifa unitaria real", () => {
+  const result = calculateFifoReceiptLineCost({
+    deliveredQuantity: 3,
+    warehouseQuantity: 3,
+    consumptions: [{ quantityConsumed: 3, unitCost: 11.5, costStatus: "known" }],
+  });
+  assert.deepEqual(result, {
+    status: "ready",
+    source: "fifo",
+    costTotal: "34.50000000",
+    costBaseUnit: "11.50000000",
+    knownQuantity: "3.00000000",
+    unknownQuantity: "0.00000000",
+  });
+});
+
+test("caso obligatorio FIFO de dos lotes: 2 kg a Bs 10 y 3 kg a Bs 14 = Bs 12,40/kg", () => {
+  const result = calculateFifoReceiptLineCost({
+    deliveredQuantity: 5,
+    warehouseQuantity: 5,
+    consumptions: [
+      { quantityConsumed: 2, unitCost: 10, costStatus: "known" },
+      { quantityConsumed: 3, unitCost: 14, costStatus: "known" },
+    ],
+  });
+  assert.deepEqual(result, {
+    status: "ready",
+    source: "fifo",
+    costTotal: "62.00000000",
+    costBaseUnit: "12.40000000",
+    knownQuantity: "5.00000000",
+    unknownQuantity: "0.00000000",
+  });
+});
+
+test("consumo parcial historico sin costo o entrega mixta externa deja tarifa pendiente sin inventar ceros", () => {
+  const historicalUnknown = calculateFifoReceiptLineCost({
+    deliveredQuantity: 5,
+    warehouseQuantity: 5,
+    consumptions: [
+      { quantityConsumed: 2, unitCost: 10, costStatus: "known" },
+      { quantityConsumed: 3, unitCost: null, costStatus: "historical_unknown" },
+    ],
+  });
+  assert.equal(historicalUnknown.status, "pending_unknown_cost");
+  assert.equal(historicalUnknown.costBaseUnit, null);
+  assert.equal(historicalUnknown.knownQuantity, "2.00000000");
+  assert.equal(historicalUnknown.unknownQuantity, "3.00000000");
+
+  const mixedExternal = calculateFifoReceiptLineCost({
+    deliveredQuantity: 5,
+    warehouseQuantity: 3,
+    unreconciledExternalQuantity: 2,
+    consumptions: [{ quantityConsumed: 3, unitCost: 10, costStatus: "known" }],
+  });
+  assert.equal(mixedExternal.status, "pending_unknown_cost");
+  assert.equal(mixedExternal.costBaseUnit, null);
 });

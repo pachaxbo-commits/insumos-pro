@@ -3,7 +3,10 @@
 import { Fragment, useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import Decimal from "decimal.js";
-import { setQbReceiptLinePricingAction } from "@/lib/qb-receipts/actions";
+import {
+  overrideQbReceiptFifoCostAction,
+  setQbReceiptLinePricingAction,
+} from "@/lib/qb-receipts/actions";
 import {
   calculateReceiptLine,
   isUnconfirmedDefaultReceiptCost,
@@ -21,8 +24,19 @@ type Draft = { cost: string; distance: string; exigency: string; weather: string
 const money = (value: number | string | null) => value === null ? "—" :
   new Intl.NumberFormat("es-BO", { minimumFractionDigits: 2,
     maximumFractionDigits: 2 }).format(Number(value));
+const qty = (value: number | null | undefined) => value == null ? "0" :
+  new Intl.NumberFormat("es-BO", { maximumFractionDigits: 4 }).format(value);
 const actualWeight = (line: QbReceiptLine) => formatReceiptActualWeight(line);
 const commercialQuantity = (line: QbReceiptLine) => formatReceiptCommercialQuantity(line);
+
+function formatDraftCost(value: string | null) {
+  if (value === null || value.trim() === "") return null;
+  try {
+    return new Decimal(value).toString();
+  } catch {
+    return value;
+  }
+}
 
 function needsLegacyCostReview(line: QbReceiptLine) {
   return !line.salePriceIndependentSnapshot && line.costSource === "purchase_snapshot" &&
@@ -33,9 +47,10 @@ function needsLegacyCostReview(line: QbReceiptLine) {
 }
 
 function initialDraft(line: QbReceiptLine, editable: boolean): Draft {
-  const knownCost = !editable || line.costSource === "manual"
-    ? line.costBaseUnitSnapshot : line.suggestedCostBaseUnit;
-  return { cost: knownCost?.toString() ?? (editable ? "0" : ""),
+  const knownCost = !editable || (line.costSource !== null && line.costSource !== "purchase_snapshot")
+    ? formatDraftCost(line.costBaseUnitSnapshot)
+    : null;
+  return { cost: knownCost ?? (editable ? "0" : ""),
     distance: String(line.distanceFactorPercent), exigency: String(line.exigencyFactorPercent),
     weather: String(line.weatherFactorPercent), extraordinary: String(line.extraordinaryFactorPercent),
     notes: line.notes ?? "" };
@@ -92,6 +107,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
     { success: false });
   const editable = receipt.status === "borrador";
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [overridingFifoLine, setOverridingFifoLine] = useState<QbReceiptLine | null>(null);
   const [month, setMonth] = useState((receipt.periodEnd ?? receipt.createdAt).slice(0, 7));
   const [viewOrder, setViewOrder] = useState("all");
 
@@ -188,7 +204,7 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                         const input = (field: Exclude<keyof Draft, "costTouched">, width = "w-16") =>
                           <input aria-label={`${field} ${line.productName}`} type={field === "notes" ? "text" : "number"}
                             min={field === "notes" ? undefined : 0} step={field === "notes" ? undefined : "any"}
-                            disabled={!editable || (line.inputMode === "amount_bs" &&
+                            disabled={!editable || (field === "cost" && line.costSource === "fifo") || (line.inputMode === "amount_bs" &&
                               ["distance","exigency","weather","extraordinary"].includes(field))}
                             className={`${width} h-8 rounded border bg-white px-1.5 text-right disabled:bg-slate-100`}
                             value={draft[field]} onChange={(event) => change(line.id, field, event.target.value)} />;
@@ -208,11 +224,63 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
                             {input("cost", "w-24")} <span>Bs/{line.baseUnitSymbol}</span>
                             {editable && (needsLegacyCostReview(line) || line.costSource === "purchase_snapshot")
                               ? <span className="block text-amber-800">Referencia de compra excluida</span> : null}
-                            {editable && draft.cost === "0" && line.costSource !== "manual" && line.suggestedCostBaseUnit == null
-                              ? <span className="block text-slate-600">Sin costo guardado en esta unidad</span> : null}
+                            {line.costSource === "fifo" && (!draft.costTouched || draft.cost === formatDraftCost(line.costBaseUnitSnapshot))
+                              ? <>
+                                  <span className="block text-emerald-800">
+                                    Costo FIFO ({line.fifoLotCount === 1 ? "1 lote" : `${line.fifoLotCount ?? 0} lotes`})
+                                  </span>
+                                  {line.fifoLotsSummary
+                                    ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                    : null}
+                                  {editable ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setOverridingFifoLine(line)}
+                                      className="mt-0.5 inline-block text-[11px] font-medium text-amber-800 underline hover:text-amber-900"
+                                    >
+                                      Corregir costo FIFO...
+                                    </button>
+                                  ) : null}
+                                </>
+                              : null}
+                            {editable && line.costBaseUnitSnapshot === null && !draft.costTouched
+                              ? (line.fifoUnknownQuantity ?? 0) > 0
+                                ? <>
+                                    <span className="block max-w-56 whitespace-normal text-amber-800">
+                                      Costo pendiente: consumo sin costo conocido ({qty(line.fifoUnknownQuantity)} {line.baseUnitSymbol})
+                                    </span>
+                                    {line.fifoLotsSummary
+                                      ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                      : null}
+                                  </>
+                                : (line.warehouseBaseQuantity ?? 0) > 0 && (line.externalBaseQuantity ?? 0) > 0
+                                  ? <>
+                                      <span className="block max-w-56 whitespace-normal text-amber-800">
+                                        Costo pendiente: entrega mixta ({qty(line.warehouseBaseQuantity)} {line.baseUnitSymbol} almacén + {qty(line.externalBaseQuantity)} {line.baseUnitSymbol} externo)
+                                      </span>
+                                      {line.fifoLotsSummary
+                                        ? <span className="block max-w-56 whitespace-normal text-[11px] text-slate-600">{line.fifoLotsSummary}</span>
+                                        : null}
+                                    </>
+                                  : line.warehouseBaseQuantity === 0
+                                    ? <span className="block text-slate-600">Sin stock en almacén · ingresa el costo real</span>
+                                    : <span className="block text-slate-600">Costo pendiente · ingresa el costo real</span>
+                              : null}
                           </td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">
-                            {line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin referencia"}
+                            <div>{line.previousSalePrice !== null ? money(line.previousSalePrice) : "Sin venta ant."}</div>
+                            <div className="font-sans text-[11px] text-slate-500">
+                              Compra ant.:{" "}
+                              {line.previousPurchaseCostReferenceValue !== null
+                                ? `${money(line.previousPurchaseCostReferenceValue)} Bs/${line.previousPurchaseCostReferenceUnitSymbol ?? line.baseUnitSymbol}`
+                                : "Sin ref."}
+                            </div>
+                            {line.previousManualCostReferenceValue !== null ? (
+                              <div className="font-sans text-[11px] text-amber-700">
+                                Manual ant.:{" "}
+                                {money(line.previousManualCostReferenceValue)} Bs/{line.previousManualCostReferenceUnitSymbol ?? line.baseUnitSymbol}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-2 py-1.5 text-right font-semibold">{money(unitSale)} {unitSale !== null && line.inputMode !== "amount_bs" ? "Bs/" + line.baseUnitSymbol : null}</td>
                           <td className="px-2 py-1.5 text-right font-mono text-slate-600">
@@ -281,5 +349,114 @@ function AdminReceiptLineWorkspace({ receipt, relatedReceipts, emitAction, emitP
       <div className="mt-3 border-t pt-2 font-semibold">Venta {money(monthlyAmounts.saleTotal)} Bs<br />
         Utilidad {money(monthlyAmounts.profitTotal)} Bs<br />Margen {money(monthlyAmounts.marginPercent)}%</div>
     </aside>}
+    {overridingFifoLine && (
+      <OverrideFifoModal
+        receiptId={receipt.id}
+        line={overridingFifoLine}
+        onClose={() => setOverridingFifoLine(null)}
+      />
+    )}
   </div>;
+}
+
+function OverrideFifoModal({
+  receiptId,
+  line,
+  onClose,
+}: {
+  receiptId: string;
+  line: QbReceiptLine;
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState(overrideQbReceiptFifoCostAction, {
+    success: false,
+  });
+
+  return (
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg border bg-white p-5 shadow-xl">
+        <h3 className="text-base font-semibold text-slate-900">
+          Corrección excepcional de costo FIFO
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {line.productName} ({line.productCode ?? "—"}) · Unidad: {line.baseUnitSymbol}
+        </p>
+
+        <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+          <p className="font-semibold">
+            Tarifa actual calculada por FIFO: Bs {money(line.costBaseUnitSnapshot)}/{line.baseUnitSymbol}
+          </p>
+          {line.fifoLotsSummary && (
+            <p className="mt-0.5 text-[11px] text-slate-700">{line.fifoLotsSummary}</p>
+          )}
+          <p className="mt-1 text-[11px] text-amber-800">
+            Esta acción anula la tarifa calculada por lotes exclusivamente para este recibo y registra una auditoría con el motivo. No modifica inventario ni consumos FIFO de bodega.
+          </p>
+        </div>
+
+        {state.message && (
+          <p
+            role="status"
+            className={`mt-2 rounded border px-2 py-1 text-xs ${
+              state.success
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                : "border-red-300 bg-red-50 text-red-800"
+            }`}
+          >
+            {state.message}
+          </p>
+        )}
+
+        <form action={action} className="mt-3 space-y-3">
+          <input type="hidden" name="receipt_id" value={receiptId} />
+          <input type="hidden" name="line_id" value={line.id} />
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Nueva tarifa de costo (Bs/{line.baseUnitSymbol})
+            </label>
+            <input
+              name="new_cost"
+              type="number"
+              step="any"
+              min="0.00000001"
+              required
+              placeholder="Ej. 13.50"
+              className="mt-1 h-9 w-full rounded border px-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700">
+              Motivo de la corrección (auditoría obligatoria, mín. 3 caracteres)
+            </label>
+            <textarea
+              name="reason"
+              rows={3}
+              minLength={3}
+              maxLength={500}
+              required
+              placeholder="Indica la razón operativa para corregir la tarifa de este lote..."
+              className="mt-1 w-full rounded border p-2 text-xs"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={pending}
+              className="rounded border px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+            >
+              {pending ? "Guardando..." : "Aplicar corrección con auditoría"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
