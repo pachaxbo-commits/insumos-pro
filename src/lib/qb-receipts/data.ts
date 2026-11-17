@@ -270,6 +270,10 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
     string,
     { value: number; unitSymbol: string | null }
   >();
+  const previousManualCostByProduct = new Map<
+    string,
+    { value: number; unitSymbol: string | null }
+  >();
   const sorted = [...receipts].sort((left, right) =>
     (left.issuedAt ?? left.createdAt).localeCompare(
       right.issuedAt ?? right.createdAt,
@@ -292,6 +296,15 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
           previousPurchaseCost?.value ?? null;
         line.previousPurchaseCostReferenceUnitSymbol =
           previousPurchaseCost?.unitSymbol ?? null;
+      }
+      if (line.previousManualCostReferenceValue === null) {
+        const previousManualCost = previousManualCostByProduct.get(
+          line.productId,
+        );
+        line.previousManualCostReferenceValue =
+          previousManualCost?.value ?? null;
+        line.previousManualCostReferenceUnitSymbol =
+          previousManualCost?.unitSymbol ?? null;
       }
     }
     if (receipt.status !== "emitido") continue;
@@ -325,12 +338,13 @@ function attachPreviousPrices(receipts: QbReceipt[]) {
           value: line.purchaseCostReferenceValue,
           unitSymbol: line.purchaseCostReferenceUnitSymbol,
         });
-      } else if (
+      }
+      if (
         line.costBaseUnitSnapshot !== null &&
         Number.isFinite(Number(line.costBaseUnitSnapshot)) &&
-        (line.costSource === "manual" || line.costSource === "fifo")
+        line.costSource === "manual"
       ) {
-        previousPurchaseCostByProduct.set(line.productId, {
+        previousManualCostByProduct.set(line.productId, {
           value: Number(line.costBaseUnitSnapshot),
           unitSymbol: line.baseUnitSymbol,
         });
@@ -537,6 +551,8 @@ async function getReceiptParts(
     fifo_lots_summary: string | null;
     previous_purchase_cost_value: number | string | null;
     previous_purchase_cost_unit_symbol: string | null;
+    previous_manual_cost_value: number | string | null;
+    previous_manual_cost_unit_symbol: string | null;
   };
   const fifoContextByLine = new Map<string, FifoContextRow>(
     ((fifoContexts ?? []) as FifoContextRow[]).map((item) => [item.line_id, item]),
@@ -662,6 +678,8 @@ async function getReceiptParts(
         ),
         previousPurchaseCostReferenceUnitSymbol: fifoContext?.previous_purchase_cost_unit_symbol ?? null,
         previousPurchaseCostReferenceValue: nullableNumberValue(fifoContext?.previous_purchase_cost_value),
+        previousManualCostReferenceUnitSymbol: fifoContext?.previous_manual_cost_unit_symbol ?? null,
+        previousManualCostReferenceValue: nullableNumberValue(fifoContext?.previous_manual_cost_value),
         warehouseBaseQuantity: nullableNumberValue(fifoContext?.warehouse_base_quantity),
         externalBaseQuantity: nullableNumberValue(fifoContext?.external_base_quantity),
         fifoKnownQuantity: nullableNumberValue(fifoContext?.fifo_known_quantity),
@@ -864,6 +882,8 @@ function mapSupervisorReceiptLine(row: SupervisorReceiptLineRow): QbReceiptLine 
     purchaseCostReferenceValue: null,
     previousPurchaseCostReferenceUnitSymbol: null,
     previousPurchaseCostReferenceValue: null,
+    previousManualCostReferenceUnitSymbol: null,
+    previousManualCostReferenceValue: null,
     notes: null,
   };
 }
