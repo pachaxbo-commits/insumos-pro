@@ -26,6 +26,7 @@ import {
   deleteCategoryAction,
   deleteProductPermanentlyAction,
   retryDeletedProductImageCleanupAction,
+  updateCatalogVisibilityAction,
   updateCategoryAction,
   updateProductAction,
   updateUnitAction,
@@ -301,6 +302,24 @@ function NativeSelect({
     >
       {children}
     </select>
+  );
+}
+
+function CatalogVisibilityForm({ settings }: { settings: QbProductUnitSettings }) {
+  const [state, action, pending] = useActionState(updateCatalogVisibilityAction, { success: false });
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="product_id" value={settings.product_id} />
+      <label>Visibilidad en catálogo de pedidos
+        <select name="visibility" className="ml-2 rounded border p-1"
+          defaultValue={settings.is_visible_in_qb_catalog ? "visible" : "hidden"}>
+          <option value="visible">Visible</option>
+          <option value="hidden">Oculto</option>
+        </select>
+      </label>
+      <Button type="submit" variant="outline" disabled={pending}>Guardar visibilidad</Button>
+      <span role="status">{state.message}</span>
+    </form>
   );
 }
 
@@ -1289,6 +1308,9 @@ export function ProductManagement({
                                     product.id,
                                   )}
                                 />
+                                {qbSettingsByProduct.has(product.id) && (
+                                  <CatalogVisibilityForm settings={qbSettingsByProduct.get(product.id)!} />
+                                )}
                                 <ProductPricingEditor
                                   product={product}
                                   settings={qbSettingsByProduct.get(product.id)}
