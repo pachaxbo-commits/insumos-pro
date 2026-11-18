@@ -1108,6 +1108,33 @@ export async function updateQbUnitAction(
   return { success: true, message: "Unidad QB actualizada correctamente." };
 }
 
+export async function updateCatalogVisibilityAction(
+  _previousState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const access = await assertCanMutateProducts();
+  if (!access.allowed) return { success: false, message: access.message };
+
+  const parsed = z.object({
+    product_id: z.uuid(),
+    visibility: z.enum(["visible", "hidden"]),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { success: false, message: "Selección inválida." };
+
+  const { error } = await access.supabase.from("qb_product_unit_settings")
+    .update({
+      is_visible_in_qb_catalog: parsed.data.visibility === "visible",
+      updated_by: access.userId,
+    })
+    .eq("product_id", parsed.data.product_id)
+    .select("product_id").single();
+  if (error) return { success: false, message: error.message };
+
+  revalidatePath("/productos");
+  revalidatePath("/pedidos");
+  return { success: true, message: "Visibilidad del catálogo guardada." };
+}
+
 export async function upsertQbProductUnitSettingsAction(
   _previousState: ActionState,
   formData: FormData,

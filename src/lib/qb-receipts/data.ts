@@ -686,7 +686,7 @@ async function getReceiptParts(
         fifoKnownTotalCost: nullableNumberValue(fifoContext?.fifo_known_total_cost),
         fifoUnknownQuantity: nullableNumberValue(fifoContext?.fifo_unknown_quantity),
         fifoLotCount: fifoContext?.fifo_lot_count ?? null,
-        fifoLotsSummary: fifoContext?.fifo_lots_summary ?? null,
+        fifoLotsSummary: fifoContext?.fifo_lots_summary?.replaceAll("\u00c3\u2014", "×") ?? null,
         notes: row.notes,
       });
       linesByReceipt.set(row.receipt_id, items);
