@@ -2210,7 +2210,7 @@ function MeasuredQuantityEditor({
     : null;
 
   return (
-    <div className="grid min-w-40 grid-cols-2 items-start gap-2">
+    <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,11rem),1fr))] items-start gap-2">
       <div className="min-w-0">
         <span className="mb-0.5 block text-left text-sm font-semibold text-slate-700">
           {quantityLabel}
