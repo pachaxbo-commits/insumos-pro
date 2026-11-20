@@ -91,7 +91,7 @@ test("unchecking restores only a quantity auto-filled by the checkbox", () => {
   assert.equal(preparationCheckTransition(manualEdit, false).preparedQuantity, 7);
 });
 
-test("the persisted reset marker is read by the matrix and sent through the guarded RPC", async () => {
+test("the matrix sends the physical quantity directly and keeps the guarded legacy RPC", async () => {
   const data = readFileSync("src/lib/operational-matrix/data.ts", "utf8");
   const actions = readFileSync("src/lib/operational-matrix/actions.ts", "utf8");
   const matrix = readFileSync("src/components/operational-matrix/operational-matrix.tsx", "utf8");
@@ -100,7 +100,7 @@ test("the persisted reset marker is read by the matrix and sent through the guar
   assert.match(actions, /save_qb_matrix_preparation_with_check_reset/);
   assert.match(actions, /p_auto_fill_quantity: parsed\.data\.autoFillQuantity/);
   assert.match(actions, /p_reset_auto_fill_quantity: parsed\.data\.resetAutoFillQuantity/);
-  assert.match(matrix, /resetAutoFillQuantity: line\.preparationAutoFillResetRequested/);
+  assert.match(matrix, /resetAutoFillQuantity: false/);
   assert.match(migration, /for update/);
   assert.match(migration, /row_version/);
   assert.match(migration, /revoke all on function public\.save_qb_matrix_preparation_with_check_reset/);
