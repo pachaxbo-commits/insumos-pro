@@ -39,17 +39,15 @@ test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
   assert.doesNotMatch(data, /const candidates = new Set/);
   assert.match(
     matrix,
-    /sourceLabel,\s+sourceUnitHint/,
+    /selectedUnitId="original"/,
   );
 });
 
-test("editar cantidades exige reverificación y los orígenes se planifican en preparación", () => {
+test("editar cantidades conserva el check de preparación y no requiere clasificar el origen", () => {
   assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+preparedQuantity: value \?\? 0,/);
   assert.match(matrix, /onQuantityChange=\{\(value\) =>\s+onChange\(\{\s+deliveredQuantity: value \?\? 0,/);
-  assert.match(matrix, /function PreparationOriginPlanEditor/);
-  assert.match(matrix, /pendingBaseQuantity: line\.plannedPendingBaseQuantity/);
-  assert.match(matrix, /externalBaseQuantity: line\.plannedExternalBaseQuantity/);
-  assert.match(matrix, /preparationCheck: false/);
+  assert.doesNotMatch(matrix, /PreparationOriginPlanEditor|DeliveryOriginControl/);
+  assert.match(matrix, /originPlanConfirmed: false/);
   assert.doesNotMatch(matrix, /preparationCheck: value !== null/);
   assert.doesNotMatch(matrix, /deliveryCheck: value !== null/);
 });
@@ -65,7 +63,7 @@ test("cantidad comercial y peso real permanecen visibles y editables", () => {
 test("entrega compara lo preparado con el valor final editable", () => {
   assert.match(
     matrix,
-    /"CHECK INV\.\/ENT\.",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
+    /"CHECK",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
   );
   assert.match(matrix, /function PreparedMeasurementDisplay/);
   assert.match(matrix, /line\.preparationActualWeightKg/);
@@ -113,11 +111,8 @@ test("la cantidad preparada agrupada se distribuye entre pedidos", () => {
   );
 });
 
-test("marcar preparación completa lo solicitado y permite verificar cero explícitamente", () => {
-  assert.match(matrix, /preparationCheckTransition\(/);
-  assert.match(matrix, /capacity\.allocatedBaseQuantity/);
-  assert.match(matrix, /const verifyZeroPreparation =/);
-  assert.match(matrix, /preserveZeroPreparation: true/);
+test("marcar una preparación vacía completa lo solicitado y desmarcarla pone cero", () => {
+  assert.match(matrix, /next\.preparedQuantity = patch\.preparationCheck \? line\.requestedQuantity : 0/);
   assert.match(actions, /rpc\("save_qb_matrix_preparation_with_check_reset",\s*\{/);
   assert.match(actions, /p_prepared_quantity:\s*parsed\.data\.preparedQuantity/);
   assert.match(actions, /p_preparation_check:\s*parsed\.data\.preparationCheck/);
