@@ -39,7 +39,7 @@ test("la unidad solicitada tiene prioridad sobre la unidad base", () => {
   assert.doesNotMatch(data, /const candidates = new Set/);
   assert.match(
     matrix,
-    /sourceLabel,\s+sourceUnitHint/,
+    /selectedUnitId="original"/,
   );
 });
 
