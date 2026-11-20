@@ -4,6 +4,7 @@
     "deploymentEnabled": {
       "codex/cierre-catalogo-modal": false,
       "codex/unidades-operacion": false,
+      "codex/preparacion-entrega-simple": false,
       "codex/costos-y-limpieza": false
     }
   }
