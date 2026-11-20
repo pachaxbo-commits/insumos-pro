@@ -106,7 +106,7 @@ function stageHeaders(stage: MatrixStage) {
   if (stage === "entrega") {
     return [
       "CANT",
-      "CHECK INV./ENT.",
+      "CHECK",
       "PREPARADO",
       "ENTREGADO REAL",
       "OBSERVACIÓN",
@@ -718,6 +718,7 @@ export function OperationalMatrix({
   const updateGroupedLines = (
     groupedLines: MatrixLine[],
     patch: Partial<MatrixLine>,
+    tableDelivery = false,
   ) => {
     const ids = new Set(groupedLines.map((line) => line.orderItemId));
     const preparationWeights =
@@ -811,13 +812,17 @@ export function OperationalMatrix({
         next.deliveryCheck = patch.deliveryCheck;
         changed ||= next.deliveryCheck !== line.deliveryCheck;
       }
-      if (
-        Object.hasOwn(patch, "deliveredQuantity") &&
-        typeof patch.deliveredQuantity === "number"
-      ) {
-        next.deliveredQuantity = deliveryQuantities[index];
-        next.deliveredBaseQuantity = Number((deliveryQuantities[index] * line.basePerSourceQuantity).toFixed(6));
-        if (typeof patch.deliveryCheck !== "boolean") {
+      const deliveredQuantity = typeof patch.deliveredQuantity === "number"
+        ? deliveryQuantities[index]
+        : tableDelivery && patch.deliveryCheck === false
+          ? 0
+          : tableDelivery && patch.deliveryCheck === true && line.deliveredQuantity === 0
+            ? line.requestedQuantity
+            : undefined;
+      if (deliveredQuantity !== undefined) {
+        next.deliveredQuantity = deliveredQuantity;
+        next.deliveredBaseQuantity = Number((deliveredQuantity * line.basePerSourceQuantity).toFixed(6));
+        if (!tableDelivery && typeof patch.deliveryCheck !== "boolean") {
           next.deliveryCheck = false;
         }
         next.deliverySourceConfirmed = false;
@@ -847,7 +852,7 @@ export function OperationalMatrix({
           || next.deliveryActualWeightUnitId !== line.deliveryActualWeightUnitId
           || next.deliveryActualWeightFactorToKg !== line.deliveryActualWeightFactorToKg;
       }
-      if ((Object.hasOwn(patch, "deliveryActualWeightKg") || Object.hasOwn(patch, "deliveredQuantity"))
+      if ((Object.hasOwn(patch, "deliveryActualWeightKg") || deliveredQuantity !== undefined)
         && line.requestedConversionValid && line.controlsActualWeight && line.baseWeightFactorToKg) {
         const physical = next.deliveryActualWeightKg === null
           ? next.deliveredQuantity * line.basePerSourceQuantity
@@ -1307,7 +1312,7 @@ export function OperationalMatrix({
   const pendingDeliveryOrders = actionableOrders(orders, new Set(orders.map((order) => order.id)), "confirm");
   const selectedConfirmationOrder = pendingDeliveryOrders.find((order) => order.id === selectedConfirmationOrderId) ?? pendingDeliveryOrders[0] ?? null;
   const mobileViewport = useSyncExternalStore(subscribeToMobileViewport, isMobileViewport, defaultDesktopViewport);
-  const showForm = (viewMode ?? (mobileViewport || stage === "preparacion" || stage === "entrega" ? "formulario" : "tabla")) === "formulario";
+  const showForm = (viewMode ?? (mobileViewport ? "formulario" : "tabla")) === "formulario";
   const saveFormLine = async (id: string) => {
     if (!dirty.current.has(id)) return true;
     const sequence = ++formSaveSequence.current;
@@ -1858,7 +1863,7 @@ export function OperationalMatrix({
                             focused={focused}
                             editable={editable}
                             onChange={(patch) =>
-                              updateGroupedLines(groupedLines, patch)
+                              updateGroupedLines(groupedLines, patch, stage === "entrega")
                             }
                             onSavePreparation={() =>
                               void saveGroupedPreparation(
@@ -1875,7 +1880,7 @@ export function OperationalMatrix({
                               )
                             }
                             onToggleMissingDeliveryCheck={(checked) =>
-                              updateMissingDeliveryChecks(groupedLines, checked)
+                              updateGroupedLines(groupedLines, { deliveryCheck: checked }, true)
                             }
                             onSaveMissingDeliveryCheck={() =>
                               void saveGroupedDelivery(
@@ -2342,20 +2347,6 @@ function PreparedMeasurementDisplay({
   );
 }
 
-function WeightPricingHint({ line }: { line: MatrixLine }) {
-  return (
-    <span
-      className={`mt-1 block text-[9px] font-medium ${
-        line.hasWeightBasedPrice ? "text-emerald-800" : "text-amber-800"
-      }`}
-    >
-      {line.hasWeightBasedPrice
-        ? `Tarifa configurada por ${line.priceUnitSymbol} · el peso medido se registra por separado.`
-        : "Peso real informativo · configura un precio por unidad de peso para costearlo."}
-    </span>
-  );
-}
-
 function QuantityEditor({
   label,
   value,
@@ -2637,11 +2628,6 @@ function DesktopOrderCells(props: CellProps) {
           <span className="font-semibold">
             {formatQuantity(line.requestedQuantity)}
           </span>
-          {deliveryReady ? (
-            <span className="mt-1 block text-[9px] text-muted-foreground">
-              Inventario: {formatQuantity(line.preparedQuantity)}
-            </span>
-          ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
           <div className="flex items-center justify-center gap-1">
@@ -2697,14 +2683,6 @@ function DesktopOrderCells(props: CellProps) {
             }
             onBlur={onSaveDelivery}
           />
-          <WeightPricingHint line={line} />
-          {deliveryReady && line.deliveryVersion === 0 && line.deliveredQuantity > 0 &&
-          Math.abs(line.deliveredQuantity - line.preparedQuantity) <= 0.000001 &&
-          !line.deliveryCheck && !line.deliveredAt ? (
-            <span className="mt-1 block text-[9px] font-medium text-sky-800">
-              Sugerido por Preparación · confirma lo realmente entregado
-            </span>
-          ) : null}
         </td>
         <td style={cellStyle} className={cellClass}>
           {line.requestedNote ? (
@@ -2714,7 +2692,7 @@ function DesktopOrderCells(props: CellProps) {
           ) : null}
           {line.preparationNote ? (
             <span className="mb-1 block whitespace-pre-wrap break-words text-left text-[9px] font-medium text-amber-800">
-              Inventario: {line.preparationNote}
+              Preparación: {line.preparationNote}
             </span>
           ) : null}
           <NoteEditor
@@ -2727,7 +2705,7 @@ function DesktopOrderCells(props: CellProps) {
           />
           {!deliveryReady ? (
             <span className="mt-1 block text-[9px] font-semibold text-rose-700">
-              Pendiente de Inventario
+              Preparación pendiente
             </span>
           ) : null}
         </td>

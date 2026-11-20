@@ -63,7 +63,7 @@ test("cantidad comercial y peso real permanecen visibles y editables", () => {
 test("entrega compara lo preparado con el valor final editable", () => {
   assert.match(
     matrix,
-    /"CHECK INV\.\/ENT\.",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
+    /"CHECK",\s+"PREPARADO",\s+"ENTREGADO REAL"/,
   );
   assert.match(matrix, /function PreparedMeasurementDisplay/);
   assert.match(matrix, /line\.preparationActualWeightKg/);
